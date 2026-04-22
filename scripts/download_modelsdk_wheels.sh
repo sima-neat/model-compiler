@@ -174,6 +174,48 @@ download_one_spec() {
   return 1
 }
 
+download_deps_for_wheel_file() {
+  local wheel_file="$1"
+  local dest_dir="$2"
+  local tmpdir="$3"
+  local dep_log=""
+  local pyv=""
+  local seen_py_versions=" "
+
+  DOWNLOAD_ERROR_LOG=""
+  for pyv in "$PYTHON_VERSION" 312 311 310; do
+    if [[ "$seen_py_versions" == *" $pyv "* ]]; then
+      continue
+    fi
+    seen_py_versions="${seen_py_versions}${pyv} "
+    dep_log="${tmpdir}/deps-cp${pyv}.log"
+
+    set +e
+    python3 -m pip download \
+      --disable-pip-version-check \
+      --only-binary=:all: \
+      --index-url "$INDEX_URL" \
+      --dest "$dest_dir" \
+      --platform manylinux2014_x86_64 \
+      --platform linux_x86_64 \
+      --implementation cp \
+      --abi "cp${pyv}" \
+      --python-version "$pyv" \
+      "$wheel_file" >"$dep_log" 2>&1
+    dep_rc=$?
+    set -e
+
+    if [[ $dep_rc -eq 0 ]]; then
+      return 0
+    fi
+  done
+
+  if [[ -n "$dep_log" && -s "$dep_log" ]]; then
+    DOWNLOAD_ERROR_LOG="$dep_log"
+  fi
+  return 1
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sdk-release)
@@ -307,6 +349,30 @@ while [[ $i -lt ${#SUMMARY_REQUESTED[@]} ]]; do
   if [[ ${#cur_wheel} -gt $wheel_w ]]; then wheel_w=${#cur_wheel}; fi
   i=$((i + 1))
 done
+
+echo "Downloading dependency wheels for resolved package set..."
+dep_tmp="$(mktemp -d)"
+for top_wheel in "${SUMMARY_WHEEL[@]}"; do
+  wheel_path="$OUTPUT_DIR/$top_wheel"
+  if [[ ! -f "$wheel_path" ]]; then
+    rm -rf "$dep_tmp"
+    echo "Top-level wheel missing for dependency resolution: $wheel_path" >&2
+    exit 1
+  fi
+  echo "  Resolving deps for wheel: $top_wheel"
+  if ! download_deps_for_wheel_file "$wheel_path" "$OUTPUT_DIR" "$dep_tmp"; then
+    if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
+      cat "$DOWNLOAD_ERROR_LOG" >&2
+    fi
+    rm -rf "$dep_tmp"
+    echo "Failed to download dependencies for wheel: $top_wheel" >&2
+    exit 1
+  fi
+done
+rm -rf "$dep_tmp"
+
+total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"
+echo "Dependency bundling complete. Total wheel files in output: $total_wheels"
 
 row_fmt="%-${ok_w}s | %-${req_w}s | %-${res_w}s | %-${wheel_w}s\n"
 printf "$row_fmt" "OK" "Requested" "Resolved" "Wheel"

@@ -49,6 +49,85 @@ resolve_python_cmd() {
   return 1
 }
 
+latest_patch_for_minor() {
+  local py_mm="$1"
+  local list_out=""
+  if ! list_out="$(pyenv install --list 2>/dev/null)"; then
+    return 1
+  fi
+  echo "$list_out" \
+    | sed 's/^[[:space:]]*//' \
+    | grep -E "^${py_mm//./\\.}\\.[0-9]+$" \
+    | sort -V \
+    | tail -n1
+}
+
+ensure_python_cmd() {
+  local py_mm="$1"
+  local cmd=""
+  if cmd="$(resolve_python_cmd "$py_mm")"; then
+    echo "$cmd"
+    return 0
+  fi
+
+  local pyenv_root="${PYENV_ROOT:-$HOME/.pyenv}"
+  export PYENV_ROOT="$pyenv_root"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+
+  if ! command -v pyenv >/dev/null 2>&1; then
+    echo "Python ${py_mm} not found; attempting to install pyenv..." >&2
+    if [[ -x "$PYENV_ROOT/bin/pyenv" ]]; then
+      :
+    else
+      if ! command -v curl >/dev/null 2>&1; then
+        echo "curl is required to install pyenv automatically." >&2
+        return 1
+      fi
+      if ! command -v bash >/dev/null 2>&1; then
+        echo "bash is required to install pyenv automatically." >&2
+        return 1
+      fi
+      if ! (curl -fsSL https://pyenv.run | bash) >&2; then
+        echo "Failed to install pyenv automatically." >&2
+        return 1
+      fi
+    fi
+    export PATH="$PYENV_ROOT/bin:$PATH"
+  fi
+
+  if ! command -v pyenv >/dev/null 2>&1; then
+    echo "pyenv is not available after installation attempt." >&2
+    return 1
+  fi
+
+  local target_version=""
+  target_version="$(latest_patch_for_minor "$py_mm" || true)"
+  if [[ -z "$target_version" ]]; then
+    target_version="$py_mm"
+  fi
+
+  echo "Installing Python ${target_version} via pyenv..." >&2
+  if ! pyenv install -s "$target_version" >&2; then
+    echo "pyenv failed to install Python ${target_version}." >&2
+    return 1
+  fi
+
+  local pybin="$PYENV_ROOT/versions/$target_version/bin/python"
+  if [[ -x "$pybin" ]]; then
+    echo "$pybin"
+    return 0
+  fi
+
+  # Fallback: check direct minor directory.
+  pybin="$PYENV_ROOT/versions/$py_mm/bin/python"
+  if [[ -x "$pybin" ]]; then
+    echo "$pybin"
+    return 0
+  fi
+
+  return 1
+}
+
 normalize_arch() {
   local raw="$1"
   case "$raw" in
@@ -124,8 +203,9 @@ if ! PYTHON_MM="$(normalize_python_version "$PYTHON_VERSION_RAW")"; then
   exit 1
 fi
 
-if ! PYTHON_CMD="$(resolve_python_cmd "$PYTHON_MM")"; then
-  echo "Python ${PYTHON_MM} is not available on PATH." >&2
+if ! PYTHON_CMD="$(ensure_python_cmd "$PYTHON_MM")"; then
+  echo "Python ${PYTHON_MM} is not available and could not be installed automatically." >&2
+  echo "Install Python ${PYTHON_MM} (or pyenv build dependencies) and retry." >&2
   exit 1
 fi
 
@@ -172,6 +252,6 @@ VENV_DIR="${ADDON_DIR}/venv"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 "$PYTHON_CMD" -m venv "$VENV_DIR"
 
-echo "Installing ${#wheels[@]} wheel(s) from $SCRIPT_DIR into $VENV_DIR"
+echo "Installing ${#wheels[@]} wheel(s) from $SCRIPT_DIR into $VENV_DIR (with dependency resolution)"
 "$VENV_DIR/bin/python" -m pip install --disable-pip-version-check --no-index --find-links "$SCRIPT_DIR" "${wheels[@]}"
 echo "ModelSDK wheel installation complete in $VENV_DIR."

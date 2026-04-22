@@ -6,7 +6,7 @@ usage() {
 Usage:
   build_modelsdk_bundle.sh \
     [--index-url https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple] \
-    [--bundle-version 2.0.0.neat+branch.git-short-hash] \
+    [--bundle-version sdk_version.neat+branch.git-short-hash] \
     [--output-dir ./dist] \
     [--source-json ./scripts/source.json] \
     [--prod]
@@ -21,6 +21,7 @@ Description:
 
 source.json format:
 {
+  "sdk_version": "2.0.0",
   "python_version": "3.10",
   "components": [
     { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" }
@@ -31,7 +32,7 @@ EOF
 
 SOURCE_JSON=""
 INDEX_URL="https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple"
-BUNDLE_VERSION="2.0.0.neat+branch.git-short-hash"
+BUNDLE_VERSION="sdk_version.neat+branch.git-short-hash"
 OUTPUT_DIR="./dist"
 NAME="sima-neat-model-sdk"
 RELEASE="stable"
@@ -67,6 +68,26 @@ if [[ ! -f "$SOURCE_JSON" ]]; then
   exit 1
 fi
 echo "Using components manifest: $SOURCE_JSON"
+
+SDK_VERSION="$(
+  python3 -c '
+import json, sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    doc = json.load(f)
+v = doc.get("sdk_version", "")
+if isinstance(v, str):
+    print(v.strip())
+' "$SOURCE_JSON"
+)"
+
+if [[ "$BUNDLE_VERSION" == *"sdk_version"* ]]; then
+  if [[ -z "$SDK_VERSION" ]]; then
+    echo "sdk_version is missing in $SOURCE_JSON but bundle version requires it." >&2
+    exit 1
+  fi
+  BUNDLE_VERSION="${BUNDLE_VERSION//sdk_version/$SDK_VERSION}"
+fi
 
 if [[ "$BUNDLE_VERSION" == *"branch.git"* || "$BUNDLE_VERSION" == *"short-hash"* ]]; then
   SCRIPT_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
