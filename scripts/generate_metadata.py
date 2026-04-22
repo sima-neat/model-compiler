@@ -19,9 +19,9 @@ def human_mb(num_bytes: int) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Generate metadata.json for sima-cli distribution from wheel artifacts."
+        description="Generate metadata.json for sima-cli distribution from bundle artifacts."
     )
-    p.add_argument("--artifacts-dir", required=True, help="Directory containing wheel files.")
+    p.add_argument("--artifacts-dir", required=True, help="Directory containing bundle artifacts.")
     p.add_argument("--output", required=True, help="Path for generated metadata.json.")
     p.add_argument("--name", default="sima-neat-model-sdk")
     p.add_argument("--version", required=True)
@@ -51,9 +51,11 @@ def main() -> int:
     if not artifacts_dir.is_dir():
         raise SystemExit(f"artifacts-dir does not exist: {artifacts_dir}")
 
-    wheels = sorted([p for p in artifacts_dir.iterdir() if p.is_file() and p.suffix == ".whl"])
-    if not wheels:
-        raise SystemExit(f"No wheel files found in {artifacts_dir}")
+    artifacts = sorted(
+        [p for p in artifacts_dir.iterdir() if p.is_file() and p.suffix in {".whl", ".zip"}]
+    )
+    if not artifacts:
+        raise SystemExit(f"No wheel or binary artifacts found in {artifacts_dir}")
 
     installer = artifacts_dir / args.installer_script
     if not installer.is_file():
@@ -62,7 +64,7 @@ def main() -> int:
             f"Put it in artifacts-dir or override --installer-script."
         )
 
-    resources = [w.name for w in wheels] + [installer.name]
+    resources = [a.name for a in artifacts] + [installer.name]
     manifest = artifacts_dir / args.source_manifest
     if manifest.is_file():
         resources.append(manifest.name)
@@ -93,7 +95,19 @@ def main() -> int:
         },
         "installation": {
             "script": f"bash ./{installer.name}",
-            "post-message": "Successfully installed ModelSDK wheel bundle.",
+            "post-message": (
+                "[bold green]Successfully installed ModelSDK.[/bold green]\n\n"
+                "[bold]Virtual environment location:[/bold]\n"
+                "The installer creates the venv at "
+                "[green]/sdk-extensions/model-sdk/venv[/green] when writable, "
+                "otherwise it falls back to [green]/sdk-add-on/model-sdk/venv[/green], "
+                "or [green]~/sdk-extensions/model-sdk/venv[/green].\n\n"
+                "[bold]Reload your shell environment:[/bold]\n"
+                "The installer updates [green]~/.bashrc[/green] when it exists, "
+                "otherwise [green]~/.bash_profile[/green]. Run "
+                "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
+                "or log out and log back in."
+            ),
         },
     }
 

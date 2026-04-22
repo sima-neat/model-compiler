@@ -6,14 +6,16 @@ usage() {
 Usage:
   download_modelsdk_wheels.sh \
     --index-url https://.../simple \
+    [--extra-index-url https://pypi.org/simple] \
     --output-dir ./dist \
+    [--source-json ./scripts/source.json] \
     [--sdk-release /path/to/sdk-release] \
     [--spec 'name==version']... \
     [--python-version 312]
 
 Description:
-  Downloads one wheel per package spec from the given Python index
-  (Artifactory). Package specs can be provided with:
+  Downloads Python wheels from the configured Python index and optional
+  binary packages from Artifactory. Python package specs can be provided with:
     - --spec 'name==version' (repeatable), or
     - --sdk-release file lines in format name==version.
   Selection priority per package:
@@ -28,12 +30,394 @@ EOF
 
 SDK_RELEASE=""
 INDEX_URL=""
+EXTRA_INDEX_URL="https://pypi.org/simple"
+ARTIFACTORY_BASE_URL="${ARTIFACTORY_BASE_URL:-https://artifacts.eng.sima.ai/artifactory}"
 OUTPUT_DIR=""
+SOURCE_JSON=""
 PYTHON_VERSION="312"
 declare -a CLI_SPECS=()
 declare -a SUMMARY_REQUESTED=()
 declare -a SUMMARY_RESOLVED=()
 declare -a SUMMARY_WHEEL=()
+declare -a BINARY_ARTIFACTS=()
+declare -a PIP_INDEX_ARGS=()
+declare -a X86_PLATFORM_ARGS=(
+  --platform manylinux_2_28_x86_64
+  --platform manylinux_2_27_x86_64
+  --platform manylinux2014_x86_64
+  --platform linux_x86_64
+)
+
+normalize_python_version() {
+  local raw="$1"
+  raw="$(echo "$raw" | tr -d '[:space:]')"
+  if [[ "$raw" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    echo "$raw"
+    return 0
+  fi
+  if [[ "$raw" =~ ^[0-9]{3}$ ]]; then
+    echo "${raw:0:1}.${raw:1:2}"
+    return 0
+  fi
+  if [[ "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$(echo "$raw" | awk -F. '{print $1"."$2}')"
+    return 0
+  fi
+  return 1
+}
+
+resolve_python_cmd() {
+  local py_mm="$1"
+  local major="${py_mm%%.*}"
+  local minor="${py_mm##*.}"
+  local cmd=""
+
+  if command -v "python${major}.${minor}" >/dev/null 2>&1; then
+    cmd="python${major}.${minor}"
+    if "$cmd" -c "import sys; raise SystemExit(0 if (sys.version_info.major, sys.version_info.minor)==(${major},${minor}) else 1)" >/dev/null 2>&1; then
+      echo "$cmd"
+      return 0
+    fi
+  fi
+  if command -v "python${major}" >/dev/null 2>&1; then
+    cmd="python${major}"
+    if "$cmd" -c "import sys; raise SystemExit(0 if (sys.version_info.major, sys.version_info.minor)==(${major},${minor}) else 1)" >/dev/null 2>&1; then
+      echo "$cmd"
+      return 0
+    fi
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    cmd="python3"
+    if "$cmd" -c "import sys; raise SystemExit(0 if (sys.version_info.major, sys.version_info.minor)==(${major},${minor}) else 1)" >/dev/null 2>&1; then
+      echo "$cmd"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+wheel_python_tag() {
+  local wheel="$1"
+  local base=""
+  local parts=()
+
+  base="$(basename "$wheel")"
+  base="${base%.whl}"
+  IFS='-' read -r -a parts <<< "$base"
+  if [[ ${#parts[@]} -lt 5 ]]; then
+    echo ""
+    return 1
+  fi
+  echo "${parts[${#parts[@]}-3]}"
+}
+
+wheel_preferred_pyv() {
+  local wheel="$1"
+  local py_tag=""
+
+  py_tag="$(wheel_python_tag "$wheel" 2>/dev/null || true)"
+  if [[ "$py_tag" =~ ^cp([0-9]{3})$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+print_wheel_requirements() {
+  local wheel_file="$1"
+  python3 - "$wheel_file" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+wheel = pathlib.Path(sys.argv[1])
+try:
+    with zipfile.ZipFile(wheel) as zf:
+        meta_name = next(
+            name for name in zf.namelist()
+            if name.endswith(".dist-info/METADATA")
+        )
+        data = zf.read(meta_name).decode("utf-8", "replace").splitlines()
+except Exception as exc:
+    print(f"  Unable to inspect wheel metadata: {exc}", file=sys.stderr)
+    raise SystemExit(0)
+
+reqs = [line[len("Requires-Dist: "):] for line in data if line.startswith("Requires-Dist: ")]
+if not reqs:
+    print("  No direct Requires-Dist entries found.")
+    raise SystemExit(0)
+
+print("  Direct wheel dependencies (Requires-Dist):")
+for req in reqs:
+    print(f"    - {req}")
+PY
+}
+
+print_dependency_failure_details() {
+  local wheel_file="$1"
+  local dep_log="$2"
+
+  echo "Dependency resolution failed for wheel: $(basename "$wheel_file")" >&2
+  if [[ -n "$dep_log" && -f "$dep_log" ]]; then
+    echo "pip output:" >&2
+    sed 's/^/  /' "$dep_log" >&2
+  else
+    echo "No pip log was captured for this failure." >&2
+  fi
+
+  echo "Wheel metadata summary:" >&2
+  print_wheel_requirements "$wheel_file" >&2 || true
+}
+
+patch_wheel_metadata_requirements() {
+  local wheel_file="$1"
+  local source_json="$2"
+  python3 - "$wheel_file" "$source_json" <<'PY'
+import base64
+import csv
+import hashlib
+import io
+import json
+import re
+import pathlib
+import sys
+import tempfile
+import zipfile
+
+wheel = pathlib.Path(sys.argv[1])
+source_json = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+override_map = {}
+if source_json and source_json.is_file():
+    doc = json.loads(source_json.read_text(encoding="utf-8"))
+    raw = doc.get("dependency_overrides", {})
+    if isinstance(raw, dict):
+        override_map = {
+            str(k).strip().lower().replace("_", "-"): str(v).strip()
+            for k, v in raw.items()
+            if str(k).strip() and str(v).strip()
+        }
+if not override_map:
+    raise SystemExit(0)
+
+tmp = tempfile.NamedTemporaryFile(prefix="patched-", suffix=".whl", dir=str(wheel.parent), delete=False)
+tmp_path = pathlib.Path(tmp.name)
+tmp.close()
+patched = False
+patched_pairs = []
+
+try:
+    with zipfile.ZipFile(wheel, "r") as zin, zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        contents = {info.filename: zin.read(info.filename) for info in zin.infolist()}
+        metadata_name = next((n for n in contents if n.endswith(".dist-info/METADATA")), None)
+        record_name = next((n for n in contents if n.endswith(".dist-info/RECORD")), None)
+        if metadata_name is None or record_name is None:
+            raise SystemExit(0)
+
+        metadata_text = contents[metadata_name].decode("utf-8", "replace")
+        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(==)([^;\s]+)(.*)$")
+        new_lines = []
+        for line in metadata_text.splitlines():
+            match = req_re.match(line)
+            if not match:
+                new_lines.append(line)
+                continue
+            prefix, name, eq, version, suffix = match.groups()
+            normalized = name.strip().lower().replace("_", "-")
+            target = override_map.get(normalized)
+            if target and target != version:
+                new_lines.append(f"{prefix}{name}{eq}{target}{suffix}")
+                patched = True
+                patched_pairs.append((name, version, target))
+            else:
+                new_lines.append(line)
+        if patched:
+            contents[metadata_name] = ("\n".join(new_lines) + "\n").encode("utf-8")
+
+        if patched:
+            rows = []
+            for row in csv.reader(io.StringIO(contents[record_name].decode("utf-8", "replace"))):
+                if not row:
+                    continue
+                path = row[0]
+                if path == record_name:
+                    rows.append([path, "", ""])
+                    continue
+                data = contents[path]
+                digest = hashlib.sha256(data).digest()
+                encoded = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+                rows.append([path, f"sha256={encoded}", str(len(data))])
+            out = io.StringIO()
+            writer = csv.writer(out, lineterminator="\n")
+            writer.writerows(rows)
+            contents[record_name] = out.getvalue().encode("utf-8")
+
+        for info in zin.infolist():
+            zinfo = zipfile.ZipInfo(info.filename)
+            zinfo.date_time = info.date_time
+            zinfo.compress_type = zipfile.ZIP_DEFLATED
+            zinfo.comment = info.comment
+            zinfo.extra = info.extra
+            zinfo.create_system = info.create_system
+            zinfo.external_attr = info.external_attr
+            zinfo.internal_attr = info.internal_attr
+            zinfo.flag_bits = info.flag_bits
+            zout.writestr(zinfo, contents[info.filename])
+
+    if patched:
+        tmp_path.replace(wheel)
+        for name, old, new in patched_pairs:
+            print(f"  Patched {wheel.name}: {name} {old} -> {new}", file=sys.stderr)
+    else:
+        tmp_path.unlink(missing_ok=True)
+except Exception:
+    tmp_path.unlink(missing_ok=True)
+    raise
+PY
+}
+
+extract_direct_internal_specs() {
+  local wheel_file="$1"
+  python3 - "$wheel_file" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+wheel = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(wheel) as zf:
+    meta_name = next(
+        name for name in zf.namelist()
+        if name.endswith(".dist-info/METADATA")
+    )
+    data = zf.read(meta_name).decode("utf-8", "replace").splitlines()
+
+for line in data:
+    if not line.startswith("Requires-Dist: "):
+        continue
+    req = line[len("Requires-Dist: "):]
+    if 'extra == "' in req:
+        continue
+    req = req.split(";", 1)[0].strip()
+    if not req or "==" not in req:
+        continue
+    name = req.split("==", 1)[0].strip().lower().replace("_", "-")
+    if name.startswith("sima-") or name == "mpk-parser":
+        print(req)
+PY
+}
+
+read_binary_package_specs() {
+  local source_json="$1"
+  [[ -n "$source_json" && -f "$source_json" ]] || return 0
+  python3 - "$source_json" <<'PY'
+import json
+import pathlib
+import sys
+
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+items = doc.get("binary-packages", [])
+if not isinstance(items, list):
+    raise SystemExit(0)
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    name = str(item.get("name", "")).strip().strip("/")
+    version = str(item.get("version", "")).strip()
+    extension = str(item.get("extension", "")).strip()
+    archive_type = str(item.get("archive-type", "zip")).strip() or "zip"
+    if extension:
+        if extension.startswith("."):
+            archive_type = extension[1:]
+        else:
+            archive_type = extension
+    if name and version:
+        print(f"{name}|{version}|{archive_type}")
+PY
+}
+
+download_binary_package() {
+  local package_name="$1"
+  local package_version="$2"
+  local archive_type="${3:-zip}"
+  local artifact_rel=""
+  local artifact_name=""
+  local url=""
+  local out_path=""
+  local tmp_path=""
+
+  artifact_rel="${package_name}-${package_version}.${archive_type}"
+  artifact_name="$(basename "$artifact_rel")"
+  url="${ARTIFACTORY_BASE_URL}/${artifact_rel}"
+  out_path="${OUTPUT_DIR}/${artifact_name}"
+
+  if [[ -f "$out_path" ]]; then
+    BINARY_ARTIFACTS+=("$artifact_name")
+    return 0
+  fi
+
+  tmp_path="$(mktemp "${OUTPUT_DIR}/.${artifact_name}.XXXXXX")"
+  rm -f "$tmp_path"
+
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl -fsSL --netrc-optional -o "$tmp_path" "$url"; then
+      rm -f "$tmp_path"
+      echo "Failed to download binary package: ${package_name} (${package_version})" >&2
+      echo "URL: $url" >&2
+      return 1
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if ! wget --quiet -O "$tmp_path" "$url"; then
+      rm -f "$tmp_path"
+      echo "Failed to download binary package: ${package_name} (${package_version})" >&2
+      echo "URL: $url" >&2
+      return 1
+    fi
+  else
+    echo "curl or wget is required to download binary packages." >&2
+    return 1
+  fi
+
+  mv "$tmp_path" "$out_path"
+  BINARY_ARTIFACTS+=("$artifact_name")
+  return 0
+}
+
+download_direct_internal_deps_for_wheel() {
+  local wheel_file="$1"
+  local dest_dir="$2"
+  local tmpdir="$3"
+  local dep_spec=""
+  local dep_tmp=""
+  local dep_wheel=""
+  local dep_specs=()
+
+  while IFS= read -r dep_spec; do
+    [[ -n "$dep_spec" ]] && dep_specs+=("$dep_spec")
+  done < <(extract_direct_internal_specs "$wheel_file")
+
+  if [[ ${#dep_specs[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  for dep_spec in "${dep_specs[@]}"; do
+    dep_tmp="$(mktemp -d "${tmpdir}/dep.XXXXXX")"
+    if ! download_one_spec "$dep_spec" "$dep_tmp"; then
+      if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
+        cat "$DOWNLOAD_ERROR_LOG" >&2
+      fi
+      rm -rf "$dep_tmp"
+      echo "Failed to download direct internal dependency: $dep_spec" >&2
+      return 1
+    fi
+    dep_wheel="$(basename "$DOWNLOADED_WHEEL")"
+    patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
+    if [[ ! -f "$dest_dir/$dep_wheel" ]]; then
+      mv "$DOWNLOADED_WHEEL" "$dest_dir/"
+    fi
+    rm -rf "$dep_tmp"
+  done
+
+  return 0
+}
 
 collect_wheels() {
   local dir="$1"
@@ -62,7 +446,7 @@ resolve_latest_master_spec() {
   local escaped_base="${version_base//./\\.}"
 
   local versions_line=""
-  versions_line="$(python3 -m pip index versions "$pkg_name" --index-url "$INDEX_URL" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
+  versions_line="$(python3 -m pip index versions "$pkg_name" "${PIP_INDEX_ARGS[@]}" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
   if [[ -z "$versions_line" ]]; then
     return 1
   fi
@@ -107,7 +491,7 @@ download_one_spec() {
     --disable-pip-version-check \
     --no-deps \
     --only-binary=:all: \
-    --index-url "$INDEX_URL" \
+    "${PIP_INDEX_ARGS[@]}" \
     --dest "$pure_dir" \
     --platform any \
     --implementation py \
@@ -144,10 +528,9 @@ download_one_spec() {
       --disable-pip-version-check \
       --no-deps \
       --only-binary=:all: \
-      --index-url "$INDEX_URL" \
+      "${PIP_INDEX_ARGS[@]}" \
       --dest "$x86_try_dir" \
-      --platform manylinux2014_x86_64 \
-      --platform linux_x86_64 \
+      "${X86_PLATFORM_ARGS[@]}" \
       --implementation cp \
       --abi "cp${pyv}" \
       --python-version "$pyv" \
@@ -174,48 +557,6 @@ download_one_spec() {
   return 1
 }
 
-download_deps_for_wheel_file() {
-  local wheel_file="$1"
-  local dest_dir="$2"
-  local tmpdir="$3"
-  local dep_log=""
-  local pyv=""
-  local seen_py_versions=" "
-
-  DOWNLOAD_ERROR_LOG=""
-  for pyv in "$PYTHON_VERSION" 312 311 310; do
-    if [[ "$seen_py_versions" == *" $pyv "* ]]; then
-      continue
-    fi
-    seen_py_versions="${seen_py_versions}${pyv} "
-    dep_log="${tmpdir}/deps-cp${pyv}.log"
-
-    set +e
-    python3 -m pip download \
-      --disable-pip-version-check \
-      --only-binary=:all: \
-      --index-url "$INDEX_URL" \
-      --dest "$dest_dir" \
-      --platform manylinux2014_x86_64 \
-      --platform linux_x86_64 \
-      --implementation cp \
-      --abi "cp${pyv}" \
-      --python-version "$pyv" \
-      "$wheel_file" >"$dep_log" 2>&1
-    dep_rc=$?
-    set -e
-
-    if [[ $dep_rc -eq 0 ]]; then
-      return 0
-    fi
-  done
-
-  if [[ -n "$dep_log" && -s "$dep_log" ]]; then
-    DOWNLOAD_ERROR_LOG="$dep_log"
-  fi
-  return 1
-}
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sdk-release)
@@ -230,8 +571,16 @@ while [[ $# -gt 0 ]]; do
       INDEX_URL="${2:-}"
       shift 2
       ;;
+    --extra-index-url)
+      EXTRA_INDEX_URL="${2:-}"
+      shift 2
+      ;;
     --output-dir)
       OUTPUT_DIR="${2:-}"
+      shift 2
+      ;;
+    --source-json)
+      SOURCE_JSON="${2:-}"
       shift 2
       ;;
     --python-version)
@@ -256,9 +605,15 @@ if [[ -z "$INDEX_URL" || -z "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
+PIP_INDEX_ARGS=(--index-url "$INDEX_URL")
+if [[ -n "$EXTRA_INDEX_URL" ]]; then
+  PIP_INDEX_ARGS+=(--extra-index-url "$EXTRA_INDEX_URL")
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 declare -a SPECS=()
+declare -a BINARY_SPECS=()
 if [[ ${#CLI_SPECS[@]} -gt 0 ]]; then
   for s in "${CLI_SPECS[@]}"; do
     SPECS+=("$s")
@@ -275,12 +630,18 @@ if [[ -n "$SDK_RELEASE" ]]; then
   done < <(grep -E '^[[:alnum:]_.-]+(\[[^]]+\])?==[^[:space:]]+$' "$SDK_RELEASE" || true)
 fi
 
-if [[ ${#SPECS[@]} -eq 0 ]]; then
-  echo "No package specs found. Provide --spec or --sdk-release." >&2
+if [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && BINARY_SPECS+=("$line")
+  done < <(read_binary_package_specs "$SOURCE_JSON")
+fi
+
+if [[ ${#SPECS[@]} -eq 0 && ${#BINARY_SPECS[@]} -eq 0 ]]; then
+  echo "No package specs found. Provide --spec, --sdk-release, or binary-packages in source.json." >&2
   exit 1
 fi
 
-echo "Found ${#SPECS[@]} package specs."
+echo "Found ${#SPECS[@]} python package spec(s)."
 
 for requested_spec in "${SPECS[@]}"; do
   tmpdir="$(mktemp -d)"
@@ -314,6 +675,7 @@ for requested_spec in "${SPECS[@]}"; do
   fi
 
   wheel_name="$(basename "$DOWNLOADED_WHEEL")"
+  patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
   mv "$DOWNLOADED_WHEEL" "$OUTPUT_DIR/"
   SUMMARY_REQUESTED+=("$requested_spec")
   SUMMARY_RESOLVED+=("$resolved_spec")
@@ -321,7 +683,18 @@ for requested_spec in "${SPECS[@]}"; do
   rm -rf "$tmpdir"
 done
 
-echo "Downloaded wheels to: $OUTPUT_DIR"
+if [[ ${#BINARY_SPECS[@]} -gt 0 ]]; then
+  echo "Downloading ${#BINARY_SPECS[@]} binary package(s)..."
+  for binary_spec in "${BINARY_SPECS[@]}"; do
+    IFS='|' read -r binary_name binary_version binary_type <<< "$binary_spec"
+    echo "Downloading binary package for: ${binary_name}==${binary_version}"
+    if ! download_binary_package "$binary_name" "$binary_version" "$binary_type"; then
+      exit 1
+    fi
+  done
+fi
+
+echo "Downloaded bundle artifacts to: $OUTPUT_DIR"
 echo "Summary:"
 
 repeat_char() {
@@ -350,29 +723,28 @@ while [[ $i -lt ${#SUMMARY_REQUESTED[@]} ]]; do
   i=$((i + 1))
 done
 
-echo "Downloading dependency wheels for resolved package set..."
+echo "Downloading direct internal dependency wheels for resolved package set..."
 dep_tmp="$(mktemp -d)"
 for top_wheel in "${SUMMARY_WHEEL[@]}"; do
   wheel_path="$OUTPUT_DIR/$top_wheel"
   if [[ ! -f "$wheel_path" ]]; then
     rm -rf "$dep_tmp"
-    echo "Top-level wheel missing for dependency resolution: $wheel_path" >&2
+    echo "Top-level wheel missing for dependency bundling: $wheel_path" >&2
     exit 1
   fi
-  echo "  Resolving deps for wheel: $top_wheel"
-  if ! download_deps_for_wheel_file "$wheel_path" "$OUTPUT_DIR" "$dep_tmp"; then
-    if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
-      cat "$DOWNLOAD_ERROR_LOG" >&2
-    fi
+  echo "  Collecting direct internal deps for wheel: $top_wheel"
+  if ! download_direct_internal_deps_for_wheel "$wheel_path" "$OUTPUT_DIR" "$dep_tmp"; then
     rm -rf "$dep_tmp"
-    echo "Failed to download dependencies for wheel: $top_wheel" >&2
+    echo "Failed to download direct internal dependencies for wheel: $top_wheel" >&2
     exit 1
   fi
 done
 rm -rf "$dep_tmp"
 
 total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"
-echo "Dependency bundling complete. Total wheel files in output: $total_wheels"
+total_binary="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.zip' | wc -l | tr -d ' ')"
+echo "Direct internal dependency bundling complete. Total wheel files in output: $total_wheels"
+echo "Binary artifacts in output: $total_binary"
 
 row_fmt="%-${ok_w}s | %-${req_w}s | %-${res_w}s | %-${wheel_w}s\n"
 printf "$row_fmt" "OK" "Requested" "Resolved" "Wheel"

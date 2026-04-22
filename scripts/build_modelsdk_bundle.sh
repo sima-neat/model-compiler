@@ -6,6 +6,7 @@ usage() {
 Usage:
   build_modelsdk_bundle.sh \
     [--index-url https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple] \
+    [--extra-index-url https://pypi.org/simple] \
     [--bundle-version sdk_version.neat+branch.git-short-hash] \
     [--output-dir ./dist] \
     [--source-json ./scripts/source.json] \
@@ -13,18 +14,25 @@ Usage:
 
 Description:
   End-to-end helper:
-    1) Read components from source.json (name/version list)
-    2) Download wheels (pure first, x86 fallback)
-    2) Copy installer script into output-dir
-    3) Generate metadata.json for sima-cli distribution
-    4) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
+    1) Read python/binary package lists from source.json
+    2) Download wheels (pure first, x86 fallback) and binary artifacts
+    3) Copy installer script into output-dir
+    4) Generate metadata.json for sima-cli distribution
+    5) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
 
 source.json format:
 {
   "sdk_version": "2.0.0",
   "python_version": "3.10",
-  "components": [
+  "python-packages": [
     { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" }
+  ],
+  "binary-packages": [
+    {
+      "name": "toolchain/mla/mla-toolchain",
+      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "extension": ".zip"
+    }
   ]
 }
 EOF
@@ -32,6 +40,7 @@ EOF
 
 SOURCE_JSON=""
 INDEX_URL="https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple"
+EXTRA_INDEX_URL="https://pypi.org/simple"
 BUNDLE_VERSION="sdk_version.neat+branch.git-short-hash"
 OUTPUT_DIR="./dist"
 NAME="sima-neat-model-sdk"
@@ -47,6 +56,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --source-json) SOURCE_JSON="${2:-}"; shift 2 ;;
     --index-url) INDEX_URL="${2:-}"; shift 2 ;;
+    --extra-index-url) EXTRA_INDEX_URL="${2:-}"; shift 2 ;;
     --bundle-version) BUNDLE_VERSION="${2:-}"; shift 2 ;;
     --output-dir) OUTPUT_DIR="${2:-}"; shift 2 ;;
     --name) NAME="${2:-}"; shift 2 ;;
@@ -67,7 +77,7 @@ if [[ ! -f "$SOURCE_JSON" ]]; then
   echo "source json file not found: $SOURCE_JSON" >&2
   exit 1
 fi
-echo "Using components manifest: $SOURCE_JSON"
+echo "Using package manifest: $SOURCE_JSON"
 
 SDK_VERSION="$(
   python3 -c '
@@ -141,9 +151,9 @@ import json, sys
 path = sys.argv[1]
 with open(path, "r", encoding="utf-8") as f:
     doc = json.load(f)
-items = doc.get("components", doc)
+items = doc.get("python-packages", doc.get("components", doc))
 if not isinstance(items, list):
-    raise SystemExit("components json must be a list or contain a \"components\" list")
+    raise SystemExit("source json must contain a \"python-packages\" list (or legacy \"components\" list)")
 for i, item in enumerate(items):
     if not isinstance(item, dict):
         raise SystemExit(f"component entry at index {i} is not an object")
@@ -160,7 +170,9 @@ mkdir -p "$OUTPUT_DIR"
 "$SCRIPT_DIR/download_modelsdk_wheels.sh" \
   --sdk-release "$spec_file" \
   --index-url "$INDEX_URL" \
+  --extra-index-url "$EXTRA_INDEX_URL" \
   --output-dir "$OUTPUT_DIR" \
+  --source-json "$SOURCE_JSON" \
   --python-version "$PYTHON_VERSION"
 
 cp "$SCRIPT_DIR/install_modelsdk_wheels.sh" "$OUTPUT_DIR/"
