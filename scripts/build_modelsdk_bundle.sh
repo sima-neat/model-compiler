@@ -218,7 +218,7 @@ if isinstance(sel, list):
 
 with open(path, "w", encoding="utf-8") as f:
     json.dump(m, f, indent=2)
-    f.write("\\n")
+    f.write("\n")
 ' "$OUTPUT_DIR/metadata.json"
   echo "Applied --prod metadata escaping ('+' -> '%2B')"
 fi

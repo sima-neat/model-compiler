@@ -346,7 +346,8 @@ wheel_arch_compatible() {
     return 0
   fi
 
-  local p="${plat,,}"
+  local p
+  p="$(printf '%s' "$plat" | tr '[:upper:]' '[:lower:]')"
   case "$host_arch" in
     x86_64)
       [[ "$p" == *"x86_64"* || "$p" == *"amd64"* ]]
@@ -572,6 +573,15 @@ while IFS= read -r wheel; do
 done < <(find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.whl' | sort)
 if [[ ${#wheels[@]} -eq 0 ]]; then
   echo "No wheel files found in $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+HOST_OS_RAW="$(uname -s 2>/dev/null || echo unknown)"
+HOST_OS="$(printf '%s' "$HOST_OS_RAW" | tr '[:upper:]' '[:lower:]')"
+if [[ "$HOST_OS" != "linux" ]]; then
+  echo "Unsupported host operating system: $HOST_OS_RAW" >&2
+  echo "This ModelSDK bundle installer currently supports Linux hosts only." >&2
+  echo "Detected host details: os=$HOST_OS_RAW arch=$(uname -m 2>/dev/null || echo unknown)" >&2
   exit 1
 fi
 
