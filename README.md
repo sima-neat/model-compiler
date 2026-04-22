@@ -141,23 +141,23 @@ The installer will:
 4. Create a ModelSDK virtual environment
 5. Install bundled binary packages into that venv
 6. Install bundled wheels, using the bundle as `--find-links` and PyPI as fallback when needed
-7. Update shell startup files with `PATH` and `LD_LIBRARY_PATH`
+7. Update shell startup files with the ModelSDK venv `PATH`
 8. Remove downloaded bundle payloads after successful installation
 
 ## Install Location
 
 The installer creates the ModelSDK venv in one of these locations:
 
-- `/sdk-extensions/model-sdk/venv` if `/sdk-extensions` exists and is writable
-- `/sdk-add-on/model-sdk/venv` as a backward-compatible fallback
-- `~/sdk-extensions/model-sdk/venv` otherwise
+- `/sdk-extensions/model-sdk/model-sdk-venv` if `/sdk-extensions` exists and is writable
+- `/sdk-add-on/model-sdk/model-sdk-venv` as a backward-compatible fallback
+- `~/sdk-extensions/model-sdk/model-sdk-venv` otherwise
 
 Binary package contents such as the MLA toolchain are installed into that same venv under:
 - `bin/`
 - `include/`
 - `lib/`
 
-The installer also restores executable permissions for binaries copied into `venv/bin`.
+The installer also restores executable permissions for binaries copied into `model-sdk-venv/bin`.
 
 ## Shell Environment Updates
 
@@ -169,7 +169,6 @@ It appends an idempotent block that exports:
 
 ```bash
 PATH=<venv>/bin:$PATH
-LD_LIBRARY_PATH=<venv>/lib:$LD_LIBRARY_PATH
 ```
 
 After installation, reload your shell:
@@ -203,7 +202,6 @@ It keeps the installer and metadata files such as:
 - If a sample or test script fails with missing Python modules, first confirm it is using the installed ModelSDK venv and not a separate local `.env`.
 - If a compiled package fails at runtime with missing shared libraries, check that:
   - the required Ubuntu packages from `system_dependencies.ubuntu` were installed
-  - your shell has reloaded the exported `LD_LIBRARY_PATH`
 - If GitHub push fails from an automated environment, verify that the git remote has usable credentials.
 - If a wheel is missing from Artifactory, the build flow can fall back to public PyPI for Python packages when `--extra-index-url` is provided.
 

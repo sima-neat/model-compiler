@@ -62,6 +62,23 @@ normalize_python_version() {
   return 1
 }
 
+host_multiarch_triplet() {
+  local dpkg_arch=""
+  if command -v dpkg >/dev/null 2>&1; then
+    dpkg_arch="$(dpkg --print-architecture 2>/dev/null || true)"
+    case "$dpkg_arch" in
+      amd64) echo "x86_64-linux-gnu"; return 0 ;;
+      arm64) echo "aarch64-linux-gnu"; return 0 ;;
+    esac
+  fi
+
+  case "$(uname -m 2>/dev/null || echo unknown)" in
+    x86_64|amd64) echo "x86_64-linux-gnu" ;;
+    aarch64|arm64) echo "aarch64-linux-gnu" ;;
+    *) echo "" ;;
+  esac
+}
+
 resolve_python_cmd() {
   local py_mm="$1"
   local major="${py_mm%%.*}"
@@ -89,6 +106,18 @@ resolve_python_cmd() {
   return 1
 }
 
+python_stdlib_extensions_ok() {
+  local py_cmd="$1"
+  "$py_cmd" - <<'PY' >/dev/null 2>&1
+import bz2
+import ctypes
+import lzma
+import sqlite3
+import ssl
+print("ok")
+PY
+}
+
 latest_patch_for_minor() {
   local py_mm="$1"
   local list_out=""
@@ -102,17 +131,119 @@ latest_patch_for_minor() {
     | tail -n1
 }
 
+run_host_build_env() {
+  local cmd=("$@")
+  local host_path="/usr/bin:/bin:$PATH"
+  local host_multiarch=""
+  local host_pkgconfig_libdir="/usr/lib/pkgconfig:/usr/share/pkgconfig"
+  local host_include_path="/usr/include"
+  local host_library_path="/lib:/usr/lib"
+
+  host_multiarch="$(host_multiarch_triplet)"
+  if [[ -n "$host_multiarch" ]]; then
+    host_pkgconfig_libdir="/usr/lib/${host_multiarch}/pkgconfig:${host_pkgconfig_libdir}"
+    host_include_path="/usr/include:/usr/include/${host_multiarch}"
+    host_library_path="/lib/${host_multiarch}:/usr/lib/${host_multiarch}:${host_library_path}"
+  fi
+
+  env \
+    -u CC \
+    -u CXX \
+    -u CPP \
+    -u LD \
+    -u AR \
+    -u AS \
+    -u NM \
+    -u RANLIB \
+    -u READELF \
+    -u STRIP \
+    -u OBJCOPY \
+    -u OBJDUMP \
+    -u PKG_CONFIG \
+    -u PKG_CONFIG_PATH \
+    -u PKG_CONFIG_LIBDIR \
+    -u PKG_CONFIG_SYSROOT_DIR \
+    -u PKG_CONFIG_SYSTEM_INCLUDE_PATH \
+    -u PKG_CONFIG_SYSTEM_LIBRARY_PATH \
+    -u CFLAGS \
+    -u CPPFLAGS \
+    -u CXXFLAGS \
+    -u LDFLAGS \
+    -u CONFIGURE_FLAGS \
+    -u CONFIG_SITE \
+    -u CMAKE_ARGS \
+    -u CMAKE_TOOLCHAIN_FILE \
+    -u CMAKE_GENERATOR \
+    -u CMAKE_PREFIX_PATH \
+    -u CMAKE_LIBRARY_PATH \
+    -u CMAKE_INCLUDE_PATH \
+    -u HOST \
+    -u HOSTARCH \
+    -u BUILD_ARCH \
+    -u TARGET \
+    -u TARGET_ARCH \
+    -u TARGET_SYS \
+    -u CROSS_COMPILE \
+    -u ARCH \
+    -u MACHINE \
+    -u BUILD_SYS \
+    -u HOST_SYS \
+    -u TARGET_PREFIX \
+    -u OECORE_TARGET_ARCH \
+    -u OECORE_TARGET_OS \
+    -u OECORE_TARGET_BITS \
+    -u OECORE_TARGET_SYSROOT \
+    -u OECORE_NATIVE_SYSROOT \
+    -u OECORE_ACLOCAL_OPTS \
+    -u OECORE_BASELIB \
+    -u OECORE_DISTRO_VERSION \
+    -u OECORE_SDK_VERSION \
+    -u SDKTARGETSYSROOT \
+    -u SDKPATH \
+    -u PYTHONHOME \
+    -u PYTHONPATH \
+    PATH="$host_path" \
+    PKG_CONFIG_PATH="" \
+    PKG_CONFIG_LIBDIR="$host_pkgconfig_libdir" \
+    PKG_CONFIG_SYSROOT_DIR="" \
+    PKG_CONFIG_SYSTEM_INCLUDE_PATH="$host_include_path" \
+    PKG_CONFIG_SYSTEM_LIBRARY_PATH="$host_library_path" \
+    CC=gcc \
+    CXX=g++ \
+    CPP="gcc -E" \
+    LD=ld \
+    AR=ar \
+    AS=as \
+    NM=nm \
+    RANLIB=ranlib \
+    READELF=readelf \
+    STRIP=strip \
+    OBJCOPY=objcopy \
+    OBJDUMP=objdump \
+    "${cmd[@]}"
+}
+
 ensure_python_cmd() {
   local py_mm="$1"
   local cmd=""
-  if cmd="$(resolve_python_cmd "$py_mm")"; then
-    echo "$cmd"
-    return 0
-  fi
 
   local pyenv_root="${PYENV_ROOT:-$HOME/.pyenv}"
   export PYENV_ROOT="$pyenv_root"
   export PATH="$PYENV_ROOT/bin:$PATH"
+
+  if cmd="$(resolve_python_cmd "$py_mm")"; then
+    if python_stdlib_extensions_ok "$cmd"; then
+      echo "$cmd"
+      return 0
+    fi
+    echo "Python ${py_mm} was found at $cmd, but required stdlib extension modules are missing." >&2
+    if [[ "$cmd" == "$PYENV_ROOT"/versions/*/bin/python* ]]; then
+      echo "Will try to rebuild that pyenv Python with the required system development packages present." >&2
+    else
+      echo "The detected Python is not a pyenv-managed installation. Please install a complete Python ${py_mm} and retry." >&2
+      return 1
+    fi
+  fi
 
   if ! command -v pyenv >/dev/null 2>&1; then
     echo "Python ${py_mm} not found; attempting to install pyenv..." >&2
@@ -146,14 +277,25 @@ ensure_python_cmd() {
     target_version="$py_mm"
   fi
 
+  local pybin="$PYENV_ROOT/versions/$target_version/bin/python"
+  if [[ -x "$pybin" ]] && ! python_stdlib_extensions_ok "$pybin"; then
+    echo "Existing pyenv Python ${target_version} is incomplete; rebuilding it." >&2
+    run_host_build_env pyenv uninstall -f "$target_version" >&2 || true
+  fi
+
   echo "Installing Python ${target_version} via pyenv..." >&2
-  if ! pyenv install -s "$target_version" >&2; then
+  if ! run_host_build_env pyenv install -s "$target_version" >&2; then
     echo "pyenv failed to install Python ${target_version}." >&2
     return 1
   fi
 
-  local pybin="$PYENV_ROOT/versions/$target_version/bin/python"
+  pybin="$PYENV_ROOT/versions/$target_version/bin/python"
   if [[ -x "$pybin" ]]; then
+    if ! python_stdlib_extensions_ok "$pybin"; then
+      echo "Python ${target_version} was installed, but required stdlib extension modules are still missing." >&2
+      echo "Please verify system packages such as libffi-dev, libbz2-dev, liblzma-dev, libsqlite3-dev, and libssl-dev are available in this environment." >&2
+      return 1
+    fi
     echo "$pybin"
     return 0
   fi
@@ -336,7 +478,6 @@ PY
 
 configure_shell_path() {
   local bin_dir="$1"
-  local lib_dir="$2"
   local bashrc="${HOME}/.bashrc"
   local bash_profile="${HOME}/.bash_profile"
   local target_file=""
@@ -359,9 +500,6 @@ configure_shell_path() {
 $marker_begin
 if [ -d "$bin_dir" ] && [[ ":\$PATH:" != *":$bin_dir:"* ]]; then
   export PATH="$bin_dir:\$PATH"
-fi
-if [ -d "$lib_dir" ] && [[ ":\${LD_LIBRARY_PATH:-}:" != *":$lib_dir:"* ]]; then
-  export LD_LIBRARY_PATH="$lib_dir\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 fi
 $marker_end
 EOF
@@ -472,7 +610,7 @@ fi
 
 MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
 mkdir -p "$MODELSDK_DIR"
-VENV_DIR="${MODELSDK_DIR}/venv"
+VENV_DIR="${MODELSDK_DIR}/model-sdk-venv"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 "$PYTHON_CMD" -m venv "$VENV_DIR"
 
@@ -488,7 +626,7 @@ pip_args=(
 if [[ -n "$EXTRA_INDEX_URL" ]]; then
   pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
 fi
-"$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
-configure_shell_path "$VENV_DIR/bin" "$VENV_DIR/lib"
+run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
+configure_shell_path "$VENV_DIR/bin"
 cleanup_downloaded_resources
 echo "ModelSDK wheel installation complete in $VENV_DIR."

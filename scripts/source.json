@@ -7,6 +7,7 @@
       "curl",
       "libbz2-dev",
       "libffi-dev",
+      "libgl1",
       "libllvm14",
       "liblzma-dev",
       "libopenblas0-pthread",
@@ -39,7 +40,7 @@
   "binary-packages": [
     {
       "name": "toolchain/mla/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "version": "v2.1.3158-Edgematic-release-2.0.0.3-ubuntu",
       "extension": ".zip"
     }
   ]
