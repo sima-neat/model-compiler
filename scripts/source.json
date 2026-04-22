@@ -1,0 +1,11 @@
+{
+  "python_version": "3.10",
+  "components": [
+    { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" },
+    { "name": "swml-qat", "version": "1.0.0.dev0+master.5" },
+    { "name": "mpk_parser", "version": "2.0.0.dev0+master.27" },
+    { "name": "sima-mppe", "version": "2.0.0.dev0+master.19" },
+    { "name": "neural_compressor", "version": "2.0.0.dev0+master.1" },
+    { "name": "sima_lmm[sdk]", "version": "2.0.0.dev0+master.6" }
+  ]
+}
