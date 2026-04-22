@@ -113,6 +113,27 @@ Output files in `dist/` typically include:
 - `source.json`
 - `metadata.json`
 
+## Testing a Local Bundle
+
+You can test a freshly built bundle directly from your local machine without publishing it anywhere first.
+
+From this repository:
+
+```bash
+cd dist
+python3 -m http.server
+```
+
+Then, from either an Ubuntu host or an eLxr SDK environment, install the bundle with `sima-cli`:
+
+```bash
+sima-cli install -m http://<ip>:8000/metadata.json
+```
+
+Replace `<ip>` with the IP address of the machine serving the `dist/` directory.
+
+This lets you validate local ModelSDK bundle changes end-to-end using a local metadata source.
+
 ## Authentication and Package Sources
 
 The scripts expect internal Python packages and binary artifacts to come from SiMa Artifactory.
