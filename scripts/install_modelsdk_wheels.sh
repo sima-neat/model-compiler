@@ -41,6 +41,17 @@ elif expr == "binary_package_archives":
         if name and version:
             base = name.rsplit("/", 1)[-1]
             print(f"{base}-{version}.{archive_type}")
+elif expr == "python_package_specs":
+    items = doc.get("python-packages", doc.get("components", []))
+    if not isinstance(items, list):
+        raise SystemExit(0)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        version = str(item.get("version", "")).strip()
+        if name and version:
+            print(f"{name}=={version}")
 ' "$SOURCE_JSON" "$expr"
 }
 
@@ -628,7 +639,11 @@ if ! install_binary_packages "$VENV_DIR"; then
   exit 1
 fi
 
-echo "Installing ${#wheels[@]} wheel(s) from $SCRIPT_DIR into $VENV_DIR (with dependency resolution)"
+package_specs=()
+while IFS= read -r spec; do
+  [[ -n "$spec" ]] && package_specs+=("$spec")
+done < <(read_source_json_field "python_package_specs")
+
 pip_args=(
   --disable-pip-version-check
   --find-links "$SCRIPT_DIR"
@@ -636,7 +651,15 @@ pip_args=(
 if [[ -n "$EXTRA_INDEX_URL" ]]; then
   pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
 fi
-run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
+
+if [[ ${#package_specs[@]} -gt 0 ]]; then
+  echo "Installing ${#package_specs[@]} package spec(s) from source.json into $VENV_DIR (extras supported)"
+  run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${package_specs[@]}"
+else
+  echo "Installing ${#wheels[@]} wheel(s) from $SCRIPT_DIR into $VENV_DIR (with dependency resolution)"
+  run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
+fi
+
 configure_shell_path "$VENV_DIR/bin"
 cleanup_downloaded_resources
 echo "ModelSDK wheel installation complete in $VENV_DIR."

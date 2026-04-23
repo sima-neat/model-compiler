@@ -161,7 +161,7 @@ The installer will:
 3. Find or install the required Python version, using `pyenv` if necessary
 4. Create a ModelSDK virtual environment
 5. Install bundled binary packages into that venv
-6. Install bundled wheels, using the bundle as `--find-links` and PyPI as fallback when needed
+6. Install top-level package specs from `python-packages` (including extras like `sima_lmm[sdk]`), using the bundle as `--find-links` and PyPI as fallback when needed
 7. Update shell startup files with the ModelSDK venv `PATH`
 8. Remove downloaded bundle payloads after successful installation
 
