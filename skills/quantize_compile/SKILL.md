@@ -1,3 +1,8 @@
+---
+name: sima-model-quantize-compile
+description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and target-specific compilation for modalix or davinci.
+---
+
 # Quantize and Compile Standard ONNX Models for SiMa
 
 ## Purpose
