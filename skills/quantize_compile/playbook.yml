@@ -4,8 +4,8 @@ version: 0.1.0
 agents: [codex, claude]
 description: Generic skill for quantizing and compiling ONNX models to SiMa targets using scripts/quantize_compile.py.
 compatibility:
-  env_types: [host, palette]
-  env_subtypes: [mac, linux]
+  env_types: [host, sdk]
+  env_subtypes: [mac, linux, palette]
   min_cli_version: 2.2.0
 runtime:
   requires:
