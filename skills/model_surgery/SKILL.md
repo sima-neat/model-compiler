@@ -26,7 +26,7 @@ This skill generalizes the model surgery approach into one repeatable workflow:
 ## Prerequisites
 - Activate ModelSDK environment:
 ```bash
-source ~/sdk-extensions/model-sdk/model-sdk-venv/bin/activate
+activate-model-sdk
 ```
 - `onnx` must be available in the active Python env.
 - `skills/model_surgery/data/supported_operators.json` is the default support DB used by the guard script.

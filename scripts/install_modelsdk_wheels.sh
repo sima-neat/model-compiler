@@ -488,13 +488,52 @@ PY
   done
 }
 
+write_managed_shell_block() {
+  local target_file="$1"
+  local marker_begin="$2"
+  local marker_end="$3"
+  local block_file=""
+
+  block_file="$(mktemp)"
+  cat > "$block_file"
+  python3 - "$target_file" "$marker_begin" "$marker_end" "$block_file" <<'PY'
+import pathlib
+import sys
+
+target = pathlib.Path(sys.argv[1])
+marker_begin = sys.argv[2]
+marker_end = sys.argv[3]
+block = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
+text = target.read_text(encoding="utf-8") if target.exists() else ""
+
+begin = text.find(marker_begin)
+if begin != -1:
+    end = text.find(marker_end, begin)
+    if end != -1:
+        end += len(marker_end)
+        if end < len(text) and text[end : end + 1] == "\n":
+            end += 1
+        text = text[:begin] + block + text[end:]
+    else:
+        text = text.rstrip("\n") + "\n" + block
+else:
+    text = text.rstrip("\n") + "\n" + block if text else block
+
+target.write_text(text, encoding="utf-8")
+PY
+  rm -f "$block_file"
+}
+
 configure_shell_path() {
-  local bin_dir="$1"
+  local modelsdk_dir="$1"
+  local bin_dir="$2"
   local bashrc="${HOME}/.bashrc"
   local bash_profile="${HOME}/.bash_profile"
   local target_file=""
   local marker_begin="# >>> modelsdk path >>>"
   local marker_end="# <<< modelsdk path <<<"
+  local functions_marker_begin="# >>> modelsdk activation >>>"
+  local functions_marker_end="# <<< modelsdk activation <<<"
 
   if [[ -f "$bashrc" || ! -f "$bash_profile" ]]; then
     target_file="$bashrc"
@@ -504,16 +543,70 @@ configure_shell_path() {
 
   touch "$target_file"
 
-  if grep -Fq "$marker_begin" "$target_file"; then
+  write_managed_shell_block "$target_file" "$marker_begin" "$marker_end" <<EOF
+$marker_begin
+# ModelSDK PATH is managed by activate-model-sdk and deactivate-model-sdk.
+$marker_end
+EOF
+
+  if ! grep -Fq "$functions_marker_begin" "$target_file" \
+    && { grep -Eq '^[[:space:]]*(function[[:space:]]+)?activate-model-sdk([[:space:]]*\(\))?[[:space:]]*\{' "$target_file" \
+      || grep -Eq '^[[:space:]]*(function[[:space:]]+)?deactivate-model-sdk([[:space:]]*\(\))?[[:space:]]*\{' "$target_file"; }; then
     return 0
   fi
 
-  cat >> "$target_file" <<EOF
-$marker_begin
-if [ -d "$bin_dir" ] && [[ ":\$PATH:" != *":$bin_dir:"* ]]; then
-  export PATH="$bin_dir:\$PATH"
-fi
-$marker_end
+  write_managed_shell_block "$target_file" "$functions_marker_begin" "$functions_marker_end" <<EOF
+$functions_marker_begin
+_modelsdk_path_without() {
+  local remove_path="\$1"
+  local entry=""
+  local old_ifs="\$IFS"
+  local new_path=""
+
+  IFS=:
+  for entry in \$PATH; do
+    if [ -n "\$entry" ] && [ "\$entry" != "\$remove_path" ]; then
+      if [ -n "\$new_path" ]; then
+        new_path="\$new_path:\$entry"
+      else
+        new_path="\$entry"
+      fi
+    fi
+  done
+  IFS="\$old_ifs"
+  printf '%s\n' "\$new_path"
+}
+
+activate-model-sdk() {
+  if [ ! -f "$modelsdk_dir/bin/activate" ]; then
+    echo "ModelSDK virtual environment not found: $modelsdk_dir" >&2
+    return 1
+  fi
+  PATH="\$(_modelsdk_path_without "$bin_dir")"
+  . "$modelsdk_dir/bin/activate"
+  PATH="\$(_modelsdk_path_without "$bin_dir")"
+  if [ -n "\$PATH" ]; then
+    PATH="$bin_dir:\$PATH"
+  else
+    PATH="$bin_dir"
+  fi
+  export PATH
+  hash -r 2>/dev/null || true
+}
+
+deactivate-model-sdk() {
+  if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$modelsdk_dir" ]; then
+    echo "Active virtual environment is not ModelSDK: \$VIRTUAL_ENV" >&2
+    return 1
+  fi
+  if command -v deactivate >/dev/null 2>&1; then
+    deactivate
+  fi
+  PATH="\$(_modelsdk_path_without "$bin_dir")"
+  export PATH
+  hash -r 2>/dev/null || true
+}
+$functions_marker_end
 EOF
 }
 
@@ -630,8 +723,7 @@ else
 fi
 
 MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
-mkdir -p "$MODELSDK_DIR"
-VENV_DIR="${MODELSDK_DIR}/model-sdk-venv"
+VENV_DIR="$MODELSDK_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 "$PYTHON_CMD" -m venv "$VENV_DIR"
 
@@ -660,6 +752,6 @@ else
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
 fi
 
-configure_shell_path "$VENV_DIR/bin"
+configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
 cleanup_downloaded_resources
 echo "ModelSDK wheel installation complete in $VENV_DIR."
