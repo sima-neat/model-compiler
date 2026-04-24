@@ -91,7 +91,7 @@ def main() -> int:
         "resources-checksum": checksums,
         "size": {
             "download": human_mb(total_download_bytes),
-            "install": human_mb(total_download_bytes),
+            "install": "9 GB",
         },
         "installation": {
             "script": f"bash ./{installer.name}",
@@ -99,14 +99,15 @@ def main() -> int:
                 "[bold green]Successfully installed ModelSDK.[/bold green]\n\n"
                 "[bold]Virtual environment location:[/bold]\n"
                 "The installer creates the venv at "
-                "[green]/sdk-extensions/model-sdk/model-sdk-venv[/green] when writable, "
-                "otherwise it falls back to [green]/sdk-add-on/model-sdk/model-sdk-venv[/green], "
-                "or [green]~/sdk-extensions/model-sdk/model-sdk-venv[/green].\n\n"
+                "[green]/sdk-extensions/model-sdk[/green] when writable, "
+                "otherwise it falls back to [green]/sdk-add-on/model-sdk[/green], "
+                "or [green]~/sdk-extensions/model-sdk[/green].\n\n"
                 "[bold]Reload your shell environment:[/bold]\n"
                 "The installer updates [green]~/.bashrc[/green] when it exists, "
                 "otherwise [green]~/.bash_profile[/green]. Run "
                 "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
-                "or log out and log back in."
+                "or log out and log back in. Then run [green]activate-model-sdk[/green] "
+                "to activate the environment and [green]deactivate-model-sdk[/green] to leave it."
             ),
         },
     }

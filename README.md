@@ -11,6 +11,17 @@ The bundle contains:
 
 The main goal is to reproduce a working ModelSDK installation outside the container with a predictable package set and a self-contained extension layout.
 
+## Installation
+
+First install and authenticate `sima-cli`. See the
+[sima-cli documentation](https://docs.sima.ai/pages/sima_cli/main.html) for setup instructions.
+
+Then install ModelSDK inside the Neat SDK or on an Ubuntu 22.04/24.04 host with:
+
+```bash
+sima-cli install -v 2.0.0 sdk-extensions/model
+```
+
 ## Repository Layout
 
 - [scripts/source.json](scripts/source.json): bundle manifest
