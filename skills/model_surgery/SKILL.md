@@ -38,6 +38,21 @@ source ~/sdk-extensions/model-sdk/model-sdk-venv/bin/activate
 4. Re-audit and run ONNX checks/inference sanity test.
 5. Hand model to quantize/compile flow.
 
+## Bundled Helpers
+- Download model from URL or HF Hub:
+```bash
+python3 skills/model_surgery/scripts/download_onnx.py --url <onnx_url> --output-dir ./models
+python3 skills/model_surgery/scripts/download_onnx.py --hf-repo <org/repo> --hf-file <model>.onnx --output-dir ./models
+```
+- Freeze symbolic dimensions and simplify:
+```bash
+python3 skills/model_surgery/scripts/onnx_static_simplify.py \
+  --input /abs/path/model.onnx \
+  --output /abs/path/model.static.sim.onnx \
+  --replace batch=1 \
+  --replace seq_len=256
+```
+
 ## Operator Audit Command
 ```bash
 python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \

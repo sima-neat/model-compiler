@@ -29,9 +29,10 @@ sima-cli install sdk-extensions/model
 ## Default Workflow
 1. Run operator audit first (required gate before quantize/compile; use `model_surgery` policy).
 2. Validate model path and input/output interface.
-3. Run quantization (with ONNX simplification enabled by default).
-4. Compile for target device.
-5. Optionally run verification (`--verify`).
+3. If model has symbolic dimensions, staticify/simplify it with `model_surgery` helper.
+4. Run quantization (with ONNX simplification enabled by default).
+5. Compile for target device.
+6. Optionally run verification (`--verify`).
 
 ## Pre-Compile Audit (Required)
 Run graph compatibility audit before quantization/compilation, following
@@ -86,4 +87,11 @@ Artifacts are written to:
 
 ## Notes
 - Auto-shape detection may fail on dynamic ONNX inputs; pass explicit `--input_shapes`.
+- For symbolic/dynamic ONNX dimensions, run:
+```bash
+python3 skills/model_surgery/scripts/onnx_static_simplify.py \
+  --input /abs/path/model.onnx \
+  --output /abs/path/model.static.sim.onnx \
+  --replace batch=1
+```
 - `--mla-tesselation` exists for advanced MLA direct mode (argument spelling is `tesselation` in the script).
