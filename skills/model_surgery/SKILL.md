@@ -8,7 +8,7 @@ description: Use when analyzing or modifying ONNX graphs for SiMa MLA compatibil
 ## Purpose
 Use this skill to perform graph surgery on ONNX models so they are more likely to quantize/compile on SiMa MLA.
 
-This skill generalizes the model surgery approach used by `tool-model-to-pipeline` surgeons (`yolov8`, `yolov9`, `yolov10`, `yolo11`, `yolo11-seg`, `yolox`) into one repeatable workflow:
+This skill generalizes the model surgery approach into one repeatable workflow:
 - detect unsupported or risky operators first,
 - apply focused rewrites,
 - validate topology and operator support again.
