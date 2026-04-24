@@ -13,16 +13,16 @@ The main goal is to reproduce a working ModelSDK installation outside the contai
 
 ## Repository Layout
 
-- [scripts/source.json](/home/jim/sima-neat/model-sdk/scripts/source.json): bundle manifest
-- [scripts/build_modelsdk_bundle.sh](/home/jim/sima-neat/model-sdk/scripts/build_modelsdk_bundle.sh): end-to-end bundle builder
-- [scripts/download_modelsdk_wheels.sh](/home/jim/sima-neat/model-sdk/scripts/download_modelsdk_wheels.sh): downloads Python and binary artifacts
-- [scripts/install_modelsdk_wheels.sh](/home/jim/sima-neat/model-sdk/scripts/install_modelsdk_wheels.sh): installs the bundle on a target host
-- [scripts/generate_metadata.py](/home/jim/sima-neat/model-sdk/scripts/generate_metadata.py): generates `metadata.json`
+- [scripts/source.json](scripts/source.json): bundle manifest
+- [scripts/build_modelsdk_bundle.sh](scripts/build_modelsdk_bundle.sh): end-to-end bundle builder
+- [scripts/download_modelsdk_wheels.sh](scripts/download_modelsdk_wheels.sh): downloads Python and binary artifacts
+- [scripts/install_modelsdk_wheels.sh](scripts/install_modelsdk_wheels.sh): installs the bundle on a target host
+- [scripts/generate_metadata.py](scripts/generate_metadata.py): generates `metadata.json`
 - `dist/`: default output directory for built bundles
 
 ## Manifest Format
 
-The bundle is driven by [scripts/source.json](/home/jim/sima-neat/model-sdk/scripts/source.json).
+The bundle is driven by [scripts/source.json](scripts/source.json).
 
 Example:
 
