@@ -1,0 +1,12 @@
+id: sima-model-surgery
+name: General ONNX Model Surgery for SiMa MLA
+version: 0.0.1
+agents: [codex, claude]
+description: Generic graph-surgery workflow for ONNX models targeting SiMa MLA, with operator-support guardrails from supported_operators.json.
+compatibility:
+  env_types: [host, sdk]
+  env_subtypes: [linux, palette]
+  min_cli_version: 2.2.0
+runtime:
+  requires:
+    - python3

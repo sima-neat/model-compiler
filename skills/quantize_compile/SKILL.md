@@ -27,10 +27,22 @@ sima-cli install sdk-extensions/model
 ```
 
 ## Default Workflow
-1. Validate model path and input/output interface.
-2. Run quantization (with ONNX simplification enabled by default).
-3. Compile for target device.
-4. Optionally run verification (`--verify`).
+1. Run operator audit first (required gate before quantize/compile; use `model_surgery` policy).
+2. Validate model path and input/output interface.
+3. Run quantization (with ONNX simplification enabled by default).
+4. Compile for target device.
+5. Optionally run verification (`--verify`).
+
+## Pre-Compile Audit (Required)
+Run graph compatibility audit before quantization/compilation, following
+`skills/model_surgery/SKILL.md` target/dtype policy.
+
+Typical command:
+```bash
+python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
+  --model /abs/path/model.onnx \
+  --dtype int8
+```
 
 ## Default Command
 ```bash
