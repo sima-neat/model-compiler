@@ -42,6 +42,7 @@ SOURCE_JSON=""
 INDEX_URL="https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple"
 EXTRA_INDEX_URL="https://pypi.org/simple"
 BUNDLE_VERSION="sdk_version.neat+branch.git-short-hash"
+BUNDLE_VERSION_EXPLICIT="0"
 OUTPUT_DIR="./dist"
 NAME="sima-neat-model-sdk"
 RELEASE="stable"
@@ -57,7 +58,7 @@ while [[ $# -gt 0 ]]; do
     --source-json) SOURCE_JSON="${2:-}"; shift 2 ;;
     --index-url) INDEX_URL="${2:-}"; shift 2 ;;
     --extra-index-url) EXTRA_INDEX_URL="${2:-}"; shift 2 ;;
-    --bundle-version) BUNDLE_VERSION="${2:-}"; shift 2 ;;
+    --bundle-version) BUNDLE_VERSION="${2:-}"; BUNDLE_VERSION_EXPLICIT="1"; shift 2 ;;
     --output-dir) OUTPUT_DIR="${2:-}"; shift 2 ;;
     --name) NAME="${2:-}"; shift 2 ;;
     --release) RELEASE="${2:-}"; shift 2 ;;
@@ -91,16 +92,26 @@ if isinstance(v, str):
 ' "$SOURCE_JSON"
 )"
 
+SCRIPT_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$BUNDLE_VERSION_EXPLICIT" == "0" ]]; then
+  GIT_TAG="$(
+    git -C "$SCRIPT_HOME/.." tag --points-at HEAD 2>/dev/null \
+      | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+      | sort -V \
+      | tail -n1 || true
+  )"
+  if [[ -n "$GIT_TAG" ]]; then
+    BUNDLE_VERSION="${GIT_TAG#v}"
+    echo "Using git tag version for metadata: $BUNDLE_VERSION"
+  fi
+fi
+
 if [[ "$BUNDLE_VERSION" == *"sdk_version"* ]]; then
   if [[ -z "$SDK_VERSION" ]]; then
     echo "sdk_version is missing in $SOURCE_JSON but bundle version requires it." >&2
     exit 1
   fi
   BUNDLE_VERSION="${BUNDLE_VERSION//sdk_version/$SDK_VERSION}"
-fi
-
-if [[ "$BUNDLE_VERSION" == *"branch.git"* || "$BUNDLE_VERSION" == *"short-hash"* ]]; then
-  SCRIPT_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
 if [[ "$BUNDLE_VERSION" == *"branch.git"* ]]; then

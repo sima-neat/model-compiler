@@ -109,6 +109,8 @@ Typical explicit build:
   --extra-index-url https://pypi.org/simple
 ```
 
+By default, the metadata version is derived from the exact git checkout. If `HEAD` has a release tag like `v1.0.0`, the generated `metadata.json` uses `1.0.0`; otherwise it falls back to `sdk_version.neat+branch.git-short-hash`. Passing `--bundle-version` overrides this behavior.
+
 What the build does:
 1. Reads the package manifest from `source.json`
 2. Downloads one wheel per requested Python package
