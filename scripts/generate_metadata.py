@@ -45,6 +45,11 @@ def main() -> int:
         default="source.json",
         help="Source manifest filename included in resources when present.",
     )
+    p.add_argument(
+        "--wheel-manifest",
+        default="manifest.txt",
+        help="Wheel manifest filename generated and included in resources.",
+    )
     args = p.parse_args()
 
     artifacts_dir = Path(args.artifacts_dir)
@@ -57,6 +62,10 @@ def main() -> int:
     if not artifacts:
         raise SystemExit(f"No wheel or binary artifacts found in {artifacts_dir}")
 
+    wheel_artifacts = [a for a in artifacts if a.suffix == ".whl"]
+    if not wheel_artifacts:
+        raise SystemExit(f"No wheel artifacts found in {artifacts_dir}")
+
     installer = artifacts_dir / args.installer_script
     if not installer.is_file():
         raise SystemExit(
@@ -64,10 +73,16 @@ def main() -> int:
             f"Put it in artifacts-dir or override --installer-script."
         )
 
-    resources = [a.name for a in artifacts] + [installer.name]
-    manifest = artifacts_dir / args.source_manifest
-    if manifest.is_file():
-        resources.append(manifest.name)
+    wheel_manifest = artifacts_dir / args.wheel_manifest
+    wheel_manifest.write_text(
+        "".join(f"{a.name}\n" for a in wheel_artifacts),
+        encoding="utf-8",
+    )
+
+    resources = [a.name for a in artifacts] + [wheel_manifest.name, installer.name]
+    source_manifest = artifacts_dir / args.source_manifest
+    if source_manifest.is_file():
+        resources.append(source_manifest.name)
     checksums = {}
     total_download_bytes = 0
     for name in resources:
