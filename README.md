@@ -115,11 +115,13 @@ What the build does:
 3. Downloads direct internal wheel dependencies referenced by those wheels
 4. Downloads binary package archives such as the MLA toolchain
 5. Copies the installer and source manifest into the output directory
-6. Generates `metadata.json`
+6. Generates `manifest.txt` with the bundled wheel filenames
+7. Generates `metadata.json`
 
 Output files in `dist/` typically include:
 - `*.whl`
 - `*.zip`
+- `manifest.txt`
 - `install_modelsdk_wheels.sh`
 - `source.json`
 - `metadata.json`
@@ -170,11 +172,12 @@ The installer will:
 1. Read `source.json`
 2. Install required Ubuntu system packages from `system_dependencies.ubuntu`
 3. Find or install the required Python version, using `pyenv` if necessary
-4. Create a ModelSDK virtual environment
-5. Install bundled binary packages into that venv
-6. Install top-level package specs from `python-packages` (including extras like `sima_lmm[sdk]`), using the bundle as `--find-links` and PyPI as fallback when needed
-7. Update shell startup files with the ModelSDK venv `PATH`
-8. Remove downloaded bundle payloads after successful installation
+4. Read `manifest.txt` to identify the bundled ModelSDK wheels
+5. Create a ModelSDK virtual environment
+6. Install bundled binary packages into that venv
+7. Install top-level package specs from `python-packages` (including extras like `sima_lmm[sdk]`), using only manifest-listed wheels as local `--find-links` inputs and PyPI as fallback when needed
+8. Update shell startup files with the ModelSDK venv `PATH`
+9. Remove downloaded bundle payloads after successful installation
 
 ## Install Location
 
@@ -220,13 +223,14 @@ Logging out and back in works too.
 ## Cleanup Behavior
 
 On successful install, the installer removes downloaded bundle resources from the bundle directory, including:
-- wheel files
+- manifest-listed wheel files
 - binary package archives such as the MLA toolchain zip
 - extracted binary package directories if present
 
 It keeps the installer and metadata files such as:
 - `install_modelsdk_wheels.sh`
 - `source.json`
+- `manifest.txt`
 - `metadata.json`
 
 ## Notes and Troubleshooting

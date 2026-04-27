@@ -2,8 +2,32 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_JSON="$SCRIPT_DIR/source.json"
+
+resolve_bundle_dir() {
+  if [[ -f "$SCRIPT_DIR/manifest.txt" ]]; then
+    echo "$SCRIPT_DIR"
+    return 0
+  fi
+  if [[ -f "$SCRIPT_DIR/../dist/manifest.txt" || -f "$SCRIPT_DIR/../dist/source.json" ]]; then
+    (cd "$SCRIPT_DIR/../dist" && pwd)
+    return 0
+  fi
+  echo "$SCRIPT_DIR"
+}
+
+BUNDLE_DIR="$(resolve_bundle_dir)"
+SOURCE_JSON="$BUNDLE_DIR/source.json"
+WHEEL_MANIFEST="$BUNDLE_DIR/manifest.txt"
 EXTRA_INDEX_URL="${EXTRA_INDEX_URL:-https://pypi.org/simple}"
+WHEEL_LINK_DIR=""
+MANIFEST_WHEELS=()
+
+cleanup_temp_resources() {
+  if [[ -n "${WHEEL_LINK_DIR:-}" && -d "$WHEEL_LINK_DIR" ]]; then
+    rm -rf "$WHEEL_LINK_DIR"
+  fi
+}
+trap cleanup_temp_resources EXIT
 
 read_source_json_field() {
   local expr="$1"
@@ -372,6 +396,46 @@ wheel_arch_compatible() {
   esac
 }
 
+load_manifest_wheels() {
+  local manifest="$1"
+  local entry=""
+  local wheel_path=""
+
+  MANIFEST_WHEELS=()
+
+  if [[ ! -f "$manifest" ]]; then
+    echo "Missing wheel manifest in bundle directory: $manifest" >&2
+    return 1
+  fi
+
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    entry="${entry//$'\r'/}"
+    [[ -n "$entry" ]] || continue
+
+    if [[ "$entry" == */* || "$entry" == "."* || "$entry" != *.whl ]]; then
+      echo "Invalid wheel manifest entry: $entry" >&2
+      return 1
+    fi
+
+    wheel_path="${BUNDLE_DIR}/${entry}"
+    if [[ ! -f "$wheel_path" ]]; then
+      echo "Manifest wheel not found: $wheel_path" >&2
+      return 1
+    fi
+
+    MANIFEST_WHEELS+=("$wheel_path")
+  done < "$manifest"
+}
+
+prepare_manifest_find_links() {
+  local wheel=""
+
+  WHEEL_LINK_DIR="$(mktemp -d)"
+  for wheel in "$@"; do
+    ln -s "$wheel" "${WHEEL_LINK_DIR}/$(basename "$wheel")"
+  done
+}
+
 install_system_dependencies() {
   local distro_id=""
   local deps=()
@@ -445,7 +509,7 @@ install_binary_packages() {
   fi
 
   for archive in "${archives[@]}"; do
-    archive_path="${SCRIPT_DIR}/${archive}"
+    archive_path="${BUNDLE_DIR}/${archive}"
     if [[ ! -f "$archive_path" ]]; then
       echo "Binary package archive not found: $archive_path" >&2
       return 1
@@ -618,8 +682,8 @@ cleanup_downloaded_resources() {
 
   while IFS= read -r archive; do
     [[ -n "$archive" ]] || continue
-    archive_path="${SCRIPT_DIR}/${archive}"
-    extracted_dir="${SCRIPT_DIR}/${archive%.*}"
+    archive_path="${BUNDLE_DIR}/${archive}"
+    extracted_dir="${BUNDLE_DIR}/${archive%.*}"
 
     if [[ -f "$archive_path" ]]; then
       rm -f "$archive_path"
@@ -631,21 +695,23 @@ cleanup_downloaded_resources() {
     fi
   done < <(read_source_json_field "binary_package_archives")
 
-  while IFS= read -r wheel; do
-    [[ -n "$wheel" ]] || continue
-    rm -f "$wheel"
-    removed=1
-  done < <(find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.whl' | sort)
+  if [[ -f "$WHEEL_MANIFEST" ]]; then
+    for wheel in "${MANIFEST_WHEELS[@]}"; do
+      [[ -n "$wheel" ]] || continue
+      rm -f "$wheel"
+      removed=1
+    done
+  fi
 
   if [[ "$removed" -eq 1 ]]; then
-    echo "Removed downloaded bundle resources from $SCRIPT_DIR."
+    echo "Removed downloaded bundle resources from $BUNDLE_DIR."
   else
-    echo "No downloaded bundle resources needed cleanup in $SCRIPT_DIR."
+    echo "No downloaded bundle resources needed cleanup in $BUNDLE_DIR."
   fi
 }
 
 if [[ ! -f "$SOURCE_JSON" ]]; then
-  echo "Missing source.json next to installer: $SOURCE_JSON" >&2
+  echo "Missing source.json in bundle directory: $SOURCE_JSON" >&2
   exit 1
 fi
 
@@ -671,12 +737,12 @@ if ! PYTHON_CMD="$(ensure_python_cmd "$PYTHON_MM")"; then
   exit 1
 fi
 
-wheels=()
-while IFS= read -r wheel; do
-  [[ -n "$wheel" ]] && wheels+=("$wheel")
-done < <(find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.whl' | sort)
+if ! load_manifest_wheels "$WHEEL_MANIFEST"; then
+  exit 1
+fi
+wheels=("${MANIFEST_WHEELS[@]}")
 if [[ ${#wheels[@]} -eq 0 ]]; then
-  echo "No wheel files found in $SCRIPT_DIR" >&2
+  echo "No wheel files listed in $WHEEL_MANIFEST" >&2
   exit 1
 fi
 
@@ -738,8 +804,9 @@ done < <(read_source_json_field "python_package_specs")
 
 pip_args=(
   --disable-pip-version-check
-  --find-links "$SCRIPT_DIR"
 )
+prepare_manifest_find_links "${wheels[@]}"
+pip_args+=(--find-links "$WHEEL_LINK_DIR")
 if [[ -n "$EXTRA_INDEX_URL" ]]; then
   pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
 fi
@@ -748,7 +815,7 @@ if [[ ${#package_specs[@]} -gt 0 ]]; then
   echo "Installing ${#package_specs[@]} package spec(s) from source.json into $VENV_DIR (extras supported)"
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${package_specs[@]}"
 else
-  echo "Installing ${#wheels[@]} wheel(s) from $SCRIPT_DIR into $VENV_DIR (with dependency resolution)"
+  echo "Installing ${#wheels[@]} wheel(s) from $BUNDLE_DIR into $VENV_DIR (with dependency resolution)"
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
 fi
 
