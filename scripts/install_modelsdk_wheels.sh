@@ -21,6 +21,8 @@ WHEEL_MANIFEST="$BUNDLE_DIR/manifest.txt"
 EXTRA_INDEX_URL="${EXTRA_INDEX_URL:-https://pypi.org/simple}"
 WHEEL_LINK_DIR=""
 MANIFEST_WHEELS=()
+MANIFEST_WHEEL_NAMES=()
+MANIFEST_LINK_WHEELS=()
 
 cleanup_temp_resources() {
   if [[ -n "${WHEEL_LINK_DIR:-}" && -d "$WHEEL_LINK_DIR" ]]; then
@@ -399,9 +401,13 @@ wheel_arch_compatible() {
 load_manifest_wheels() {
   local manifest="$1"
   local entry=""
+  local decoded_entry=""
+  local escaped_entry=""
+  local link_name=""
   local wheel_path=""
 
   MANIFEST_WHEELS=()
+  MANIFEST_WHEEL_NAMES=()
 
   if [[ ! -f "$manifest" ]]; then
     echo "Missing wheel manifest in bundle directory: $manifest" >&2
@@ -418,21 +424,36 @@ load_manifest_wheels() {
     fi
 
     wheel_path="${BUNDLE_DIR}/${entry}"
+    decoded_entry="${entry//%2B/+}"
+    decoded_entry="${decoded_entry//%2b/+}"
+    escaped_entry="${entry//+/%2B}"
+    link_name="$decoded_entry"
+
     if [[ ! -f "$wheel_path" ]]; then
-      echo "Manifest wheel not found: $wheel_path" >&2
-      return 1
+      if [[ -f "${BUNDLE_DIR}/${escaped_entry}" ]]; then
+        wheel_path="${BUNDLE_DIR}/${escaped_entry}"
+      elif [[ -f "${BUNDLE_DIR}/${decoded_entry}" ]]; then
+        wheel_path="${BUNDLE_DIR}/${decoded_entry}"
+      fi
+      if [[ ! -f "$wheel_path" ]]; then
+        echo "Manifest wheel not found: ${BUNDLE_DIR}/${entry}, ${BUNDLE_DIR}/${escaped_entry}, or ${BUNDLE_DIR}/${decoded_entry}" >&2
+        return 1
+      fi
     fi
 
     MANIFEST_WHEELS+=("$wheel_path")
+    MANIFEST_WHEEL_NAMES+=("$link_name")
   done < "$manifest"
 }
 
 prepare_manifest_find_links() {
-  local wheel=""
+  local i=""
 
+  MANIFEST_LINK_WHEELS=()
   WHEEL_LINK_DIR="$(mktemp -d)"
-  for wheel in "$@"; do
-    ln -s "$wheel" "${WHEEL_LINK_DIR}/$(basename "$wheel")"
+  for i in "${!MANIFEST_WHEELS[@]}"; do
+    ln -s "${MANIFEST_WHEELS[$i]}" "${WHEEL_LINK_DIR}/${MANIFEST_WHEEL_NAMES[$i]}"
+    MANIFEST_LINK_WHEELS+=("${WHEEL_LINK_DIR}/${MANIFEST_WHEEL_NAMES[$i]}")
   done
 }
 
@@ -805,7 +826,7 @@ done < <(read_source_json_field "python_package_specs")
 pip_args=(
   --disable-pip-version-check
 )
-prepare_manifest_find_links "${wheels[@]}"
+prepare_manifest_find_links
 pip_args+=(--find-links "$WHEEL_LINK_DIR")
 if [[ -n "$EXTRA_INDEX_URL" ]]; then
   pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
@@ -816,7 +837,7 @@ if [[ ${#package_specs[@]} -gt 0 ]]; then
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${package_specs[@]}"
 else
   echo "Installing ${#wheels[@]} wheel(s) from $BUNDLE_DIR into $VENV_DIR (with dependency resolution)"
-  run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${wheels[@]}"
+  run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${MANIFEST_LINK_WHEELS[@]}"
 fi
 
 configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
