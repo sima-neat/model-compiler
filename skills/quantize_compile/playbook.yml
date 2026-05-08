@@ -6,7 +6,7 @@ description: Generic skill for quantizing and compiling ONNX models to SiMa targ
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]
-  min_cli_version: 2.2.0
+  min_cli_version: 2.1.1
 runtime:
   requires:
     - ssh
