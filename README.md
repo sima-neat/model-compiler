@@ -29,7 +29,13 @@ sima-cli install -v 2.0.0 sdk-extensions/model
 - [scripts/download_modelsdk_wheels.sh](scripts/download_modelsdk_wheels.sh): downloads Python and binary artifacts
 - [scripts/install_modelsdk_wheels.sh](scripts/install_modelsdk_wheels.sh): installs the bundle on a target host
 - [scripts/generate_metadata.py](scripts/generate_metadata.py): generates `metadata.json`
+- [docs/generated/index.md](docs/generated/index.md): generated ModelSDK API reference entrypoint
 - `dist/`: default output directory for built bundles
+
+## API Reference
+
+Generated API reference docs are available under [docs/generated](docs/generated).
+Start with [docs/generated/index.md](docs/generated/index.md), which links to the generated AFE API pages.
 
 ## Manifest Format
 
