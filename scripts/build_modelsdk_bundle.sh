@@ -148,8 +148,9 @@ if isinstance(v, str):
   )"
 fi
 if [[ -n "$PYTHON_VERSION" ]]; then
-  # Accept 3.10 / 3.11 / 3.12 or 310 / 311 / 312; normalize to 310/311/312.
-  PYTHON_VERSION="$(echo "$PYTHON_VERSION" | sed -E 's/^([0-9]+)\.([0-9]+)$/\1\2/')"
+  # Accept 3.10 / 3.11 / 3.12, patch versions like 3.12.3, or 310 / 311 / 312;
+  # normalize to the ABI tag form expected by pip wheel selection.
+  PYTHON_VERSION="$(echo "$PYTHON_VERSION" | sed -E 's/^([0-9]+)\.([0-9]+)(\.[0-9]+)?$/\1\2/')"
 fi
 if [[ -z "$PYTHON_VERSION" ]]; then
   PYTHON_VERSION="312"

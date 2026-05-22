@@ -52,15 +52,15 @@ normalize_python_version() {
   local raw="$1"
   raw="$(echo "$raw" | tr -d '[:space:]')"
   if [[ "$raw" =~ ^[0-9]+\.[0-9]+$ ]]; then
-    echo "$raw"
+    echo "$raw" | sed -E 's/^([0-9]+)\.([0-9]+)$/\1\2/'
     return 0
   fi
   if [[ "$raw" =~ ^[0-9]{3}$ ]]; then
-    echo "${raw:0:1}.${raw:1:2}"
+    echo "$raw"
     return 0
   fi
   if [[ "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "$(echo "$raw" | awk -F. '{print $1"."$2}')"
+    echo "$raw" | awk -F. '{print $1$2}'
     return 0
   fi
   return 1
@@ -214,7 +214,7 @@ try:
             raise SystemExit(0)
 
         metadata_text = contents[metadata_name].decode("utf-8", "replace")
-        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(==)([^;\s]+)(.*)$")
+        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(\s*==\s*)([^;\s]+)(.*)$")
         new_lines = []
         for line in metadata_text.splitlines():
             match = req_re.match(line)
@@ -410,9 +410,7 @@ download_direct_internal_deps_for_wheel() {
     fi
     dep_wheel="$(basename "$DOWNLOADED_WHEEL")"
     patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
-    if [[ ! -f "$dest_dir/$dep_wheel" ]]; then
-      mv "$DOWNLOADED_WHEEL" "$dest_dir/"
-    fi
+    mv -f "$DOWNLOADED_WHEEL" "$dest_dir/"
     rm -rf "$dep_tmp"
   done
 
@@ -446,7 +444,7 @@ resolve_latest_master_spec() {
   local escaped_base="${version_base//./\\.}"
 
   local versions_line=""
-  versions_line="$(python3 -m pip index versions "$pkg_name" "${PIP_INDEX_ARGS[@]}" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
+  versions_line="$(PIP_NO_INPUT=1 python3 -m pip index versions "$pkg_name" "${PIP_INDEX_ARGS[@]}" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
   if [[ -z "$versions_line" ]]; then
     return 1
   fi
@@ -487,8 +485,10 @@ download_one_spec() {
 
   # 1) Try pure-Python wheel first.
   set +e
-  python3 -m pip download \
+  PIP_NO_INPUT=1 python3 -m pip download \
     --disable-pip-version-check \
+    --verbose \
+    --verbose \
     --no-deps \
     --only-binary=:all: \
     "${PIP_INDEX_ARGS[@]}" \
@@ -524,8 +524,10 @@ download_one_spec() {
     x86_log="${tmpdir}/x86-cp${pyv}.log"
 
     set +e
-    python3 -m pip download \
+    PIP_NO_INPUT=1 python3 -m pip download \
       --disable-pip-version-check \
+      --verbose \
+      --verbose \
       --no-deps \
       --only-binary=:all: \
       "${PIP_INDEX_ARGS[@]}" \
@@ -602,6 +604,11 @@ done
 if [[ -z "$INDEX_URL" || -z "$OUTPUT_DIR" ]]; then
   echo "Missing required arguments." >&2
   usage
+  exit 1
+fi
+
+if ! PYTHON_VERSION="$(normalize_python_version "$PYTHON_VERSION")"; then
+  echo "Unsupported python version for wheel selection: '$PYTHON_VERSION'" >&2
   exit 1
 fi
 

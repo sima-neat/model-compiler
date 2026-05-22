@@ -1,14 +1,15 @@
 {
-  "sdk_version": "2.0.0",
-  "python_version": "3.10",
+  "sdk_version": "2.1.0",
+  "python_version": "3.12.3",
   "system_dependencies": {
     "ubuntu": [
       "build-essential",
+      "cmake",
       "curl",
       "libbz2-dev",
       "libffi-dev",
       "libgl1",
-      "libllvm14",
+      "libllvm14t64",
       "liblzma-dev",
       "libopenblas0-pthread",
       "libreadline-dev",
@@ -20,27 +21,34 @@
     ]
   },
   "dependency_overrides": {
-    "numpy": "1.23.5",
+    "numpy": "1.26.4",
+    "matplotlib": "3.10.9",
     "onnx": "1.17.0",
     "onnxruntime": "1.21.1",
     "protobuf": "4.25.7",
     "pytorch-lightning": "2.4.0",
+    "pyyaml": "6.0.3",
     "scipy": "1.14.1",
+    "sima-frontend": "2.1.0.dev0+master.388",
+    "sima-ml-kernels": "2.1.0.dev0+master.42",
     "torch": "2.3.1",
     "torchvision": "0.18.1"
   },
   "python-packages": [
-    { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" },
+    { "name": "sima-frontend", "version": "2.1.0.dev0+master.388" },
     { "name": "swml-qat", "version": "1.0.0.dev0+master.5" },
-    { "name": "mpk_parser", "version": "2.0.0.dev0+master.24" },
-    { "name": "sima-mppe", "version": "2.0.0.dev0+master.19" },
-    { "name": "neural_compressor", "version": "2.0.0.dev0+master.1" },
-    { "name": "sima_lmm[sdk]", "version": "2.0.0.dev0+master.6" }
+    { "name": "mpk_parser", "version": "2.1.0.dev0+master.37" },
+    { "name": "sima-mppe", "version": "2.1.0.dev0+master.24" },
+    { "name": "onnxoptimizer", "version": "0.3.13" },
+    { "name": "pyyaml", "version": "6.0.3" },
+    { "name": "matplotlib", "version": "3.10.9" },
+    { "name": "neural_compressor", "version": "2.0.0.dev0+master.2" },
+    { "name": "sima_lmm[sdk]", "version": "2.1.0.dev0+master.13" }
   ],
   "binary-packages": [
     {
-      "name": "toolchain/mla/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.3-ubuntu",
+      "name": "mla/toolchain/mla-toolchain",
+      "version": "v2.1.3159-master.8-ubuntu",
       "extension": ".zip"
     }
   ]
