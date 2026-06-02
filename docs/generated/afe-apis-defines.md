@@ -45,8 +45,6 @@ Constants:
 - <a id="afe-apis-defines-bt-color-coeff"></a>`BT_COLOR_COEFF` (line 131) [type `Dict[ColorSpaceStandard, List[float]]` ; default/value `{ColorSpaceStandard.BT601: [0.299, 0.587, 0.114, 1.772, 1.402], ColorSpaceStandard.BT709: [0.2126, 0.7152, 0.0722, 1.8556, 1.5748], ColorSpaceStandard.BT2020: [0.2627, 0.678, 0.0593, 1.8814, 1.4747]}`]
 - <a id="afe-apis-defines-yuv2rgb-full-range-constants"></a>`YUV2RGB_FULL_RANGE_CONSTANTS` (line 138) [type `Dict[str, List[float]]` ; default/value `{'offset': [16, 128, 128], 'scale': [255 / 219, 255 / 224, 255 / 224]}`]
 - <a id="afe-apis-defines-default-quantization"></a>`default_quantization` (line 371) [type `QuantizationParams` ; default/value `QuantizationParams(calibration_method=(default_calibration()), activation_quantization_scheme=(quantization_scheme(True, False)), weight_quantization_scheme=(quantization_scheme(False, True)), requantization_mode=(RequantizationMode.sima), node_names={''}, custom_quantization_configs=None)`]
-- <a id="afe-apis-defines-int16-quantization"></a>`int16_quantization` (line 380) [type `QuantizationParams` ; default/value `QuantizationParams(calibration_method=(default_calibration()), activation_quantization_scheme=(quantization_scheme(True, False, 16)), weight_quantization_scheme=(quantization_scheme(False, True)), requantization_mode=(RequantizationMode.sima), node_names={''}, custom_quantization_configs=None)`]
-
 Classes:
 - <a id="afe-apis-defines-exceptionfunctype"></a>`ExceptionFuncType(Enum)` (line 43)
   Enum Members:
