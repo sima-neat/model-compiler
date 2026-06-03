@@ -9,7 +9,7 @@
       "libbz2-dev",
       "libffi-dev",
       "libgl1",
-      "libllvm14t64",
+      "libllvm14",
       "liblzma-dev",
       "libopenblas0-pthread",
       "libreadline-dev",
