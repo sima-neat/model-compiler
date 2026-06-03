@@ -51,5 +51,73 @@
       "version": "v2.1.3159-master.8-ubuntu",
       "extension": ".zip"
     }
-  ]
+  ],
+  "aarch64": {
+    "system_dependencies": {
+      "ubuntu": [
+        "build-essential",
+        "cmake",
+        "curl",
+        "libbz2-dev",
+        "libffi-dev",
+        "libgl1",
+        "libllvm14",
+        "liblzma-dev",
+        "libopenblas0-pthread",
+        "libreadline-dev",
+        "libsqlite3-dev",
+        "libssl-dev",
+        "tk-dev",
+        "xz-utils",
+        "zlib1g-dev"
+      ]
+    },
+    "dependency_overrides": {
+      "numpy": "1.26.4",
+      "matplotlib": "3.10.9",
+      "onnx": "1.17.0",
+      "onnxruntime": "1.21.1",
+      "protobuf": "4.25.7",
+      "pytorch-lightning": "2.4.0",
+      "pyyaml": "6.0.3",
+      "scipy": "1.14.1",
+      "torch": "2.3.1",
+      "torchvision": "0.18.1",
+      "neural-compressor": "2.0.0.dev0+neat.2",
+      "mpk-parser": "2.1.0.dev0+neat.5",
+      "sima-accelerator-mode": "2.1.0.dev0+neat.17",
+      "sima-ev-transforms": "2.1.0.dev0+neat.10",
+      "sima-frontend": "2.1.0.dev0+neat.2",
+      "sima-lmm": "2.1.0.dev0+neat.4",
+      "sima-ml-kernels": "2.1.0.dev0+neat.7",
+      "sima-mlc": "2.1.0.dev0+neat.5",
+      "sima-mppe": "2.1.0.dev0+neat.5",
+      "sima-tvm": "1.4.0.dev0+neat.13",
+      "sima-utils": "2.1.0.dev0+neat.5",
+      "swml-qat": "1.0.0.dev0+neat.3"
+    },
+    "python-packages": [
+      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
+      { "name": "sima_accelerator_mode", "version": "2.1.0.dev0+neat.17" },
+      { "name": "sima_ev_transforms", "version": "2.1.0.dev0+neat.10" },
+      { "name": "sima_mppe", "version": "2.1.0.dev0+neat.5" },
+      { "name": "sima_ml_kernels", "version": "2.1.0.dev0+neat.7" },
+      { "name": "sima_mlc", "version": "2.1.0.dev0+neat.5" },
+      { "name": "sima_tvm", "version": "1.4.0.dev0+neat.13" },
+      { "name": "sima_utils", "version": "2.1.0.dev0+neat.5" },
+      { "name": "neural_compressor", "version": "2.0.0.dev0+neat.2" },
+      { "name": "sima_lmm", "version": "2.1.0.dev0+neat.4" },
+      { "name": "swml_qat", "version": "1.0.0.dev0+neat.3" },
+      { "name": "mpk_parser", "version": "2.1.0.dev0+neat.5" },
+      { "name": "spconv", "version": "2.3.8", "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl" },
+      { "name": "cumm", "version": "0.7.13", "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl" }
+    ],
+    "binary-packages": [
+      {
+        "name": "mla/toolchain/mla-toolchain",
+        "version": "v2.1.3523-neat.4-ubuntu",
+        "extension": ".zip"
+      }
+    ]
+  }
 }

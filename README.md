@@ -69,7 +69,38 @@ Example:
       "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
       "extension": ".zip"
     }
-  ]
+  ],
+  "aarch64": {
+    "system_dependencies": {
+      "ubuntu": [
+        "build-essential",
+        "curl",
+        "libllvm14",
+        "libopenblas0-pthread"
+      ]
+    },
+    "dependency_overrides": {},
+    "python-packages": [
+      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
+      {
+        "name": "spconv",
+        "version": "2.3.8",
+        "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl"
+      },
+      {
+        "name": "cumm",
+        "version": "0.7.13",
+        "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl"
+      }
+    ],
+    "binary-packages": [
+      {
+        "name": "mla/toolchain/mla-toolchain",
+        "version": "v2.1.3523-neat.4-ubuntu",
+        "extension": ".zip"
+      }
+    ]
+  }
 }
 ```
 
@@ -78,8 +109,9 @@ Fields:
 - `python_version`: target interpreter version for the installed venv
 - `system_dependencies.ubuntu`: apt packages installed on the target host before Python/venv setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
-- `python-packages`: top-level Python packages to include in the bundle
+- `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
 - `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the ModelSDK venv
+- `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
 
 ## Building a Bundle
 
@@ -113,6 +145,12 @@ Typical explicit build:
   --output-dir ./dist \
   --index-url https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple \
   --extra-index-url https://pypi.org/simple
+```
+
+Build a bundle for a specific architecture:
+
+```bash
+./scripts/build_modelsdk_bundle.sh --target-arch aarch64
 ```
 
 By default, the metadata version is derived from the exact git checkout. If `HEAD` has a release tag like `v1.0.0`, the generated `metadata.json` uses `1.0.0`; otherwise it falls back to `sdk_version.neat+branch.git-short-hash`. Passing `--bundle-version` overrides this behavior.

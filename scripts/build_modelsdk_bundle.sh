@@ -10,15 +10,17 @@ Usage:
     [--bundle-version sdk_version.neat+branch.git-short-hash] \
     [--output-dir ./dist] \
     [--source-json ./scripts/source.json] \
+    [--target-arch x86_64|aarch64] \
     [--prod]
 
 Description:
   End-to-end helper:
     1) Read python/binary package lists from source.json
-    2) Download wheels (pure first, x86 fallback) and binary artifacts
-    3) Copy installer script into output-dir
-    4) Generate metadata.json for sima-cli distribution
-    5) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
+    2) Clean generated artifacts from output-dir
+    3) Download wheels (pure first, target-arch fallback) and binary artifacts
+    4) Copy installer script into output-dir
+    5) Generate metadata.json for sima-cli distribution
+    6) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
 
 source.json format:
 {
@@ -27,6 +29,11 @@ source.json format:
   "python-packages": [
     { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" }
   ],
+  "aarch64": {
+    "python-packages": [
+      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" }
+    ]
+  },
   "binary-packages": [
     {
       "name": "toolchain/mla/mla-toolchain",
@@ -51,6 +58,7 @@ BOARD_COMPATIBLE="modalix"
 BOARD_VERSION=""
 PYTHON_VERSION=""
 HOST_OS="linux"
+TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
 PROD_MODE="0"
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     --description) DESCRIPTION="${2:-}"; shift 2 ;;
     --host-os) HOST_OS="${2:-}"; shift 2 ;;
     --python-version) PYTHON_VERSION="${2:-}"; shift 2 ;;
+    --target-arch) TARGET_ARCH="${2:-}"; shift 2 ;;
     --prod) PROD_MODE="1"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
@@ -79,6 +88,30 @@ if [[ ! -f "$SOURCE_JSON" ]]; then
   exit 1
 fi
 echo "Using package manifest: $SOURCE_JSON"
+
+normalize_target_arch() {
+  local raw="$1"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    "" )
+      case "$(uname -m 2>/dev/null || echo unknown)" in
+        x86_64|amd64) echo "x86_64" ;;
+        aarch64|arm64) echo "aarch64" ;;
+        *) echo "" ;;
+      esac
+      ;;
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) echo "" ;;
+  esac
+}
+
+TARGET_ARCH="$(normalize_target_arch "$TARGET_ARCH")"
+if [[ -z "$TARGET_ARCH" ]]; then
+  echo "Unable to resolve target architecture. Use --target-arch x86_64 or --target-arch aarch64." >&2
+  exit 1
+fi
+echo "Using target architecture: $TARGET_ARCH"
 
 SDK_VERSION="$(
   python3 -c '
@@ -161,23 +194,47 @@ trap 'rm -f "$spec_file"' EXIT
 python3 -c '
 import json, sys
 path = sys.argv[1]
+target_arch = sys.argv[2]
 with open(path, "r", encoding="utf-8") as f:
     doc = json.load(f)
-items = doc.get("python-packages", doc.get("components", doc))
+arch_doc = doc.get(target_arch)
+if not isinstance(arch_doc, dict):
+    arch_doc = {}
+items = arch_doc.get("python-packages", doc.get("python-packages", doc.get("components", doc)))
 if not isinstance(items, list):
-    raise SystemExit("source json must contain a \"python-packages\" list (or legacy \"components\" list)")
+    raise SystemExit(
+        f"source json must contain a \"python-packages\" list for target architecture {target_arch!r}, "
+        "a top-level \"python-packages\" list, or a legacy \"components\" list"
+    )
 for i, item in enumerate(items):
     if not isinstance(item, dict):
         raise SystemExit(f"component entry at index {i} is not an object")
     name = item.get("name")
     version = item.get("version")
+    url = item.get("url")
+    file = item.get("file")
     if not name or not version:
         raise SystemExit(f"component entry at index {i} requires name and version")
-    print(f"{name}=={version}")
-' "$SOURCE_JSON" > "$spec_file"
+    if isinstance(url, str) and url.strip():
+        print(f"{name} @ {url.strip()}")
+    elif isinstance(file, str) and file.strip():
+        print(f"{name} @ {file.strip()}")
+    else:
+        print(f"{name}=={version}")
+' "$SOURCE_JSON" "$TARGET_ARCH" > "$spec_file"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUTPUT_DIR"
+
+echo "Cleaning generated bundle artifacts from: $OUTPUT_DIR"
+find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
+  -name '*.whl' \
+  -o -name '*.zip' \
+  -o -name 'manifest.txt' \
+  -o -name 'metadata.json' \
+  -o -name 'source.json' \
+  -o -name 'install_modelsdk_wheels.sh' \
+\) -delete
 
 "$SCRIPT_DIR/download_modelsdk_wheels.sh" \
   --sdk-release "$spec_file" \
@@ -185,7 +242,8 @@ mkdir -p "$OUTPUT_DIR"
   --extra-index-url "$EXTRA_INDEX_URL" \
   --output-dir "$OUTPUT_DIR" \
   --source-json "$SOURCE_JSON" \
-  --python-version "$PYTHON_VERSION"
+  --python-version "$PYTHON_VERSION" \
+  --target-arch "$TARGET_ARCH"
 
 cp "$SCRIPT_DIR/install_modelsdk_wheels.sh" "$OUTPUT_DIR/"
 cp "$SOURCE_JSON" "$OUTPUT_DIR/source.json"

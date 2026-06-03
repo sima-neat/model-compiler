@@ -34,22 +34,47 @@ trap cleanup_temp_resources EXIT
 read_source_json_field() {
   local expr="$1"
   python3 -c '
-import json, sys
+import json, os, platform, sys
+
+def normalize_arch(raw):
+    raw = str(raw or "").strip().lower()
+    if raw in {"x86_64", "amd64"}:
+        return "x86_64"
+    if raw in {"aarch64", "arm64"}:
+        return "aarch64"
+    return ""
+
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     doc = json.load(f)
 expr = sys.argv[2]
+target_arch = normalize_arch(
+    os.environ.get("MODELSDK_TARGET_ARCH")
+    or os.environ.get("HOST_ARCH")
+    or platform.machine()
+)
+arch_doc = doc.get(target_arch)
+if not isinstance(arch_doc, dict):
+    arch_doc = {}
+
+def arch_or_top_level(key, default):
+    value = arch_doc.get(key, None)
+    if value is not None:
+        return value
+    return doc.get(key, default)
+
 if expr == "python_version":
     v = doc.get("python_version", "")
     print(v if isinstance(v, str) else "")
 elif expr == "system_dependencies_ubuntu":
-    deps = (((doc.get("system_dependencies") or {}).get("ubuntu")) or [])
+    system_dependencies = arch_or_top_level("system_dependencies", doc.get("system_dependencies") or {})
+    deps = (((system_dependencies or {}).get("ubuntu")) or [])
     if not isinstance(deps, list):
         raise SystemExit(0)
     for item in deps:
         if isinstance(item, str) and item.strip():
             print(item.strip())
 elif expr == "binary_package_archives":
-    items = doc.get("binary-packages", [])
+    items = arch_or_top_level("binary-packages", [])
     if not isinstance(items, list):
         raise SystemExit(0)
     for item in items:
@@ -68,7 +93,7 @@ elif expr == "binary_package_archives":
             base = name.rsplit("/", 1)[-1]
             print(f"{base}-{version}.{archive_type}")
 elif expr == "python_package_specs":
-    items = doc.get("python-packages", doc.get("components", []))
+    items = arch_or_top_level("python-packages", doc.get("components", []))
     if not isinstance(items, list):
         raise SystemExit(0)
     for item in items:
@@ -644,12 +669,19 @@ EOF
 $functions_marker_begin
 _modelsdk_path_without() {
   local remove_path="\$1"
+  local source_path=""
   local entry=""
   local old_ifs="\$IFS"
   local new_path=""
 
+  if [ "\$#" -ge 2 ]; then
+    source_path="\$2"
+  else
+    source_path="\$PATH"
+  fi
+
   IFS=:
-  for entry in \$PATH; do
+  for entry in \$source_path; do
     if [ -n "\$entry" ] && [ "\$entry" != "\$remove_path" ]; then
       if [ -n "\$new_path" ]; then
         new_path="\$new_path:\$entry"
@@ -662,7 +694,27 @@ _modelsdk_path_without() {
   printf '%s\n' "\$new_path"
 }
 
+_modelsdk_site_packages_dir() {
+  find "$modelsdk_dir/lib" -maxdepth 3 -type d -name site-packages 2>/dev/null | head -n 1
+}
+
+_modelsdk_prepend_path_if_dir() {
+  local dir="\$1"
+  local current="\$2"
+  if [ ! -d "\$dir" ]; then
+    printf '%s\n' "\$current"
+    return 0
+  fi
+  current="\$(_modelsdk_path_without "\$dir" "\$current")"
+  if [ -n "\$current" ]; then
+    printf '%s:%s\n' "\$dir" "\$current"
+  else
+    printf '%s\n' "\$dir"
+  fi
+}
+
 activate-model-sdk() {
+  local modelsdk_site_packages=""
   if [ ! -f "$modelsdk_dir/bin/activate" ]; then
     echo "ModelSDK virtual environment not found: $modelsdk_dir" >&2
     return 1
@@ -676,19 +728,50 @@ activate-model-sdk() {
     PATH="$bin_dir"
   fi
   export PATH
+
+  modelsdk_site_packages="\$(_modelsdk_site_packages_dir)"
+  LD_LIBRARY_PATH="\$(_modelsdk_prepend_path_if_dir "$modelsdk_dir/lib" "\${LD_LIBRARY_PATH:-}")"
+  if [ -n "\$modelsdk_site_packages" ]; then
+    LD_LIBRARY_PATH="\$(_modelsdk_prepend_path_if_dir "\$modelsdk_site_packages" "\${LD_LIBRARY_PATH:-}")"
+    LD_LIBRARY_PATH="\$(_modelsdk_prepend_path_if_dir "\$modelsdk_site_packages/tvm" "\${LD_LIBRARY_PATH:-}")"
+    PYTHONPATH="\$(_modelsdk_prepend_path_if_dir "\$modelsdk_site_packages" "\${PYTHONPATH:-}")"
+    export PYTHONPATH
+  fi
+  export LD_LIBRARY_PATH
+
   hash -r 2>/dev/null || true
 }
 
 deactivate-model-sdk() {
+  local modelsdk_site_packages=""
   if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$modelsdk_dir" ]; then
     echo "Active virtual environment is not ModelSDK: \$VIRTUAL_ENV" >&2
     return 1
   fi
+  modelsdk_site_packages="\$(_modelsdk_site_packages_dir)"
   if command -v deactivate >/dev/null 2>&1; then
     deactivate
   fi
   PATH="\$(_modelsdk_path_without "$bin_dir")"
   export PATH
+
+  LD_LIBRARY_PATH="\$(_modelsdk_path_without "$modelsdk_dir/lib" "\${LD_LIBRARY_PATH:-}")"
+  if [ -n "\$modelsdk_site_packages" ]; then
+    LD_LIBRARY_PATH="\$(_modelsdk_path_without "\$modelsdk_site_packages" "\${LD_LIBRARY_PATH:-}")"
+    LD_LIBRARY_PATH="\$(_modelsdk_path_without "\$modelsdk_site_packages/tvm" "\${LD_LIBRARY_PATH:-}")"
+    PYTHONPATH="\$(_modelsdk_path_without "\$modelsdk_site_packages" "\${PYTHONPATH:-}")"
+    if [ -n "\$PYTHONPATH" ]; then
+      export PYTHONPATH
+    else
+      unset PYTHONPATH
+    fi
+  fi
+  if [ -n "\$LD_LIBRARY_PATH" ]; then
+    export LD_LIBRARY_PATH
+  else
+    unset LD_LIBRARY_PATH
+  fi
+
   hash -r 2>/dev/null || true
 }
 $functions_marker_end
