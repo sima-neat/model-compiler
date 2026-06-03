@@ -1,0 +1,371 @@
+[
+    {
+        "operator": "Conv",
+        "constraints": "Stride is in range [1, 31]. Dilation is in range [1, 63].",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": "Y"
+    },
+    {
+        "operator": "ConvTranspose",
+        "constraints": "Dilations are all equal to 1. Is depthwise or number of groups is 1. Stride in range: [1, 2, 4, 8, 16]. If depthwise, stride must be 1 or 2.",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": "Y"
+    },
+    {
+        "operator": "AveragePool",
+        "constraints": "Dilation=1, ceil_mode=False, size<128, count_include_pad=True. If global pool, no size limit.",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "GlobalAveragePool",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "MaxPool",
+        "constraints": "Dilation=1, ceil_mode=False, size<128. If global pool, no size limit.",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "GlobalMaxPool",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Clip",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Relu",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "LeakyRelu",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "PRelu",
+        "constraints": "Constant alpha on channel axis",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Add",
+        "constraints": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Sub",
+        "constraints": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Mul",
+        "constraints": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Div",
+        "constraints": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "ReduceMean",
+        "constraints": "keepdims=True, and reduce axis is spatial dimension only and size less than 128",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Variance",
+        "constraints": "Compute over all spatial dimensions",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": "Y"
+    },
+    {
+        "operator": "Softmax",
+        "constraints": "Over channel axis",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Concat",
+        "constraints": "Not on batch axis",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": "Y"
+    },
+    {
+        "operator": "Slice",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "ArgMax",
+        "constraints": "keepdim=True, and reduce on channel axis",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "InstanceNorm",
+        
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": "Y"
+    },
+    {
+        "operator": "LayerNorm",
+        "constraints": "Over channel axis only",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "RMSNorm",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "LRN",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "MatMul",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Einsum",
+        "constraints": "Einsum equation is a batch matmul",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Resize",
+        "constraints": "coordinate_transformation_mode='tf_crop_and_resize' not supported. If method is 'linear' or 'bilinear', coordinate_transformation_mode must be 'half_pixel', any scaling factor is supported. However, for 8-bit integers any scaling more than 63 may lead to loss in accuracy. If the method is 'nearest neighbor' a power of two scaling factor is supported. Any other method or scaling factor is not supported.",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Sigmoid",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Sqrt",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Rsqrt",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Tanh",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Log",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Log2",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Log10",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Reciprocal",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Exp",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Elu",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Erf",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Gelu",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Swish",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "HardSwish",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "HardSigmoid",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Softplus",
+        "constraints": "",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "",
+        "fived": ""
+    },
+    {
+        "operator": "Transpose",
+        "constraints": "Not involving batch axis",
+        "int8": "Y",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "GridSample",
+        "constraints": "Mode is 'linear' and padding_mode is not 'reflection'.",
+        "int8": "",
+        "int16": "",
+        "bfloat16": "Y",
+        "fived": ""
+    },
+    {
+        "operator": "Pad",
+        "constraints": "Via conversion to average pool. Pad in batch or channel dimension is not supported. Only support 'constant' mode with value 0.",
+        "int8": "Y",
+        "int16": "Y",
+        "bfloat16": "Y",
+        "fived": ""
+    }
+]

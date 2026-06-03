@@ -126,9 +126,7 @@ Functions:
     - `begin`: Begin indices for each dimension.
     - `end`: End indices for each dimension.
     Returns: The slice_transform transformation
-- <a id="afe-apis-transform-sigmoid-transform"></a>`sigmoid_transform(*, save_int16: bool) -> Transform` (line 1115): The sigmoid_transform operation.
-    Parameters:
-    - `save_int16`: Boolean flag to save output as 16-bit fixed point
+- <a id="afe-apis-transform-sigmoid-transform"></a>`sigmoid_transform() -> Transform` (line 1115): The sigmoid_transform operation.
     Returns: The sigmoid_transform transformation
 - <a id="afe-apis-transform-nms-maxpool-transform"></a>`nms_maxpool_transform(*, kernel: int) -> Transform` (line 1157): The nms_maxpool_transform operation.
     Parameters:
