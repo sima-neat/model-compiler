@@ -106,7 +106,7 @@
       { "name": "sima_tvm", "version": "1.4.0.dev0+neat.13" },
       { "name": "sima_utils", "version": "2.1.0.dev0+neat.5" },
       { "name": "neural_compressor", "version": "2.0.0.dev0+neat.2" },
-      { "name": "sima_lmm", "version": "2.1.0.dev0+neat.4" },
+      { "name": "sima_lmm[sdk]", "version": "2.1.0.dev0+neat.4" },
       { "name": "swml_qat", "version": "1.0.0.dev0+neat.3" },
       { "name": "mpk_parser", "version": "2.1.0.dev0+neat.5" },
       { "name": "spconv", "version": "2.3.8", "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl" },
