@@ -1,7 +1,7 @@
 {
   "source_file": "/Users/jimfan/Downloads/Supported Operators.xlsx",
   "schema_version": 3,
-  "release": "2.0",
+  "release": "2.1",
   "operators": {
     "Add": {
       "onnx-opset-version": "14",

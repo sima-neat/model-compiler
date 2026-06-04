@@ -266,6 +266,63 @@ source ~/.bash_profile
 
 Logging out and back in works too.
 
+## Post-Install Smoke Tests
+
+After installing and activating the ModelSDK extension, run the fast smoke test:
+
+```bash
+source ~/sdk-extensions/model-sdk/bin/activate
+python /path/to/model-sdk/scripts/smoke_test_modelsdk.py --tier basic
+```
+
+The `basic` tier is intended for every CI/CD extension-install job. It checks:
+- the active Python is the ModelSDK venv
+- ModelSDK `bin/` is on `PATH`
+- core MLA tools such as `mla-nm`, `mla-size`, `mla-readelf`, and `mla-isim` are runnable
+- `afe-replay-compile`, `onnxsim`, and `llima-compile` entry points are runnable
+- required Python modules including `afe`, `onnx`, `torch`, `sima_lmm`, `gguf`, `llama_cpp`, and `safetensors` are importable
+
+Heavier tiers are available for scheduled or pre-release jobs:
+
+```bash
+# Export a synthetic ResNet50 ONNX model with torchvision.
+python scripts/smoke_test_modelsdk.py --tier resnet-export
+
+# Export or reuse ResNet50, audit it, simplify it, and run quantize-only.
+python scripts/smoke_test_modelsdk.py --tier resnet-quantize
+
+# Same as resnet-quantize, but also runs the compile step.
+python scripts/smoke_test_modelsdk.py --tier resnet-compile
+
+# Download YOLOv8n ONNX, simplify/audit it, and run quantize+compile.
+python scripts/smoke_test_modelsdk.py --tier yolo
+
+# Run all long-form smoke cases and print a final result summary.
+python scripts/smoke_test_modelsdk.py --tier all
+
+# Reuse a cached YOLO ONNX model and optionally verify model-to-pipeline references.
+python scripts/smoke_test_modelsdk.py \
+  --tier yolo \
+  --yolo-model /path/to/yolo.onnx \
+  --model-to-pipeline-dir /path/to/tool-model-to-pipeline
+```
+
+The ONNX operator audit is informational by default. Add `--strict-audit` when
+you want the smoke test to fail on unknown or unsupported operators in the
+bundled support database.
+
+When `--work-dir` is omitted, model tiers create temporary work directories
+under `~/tmp`. If `--work-dir` is supplied, model tiers create a fresh per-run
+subdirectory under that path for intermediate and compiled artifacts. This
+avoids collisions with stale files from previous smoke-test runs.
+If an explicit `--work-dir` exists but is not writable, the runner falls back
+to a per-user sibling such as `~/tmp/modelsdk-smoke-$USER`.
+
+The `all`, `resnet-compile`, and `yolo` tiers also collect lightweight
+compiled-artifact metrics. They report package counts/sizes and run MLA
+toolchain checks such as `mla-size` and `mla-readelf` on ELF files packaged in
+the generated MPK archive when those files are present.
+
 ## Cleanup Behavior
 
 On successful install, the installer removes downloaded bundle resources from the bundle directory, including:
