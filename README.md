@@ -51,7 +51,7 @@ Example:
     "ubuntu": [
       "build-essential",
       "curl",
-      "libllvm14",
+      "libllvm18",
       "libopenblas0-pthread"
     ]
   },
@@ -75,7 +75,7 @@ Example:
       "ubuntu": [
         "build-essential",
         "curl",
-        "libllvm14",
+        "libllvm18",
         "libopenblas0-pthread"
       ]
     },

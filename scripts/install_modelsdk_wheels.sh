@@ -552,9 +552,18 @@ install_system_dependencies() {
 
   echo "Installing required system packages: ${missing[*]}" >&2
   if [[ "$(id -u)" -eq 0 ]]; then
-    installer=(apt-get)
+    installer=(env DEBIAN_FRONTEND=noninteractive apt-get)
   elif command -v sudo >/dev/null 2>&1; then
-    installer=(sudo apt-get)
+    if sudo -n true >/dev/null 2>&1; then
+      installer=(sudo -n env DEBIAN_FRONTEND=noninteractive apt-get)
+    else
+      echo "Missing required system packages: ${missing[*]}" >&2
+      echo "This installer is running without root privileges and sudo is not available without a password prompt." >&2
+      echo "Install them first with:" >&2
+      echo "  sudo apt-get update && sudo apt-get install -y ${missing[*]}" >&2
+      echo "Then rerun this ModelSDK installer." >&2
+      return 1
+    fi
   else
     echo "Missing required system packages: ${missing[*]}" >&2
     echo "Please install them manually and retry." >&2
