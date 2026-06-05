@@ -224,7 +224,8 @@ run_host_build_env() {
   local host_library_path="/lib:/usr/lib"
   local host_cxxflags_value=""
   local host_cmake_args="-DGGML_NATIVE=OFF -DLLAVA_BUILD=OFF"
-  local build_parallel_level="${MODELSDK_BUILD_PARALLEL_LEVEL:-1}"
+  local build_parallel_level="${MODELSDK_BUILD_PARALLEL_LEVEL:-}"
+  local build_parallel_env=()
 
   host_multiarch="$(host_multiarch_triplet)"
   if [[ -n "$host_multiarch" ]]; then
@@ -233,6 +234,13 @@ run_host_build_env() {
     host_library_path="/lib/${host_multiarch}:/usr/lib/${host_multiarch}:${host_library_path}"
   fi
   host_cxxflags_value="$(host_cxxflags)"
+  if [[ -n "$build_parallel_level" ]]; then
+    build_parallel_env=(
+      "CMAKE_BUILD_PARALLEL_LEVEL=$build_parallel_level"
+      "MAKEFLAGS=-j${build_parallel_level}"
+      "NINJAFLAGS=-j${build_parallel_level}"
+    )
+  fi
 
   env \
     -u CC \
@@ -297,10 +305,8 @@ run_host_build_env() {
     PKG_CONFIG_SYSTEM_INCLUDE_PATH="$host_include_path" \
     PKG_CONFIG_SYSTEM_LIBRARY_PATH="$host_library_path" \
     CMAKE_ARGS="$host_cmake_args" \
-    CMAKE_BUILD_PARALLEL_LEVEL="$build_parallel_level" \
     CXXFLAGS="$host_cxxflags_value" \
-    MAKEFLAGS="-j${build_parallel_level}" \
-    NINJAFLAGS="-j${build_parallel_level}" \
+    "${build_parallel_env[@]}" \
     CC=gcc \
     CXX=g++ \
     CPP="gcc -E" \

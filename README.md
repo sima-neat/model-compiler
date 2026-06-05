@@ -114,9 +114,9 @@ Fields:
 - `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
 
 Native source builds triggered during installation, such as
-`llama_cpp_python`, default to one build job for reliability in constrained SDK
-containers. Set `MODELSDK_BUILD_PARALLEL_LEVEL` to raise the parallelism when
-building on a machine with enough memory.
+`llama_cpp_python`, use the build backend's default parallelism. Set
+`MODELSDK_BUILD_PARALLEL_LEVEL` to limit or override build parallelism on
+resource-constrained machines.
 
 ## Building a Bundle
 
