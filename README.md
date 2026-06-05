@@ -113,6 +113,11 @@ Fields:
 - `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the ModelSDK venv
 - `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
 
+Native source builds triggered during installation, such as
+`llama_cpp_python`, default to one build job for reliability in constrained SDK
+containers. Set `MODELSDK_BUILD_PARALLEL_LEVEL` to raise the parallelism when
+building on a machine with enough memory.
+
 ## Building a Bundle
 
 Before building, configure `~/.netrc` with credentials for `artifacts.eng.sima.ai`. The bundle build downloads internal wheels and binary artifacts from Artifactory, so valid access tokens are required.
