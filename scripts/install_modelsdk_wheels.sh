@@ -708,6 +708,29 @@ PY
   rm -f "$block_file"
 }
 
+ensure_bashrc_sourced_from_profile() {
+  local bashrc="$1"
+  local bash_profile="$2"
+
+  [[ -f "$bashrc" ]] || return 0
+
+  if [[ -f "$bash_profile" ]]; then
+    if grep -Eq '(^|[[:space:]])(\.|source)[[:space:]]+("?\$HOME"?/|~/)?\.bashrc' "$bash_profile" 2>/dev/null; then
+      return 0
+    fi
+  elif [[ -f "${HOME}/.profile" ]]; then
+    return 0
+  fi
+
+  touch "$bash_profile"
+  cat >> "$bash_profile" <<'EOF'
+
+if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+EOF
+}
+
 configure_shell_path() {
   local modelsdk_dir="$1"
   local bin_dir="$2"
@@ -726,6 +749,7 @@ configure_shell_path() {
   fi
 
   touch "$target_file"
+  ensure_bashrc_sourced_from_profile "$bashrc" "$bash_profile"
 
   write_managed_shell_block "$target_file" "$marker_begin" "$marker_end" <<EOF
 $marker_begin
