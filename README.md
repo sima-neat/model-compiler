@@ -234,16 +234,16 @@ The installer will:
 
 The installer creates the ModelSDK venv in one of these locations:
 
-- `/sdk-extensions/model-sdk/model-sdk-venv` if `/sdk-extensions` exists and is writable
-- `/sdk-add-on/model-sdk/model-sdk-venv` as a backward-compatible fallback
-- `~/sdk-extensions/model-sdk/model-sdk-venv` otherwise
+- `/sdk-extensions/model-sdk` if `/sdk-extensions` exists and is writable
+- `/sdk-add-on/model-sdk` as a backward-compatible fallback
+- `~/sdk-extensions/model-sdk` otherwise
 
 Binary package contents such as the MLA toolchain are installed into that same venv under:
 - `bin/`
 - `include/`
 - `lib/`
 
-The installer also restores executable permissions for binaries copied into `model-sdk-venv/bin`.
+The installer also restores executable permissions for binaries copied into `model-sdk/bin`.
 
 ## Shell Environment Updates
 
