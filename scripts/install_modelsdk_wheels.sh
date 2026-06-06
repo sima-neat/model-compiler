@@ -559,6 +559,16 @@ PY
     echo "Installing binary package archive into ${target_root}: $archive" >&2
     mkdir -p "${target_root}/bin" "${target_root}/include" "${target_root}/lib"
     if [[ -d "$extract_root/bin" ]]; then
+      rm -f \
+        "$extract_root/bin/python" \
+        "$extract_root/bin/python3" \
+        "$extract_root/bin"/python3.* \
+        "$extract_root/bin/pip" \
+        "$extract_root/bin/pip3" \
+        "$extract_root/bin"/pip3.* \
+        "$extract_root/bin/activate" \
+        "$extract_root/bin"/activate.* \
+        "$extract_root/bin/Activate.ps1"
       cp -a "$extract_root/bin/." "${target_root}/bin/"
       find "${target_root}/bin" -maxdepth 1 -type f -exec chmod a+rx {} +
     fi
@@ -571,6 +581,24 @@ PY
 
     rm -rf "$tmpdir"
   done
+}
+
+validate_venv_python() {
+  local venv_dir="$1"
+  local python_bin="${venv_dir}/bin/python"
+  if [[ ! -x "$python_bin" ]]; then
+    echo "Virtual environment Python is missing or not executable: $python_bin" >&2
+    echo "The ModelSDK venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
+    return 1
+  fi
+  if ! "$python_bin" - <<'PY' >/dev/null
+import sys
+raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)
+PY
+  then
+    echo "Python at $python_bin does not appear to be running from a virtual environment." >&2
+    return 1
+  fi
 }
 
 write_managed_shell_block() {
@@ -813,8 +841,14 @@ MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
 VENV_DIR="$MODELSDK_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 "$PYTHON_CMD" -m venv "$VENV_DIR"
+if ! validate_venv_python "$VENV_DIR"; then
+  exit 1
+fi
 
 if ! install_binary_packages "$VENV_DIR"; then
+  exit 1
+fi
+if ! validate_venv_python "$VENV_DIR"; then
   exit 1
 fi
 
