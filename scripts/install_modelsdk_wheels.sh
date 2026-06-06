@@ -840,7 +840,10 @@ fi
 MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
 VENV_DIR="$MODELSDK_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
-"$PYTHON_CMD" -m venv "$VENV_DIR"
+# Reinstall into the fixed extension path. Python's venv module can leave a
+# stale broken interpreter untouched when the directory already exists, so clear
+# the target first to make retries after failed installs deterministic.
+"$PYTHON_CMD" -m venv --clear "$VENV_DIR"
 if ! validate_venv_python "$VENV_DIR"; then
   exit 1
 fi
