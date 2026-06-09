@@ -672,6 +672,24 @@ PY
   fi
 }
 
+reset_venv_dir() {
+  local venv_dir="$1"
+
+  case "$venv_dir" in
+    /sdk-extensions/model-sdk|/sdk-add-on/model-sdk|"$HOME"/sdk-extensions/model-sdk)
+      ;;
+    *)
+      echo "Refusing to reset unexpected Model Compiler venv path: $venv_dir" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ -e "$venv_dir" || -L "$venv_dir" ]]; then
+    echo "Removing existing Model Compiler virtual environment at: $venv_dir"
+    rm -rf "$venv_dir"
+  fi
+}
+
 write_managed_shell_block() {
   local target_file="$1"
   local marker_begin="$2"
@@ -990,13 +1008,16 @@ else
   mkdir -p "$EXTENSIONS_DIR"
 fi
 
-MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
-VENV_DIR="$MODELSDK_DIR"
+MODEL_COMPILER_DIR="${EXTENSIONS_DIR}/model-sdk"
+VENV_DIR="$MODEL_COMPILER_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 # Reinstall into the fixed extension path. Python's venv module can leave a
-# stale broken interpreter untouched when the directory already exists, so clear
+# stale broken interpreter untouched when the directory already exists, so reset
 # the target first to make retries after failed installs deterministic.
-"$PYTHON_CMD" -m venv --clear "$VENV_DIR"
+if ! reset_venv_dir "$VENV_DIR"; then
+  exit 1
+fi
+"$PYTHON_CMD" -m venv "$VENV_DIR"
 if ! validate_venv_python "$VENV_DIR"; then
   exit 1
 fi
@@ -1030,6 +1051,6 @@ else
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${MANIFEST_LINK_WHEELS[@]}"
 fi
 
-configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
+configure_shell_path "$MODEL_COMPILER_DIR" "$VENV_DIR/bin"
 cleanup_downloaded_resources
 echo "Model Compiler wheel installation complete in $VENV_DIR."

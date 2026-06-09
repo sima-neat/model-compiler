@@ -68,6 +68,7 @@ cleanup_temp_dirs() {
   for temp_dir in "${TEMP_DIRS[@]}"; do
     [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
   done
+  return 0
 }
 
 register_temp_dir() {
