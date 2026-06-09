@@ -24,7 +24,7 @@ This skill generalizes the model surgery approach into one repeatable workflow:
 - If target is unspecified, assume `Modalix` and run both `int8` and `bfloat16` audits.
 
 ## Prerequisites
-- Activate ModelSDK environment:
+- Activate Model Compiler environment:
 ```bash
 activate-model-sdk
 ```

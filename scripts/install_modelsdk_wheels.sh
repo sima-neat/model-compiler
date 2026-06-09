@@ -588,7 +588,7 @@ validate_venv_python() {
   local python_bin="${venv_dir}/bin/python"
   if [[ ! -x "$python_bin" ]]; then
     echo "Virtual environment Python is missing or not executable: $python_bin" >&2
-    echo "The ModelSDK venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
+    echo "The Model Compiler venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
     return 1
   fi
   if ! "$python_bin" - <<'PY' >/dev/null
@@ -608,13 +608,13 @@ reset_venv_dir() {
     /sdk-extensions/model-sdk|/sdk-add-on/model-sdk|"$HOME"/sdk-extensions/model-sdk)
       ;;
     *)
-      echo "Refusing to reset unexpected ModelSDK venv path: $venv_dir" >&2
+      echo "Refusing to reset unexpected Model Compiler venv path: $venv_dir" >&2
       return 1
       ;;
   esac
 
   if [[ -e "$venv_dir" || -L "$venv_dir" ]]; then
-    echo "Removing existing ModelSDK virtual environment at: $venv_dir"
+    echo "Removing existing Model Compiler virtual environment at: $venv_dir"
     rm -rf "$venv_dir"
   fi
 }
@@ -700,7 +700,7 @@ configure_shell_path() {
 
   write_managed_shell_block "$target_file" "$marker_begin" "$marker_end" <<EOF
 $marker_begin
-# ModelSDK PATH is managed by activate-model-sdk and deactivate-model-sdk.
+# Model Compiler PATH is managed by activate-model-sdk and deactivate-model-sdk.
 $marker_end
 EOF
 
@@ -734,7 +734,7 @@ _modelsdk_path_without() {
 
 activate-model-sdk() {
   if [ ! -f "$modelsdk_dir/bin/activate" ]; then
-    echo "ModelSDK virtual environment not found: $modelsdk_dir" >&2
+    echo "Model Compiler virtual environment not found: $modelsdk_dir" >&2
     return 1
   fi
   PATH="\$(_modelsdk_path_without "$bin_dir")"
@@ -751,7 +751,7 @@ activate-model-sdk() {
 
 deactivate-model-sdk() {
   if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$modelsdk_dir" ]; then
-    echo "Active virtual environment is not ModelSDK: \$VIRTUAL_ENV" >&2
+    echo "Active virtual environment is not Model Compiler: \$VIRTUAL_ENV" >&2
     return 1
   fi
   if command -v deactivate >/dev/null 2>&1; then
@@ -841,7 +841,7 @@ HOST_OS_RAW="$(uname -s 2>/dev/null || echo unknown)"
 HOST_OS="$(printf '%s' "$HOST_OS_RAW" | tr '[:upper:]' '[:lower:]')"
 if [[ "$HOST_OS" != "linux" ]]; then
   echo "Unsupported host operating system: $HOST_OS_RAW" >&2
-  echo "This ModelSDK bundle installer currently supports Linux hosts only." >&2
+  echo "This Model Compiler bundle installer currently supports Linux hosts only." >&2
   echo "Detected host details: os=$HOST_OS_RAW arch=$(uname -m 2>/dev/null || echo unknown)" >&2
   exit 1
 fi
@@ -879,8 +879,8 @@ else
   mkdir -p "$EXTENSIONS_DIR"
 fi
 
-MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
-VENV_DIR="$MODELSDK_DIR"
+MODEL_COMPILER_DIR="${EXTENSIONS_DIR}/model-sdk"
+VENV_DIR="$MODEL_COMPILER_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
 # Reinstall into the fixed extension path. Python's venv module can leave a
 # stale broken interpreter untouched when the directory already exists, so reset
@@ -922,6 +922,6 @@ else
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${MANIFEST_LINK_WHEELS[@]}"
 fi
 
-configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
+configure_shell_path "$MODEL_COMPILER_DIR" "$VENV_DIR/bin"
 cleanup_downloaded_resources
-echo "ModelSDK wheel installation complete in $VENV_DIR."
+echo "Model Compiler wheel installation complete in $VENV_DIR."
