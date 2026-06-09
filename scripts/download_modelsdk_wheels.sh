@@ -41,12 +41,31 @@ declare -a SUMMARY_RESOLVED=()
 declare -a SUMMARY_WHEEL=()
 declare -a BINARY_ARTIFACTS=()
 declare -a PIP_INDEX_ARGS=()
+declare -a TEMP_DIRS=()
 declare -a X86_PLATFORM_ARGS=(
   --platform manylinux_2_28_x86_64
   --platform manylinux_2_27_x86_64
   --platform manylinux2014_x86_64
   --platform linux_x86_64
 )
+
+cleanup_temp_dirs() {
+  local temp_dir=""
+  if [[ ${#TEMP_DIRS[@]} -eq 0 ]]; then
+    return 0
+  fi
+  for temp_dir in "${TEMP_DIRS[@]}"; do
+    [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
+  done
+  return 0
+}
+
+register_temp_dir() {
+  local temp_dir="$1"
+  TEMP_DIRS+=("$temp_dir")
+}
+
+trap cleanup_temp_dirs EXIT
 
 normalize_python_version() {
   local raw="$1"
@@ -468,6 +487,7 @@ download_direct_internal_deps_for_wheel() {
 
   for dep_spec in "${dep_specs[@]}"; do
     dep_tmp="$(mktemp -d "${tmpdir}/dep.XXXXXX")"
+    register_temp_dir "$dep_tmp"
     if ! download_one_spec "$dep_spec" "$dep_tmp"; then
       if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
         cat "$DOWNLOAD_ERROR_LOG" >&2
@@ -714,6 +734,7 @@ echo "Found ${#SPECS[@]} python package spec(s)."
 if [[ ${#SPECS[@]} -gt 0 ]]; then
   for requested_spec in "${SPECS[@]}"; do
     tmpdir="$(mktemp -d)"
+    register_temp_dir "$tmpdir"
     resolved_spec="$requested_spec"
     echo "Downloading wheel for: $requested_spec"
 
@@ -723,6 +744,7 @@ if [[ ${#SPECS[@]} -gt 0 ]]; then
         echo "  Exact version not found. Trying latest compatible master build: $candidate_spec"
         rm -rf "$tmpdir"
         tmpdir="$(mktemp -d)"
+        register_temp_dir "$tmpdir"
         if download_one_spec "$candidate_spec" "$tmpdir"; then
           resolved_spec="$candidate_spec"
         else
@@ -796,6 +818,7 @@ done
 if [[ ${#SUMMARY_WHEEL[@]} -gt 0 ]]; then
   echo "Downloading direct internal dependency wheels for resolved package set..."
   dep_tmp="$(mktemp -d)"
+  register_temp_dir "$dep_tmp"
   for top_wheel in "${SUMMARY_WHEEL[@]}"; do
     wheel_path="$OUTPUT_DIR/$top_wheel"
     if [[ ! -f "$wheel_path" ]]; then

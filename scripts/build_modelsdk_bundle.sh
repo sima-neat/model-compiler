@@ -155,8 +155,9 @@ if [[ -z "$PYTHON_VERSION" ]]; then
   PYTHON_VERSION="312"
 fi
 
-spec_file="$(mktemp)"
-trap 'rm -f "$spec_file"' EXIT
+build_tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$build_tmp_dir"' EXIT
+spec_file="${build_tmp_dir}/sdk-release.txt"
 python3 -c '
 import json, sys
 path = sys.argv[1]
