@@ -571,7 +571,7 @@ install_system_dependencies() {
       echo "This installer is running without root privileges and sudo is not available without a password prompt." >&2
       echo "Install them first with:" >&2
       echo "  sudo apt-get update && sudo apt-get install -y ${missing[*]}" >&2
-      echo "Then rerun this ModelSDK installer." >&2
+      echo "Then rerun this Model Compiler installer." >&2
       return 1
     fi
   else
@@ -659,7 +659,7 @@ validate_venv_python() {
   local python_bin="${venv_dir}/bin/python"
   if [[ ! -x "$python_bin" ]]; then
     echo "Virtual environment Python is missing or not executable: $python_bin" >&2
-    echo "The ModelSDK venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
+    echo "The Model Compiler venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
     return 1
   fi
   if ! "$python_bin" - <<'PY' >/dev/null
@@ -753,7 +753,7 @@ configure_shell_path() {
 
   write_managed_shell_block "$target_file" "$marker_begin" "$marker_end" <<EOF
 $marker_begin
-# ModelSDK PATH is managed by activate-model-sdk and deactivate-model-sdk.
+# Model Compiler PATH is managed by activate-model-sdk and deactivate-model-sdk.
 $marker_end
 EOF
 
@@ -814,7 +814,7 @@ _modelsdk_prepend_path_if_dir() {
 activate-model-sdk() {
   local modelsdk_site_packages=""
   if [ ! -f "$modelsdk_dir/bin/activate" ]; then
-    echo "ModelSDK virtual environment not found: $modelsdk_dir" >&2
+    echo "Model Compiler virtual environment not found: $modelsdk_dir" >&2
     return 1
   fi
   PATH="\$(_modelsdk_path_without "$bin_dir")"
@@ -843,7 +843,7 @@ activate-model-sdk() {
 deactivate-model-sdk() {
   local modelsdk_site_packages=""
   if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$modelsdk_dir" ]; then
-    echo "Active virtual environment is not ModelSDK: \$VIRTUAL_ENV" >&2
+    echo "Active virtual environment is not Model Compiler: \$VIRTUAL_ENV" >&2
     return 1
   fi
   modelsdk_site_packages="\$(_modelsdk_site_packages_dir)"
@@ -952,7 +952,7 @@ HOST_OS_RAW="$(uname -s 2>/dev/null || echo unknown)"
 HOST_OS="$(printf '%s' "$HOST_OS_RAW" | tr '[:upper:]' '[:lower:]')"
 if [[ "$HOST_OS" != "linux" ]]; then
   echo "Unsupported host operating system: $HOST_OS_RAW" >&2
-  echo "This ModelSDK bundle installer currently supports Linux hosts only." >&2
+  echo "This Model Compiler bundle installer currently supports Linux hosts only." >&2
   echo "Detected host details: os=$HOST_OS_RAW arch=$(uname -m 2>/dev/null || echo unknown)" >&2
   exit 1
 fi
@@ -1032,4 +1032,4 @@ fi
 
 configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
 cleanup_downloaded_resources
-echo "ModelSDK wheel installation complete in $VENV_DIR."
+echo "Model Compiler wheel installation complete in $VENV_DIR."

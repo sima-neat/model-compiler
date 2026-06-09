@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-install smoke tests for the ModelSDK extension."""
+"""Post-install smoke tests for the Model Compiler extension."""
 
 from __future__ import annotations
 
@@ -162,7 +162,7 @@ def require_active_modelsdk() -> None:
     bin_dir = prefix / "bin"
     if not (bin_dir / "activate").exists():
         raise SmokeFailure(
-            f"{sys.executable} does not look like the ModelSDK venv Python. "
+            f"{sys.executable} does not look like the Model Compiler venv Python. "
             "Activate the extension first, for example: source ~/sdk-extensions/model-sdk/bin/activate"
         )
     if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
@@ -475,7 +475,7 @@ def smoke_all(args: argparse.Namespace) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Smoke-test a ModelSDK extension installation")
+    parser = argparse.ArgumentParser(description="Smoke-test a Model Compiler extension installation")
     parser.add_argument(
         "--tier",
         choices=["basic", "resnet-export", "resnet-quantize", "resnet-compile", "yolo", "all"],

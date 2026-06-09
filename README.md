@@ -1,22 +1,22 @@
-# ModelSDK Bundle Builder
+# Model Compiler Bundle Builder
 
-This repository builds a distributable ModelSDK bundle for `sima-cli`.
+This repository builds a distributable Model Compiler bundle for `sima-cli`.
 
 The bundle contains:
-- curated Python wheels for the ModelSDK package set
+- curated Python wheels for the Model Compiler package set
 - direct internal wheel dependencies needed by those packages
 - binary package artifacts such as the MLA toolchain
 - an installer script for the target host
 - generated `metadata.json` for `sima-cli`
 
-The main goal is to reproduce a working ModelSDK installation outside the container with a predictable package set and a self-contained extension layout.
+The main goal is to reproduce a working Model Compiler installation outside the container with a predictable package set and a self-contained extension layout.
 
 ## Installation
 
 First install and authenticate `sima-cli`. See the
 [sima-cli documentation](https://docs.sima.ai/pages/sima_cli/main.html) for setup instructions.
 
-Then install ModelSDK inside the Neat SDK or on an Ubuntu 22.04/24.04 host with:
+Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04 host with:
 
 ```bash
 sima-cli install -v 2.0.0 sdk-extensions/model
@@ -29,7 +29,7 @@ sima-cli install -v 2.0.0 sdk-extensions/model
 - [scripts/download_modelsdk_wheels.sh](scripts/download_modelsdk_wheels.sh): downloads Python and binary artifacts
 - [scripts/install_modelsdk_wheels.sh](scripts/install_modelsdk_wheels.sh): installs the bundle on a target host
 - [scripts/generate_metadata.py](scripts/generate_metadata.py): generates `metadata.json`
-- [docs/generated/index.md](docs/generated/index.md): generated ModelSDK API reference entrypoint
+- [docs/generated/index.md](docs/generated/index.md): generated Model Compiler API reference entrypoint
 - `dist/`: default output directory for built bundles
 
 ## API Reference
@@ -65,7 +65,7 @@ Example:
   ],
   "binary-packages": [
     {
-      "name": "toolchain/mla/mla-toolchain",
+      "name": "mla/toolchain/mla-toolchain",
       "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
       "extension": ".zip"
     }
@@ -110,7 +110,7 @@ Fields:
 - `system_dependencies.ubuntu`: apt packages installed on the target host before Python/venv setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
 - `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
-- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the ModelSDK venv
+- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler venv
 - `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
 
 Native source builds triggered during installation, such as
@@ -196,7 +196,7 @@ sima-cli install -m http://<ip>:8000/metadata.json
 
 Replace `<ip>` with the IP address of the machine serving the `dist/` directory.
 
-This lets you validate local ModelSDK bundle changes end-to-end using a local metadata source.
+This lets you validate local Model Compiler bundle changes end-to-end using a local metadata source.
 
 ## Authentication and Package Sources
 
@@ -223,31 +223,34 @@ The installer will:
 1. Read `source.json`
 2. Install required Ubuntu system packages from `system_dependencies.ubuntu`
 3. Find or install the required Python version, using `pyenv` if necessary
-4. Read `manifest.txt` to identify the bundled ModelSDK wheels
-5. Create a ModelSDK virtual environment
+4. Read `manifest.txt` to identify the bundled Model Compiler wheels
+5. Create a Model Compiler virtual environment
 6. Install bundled binary packages into that venv
 7. Install top-level package specs from `python-packages` (including extras like `sima_lmm[sdk]`), using only manifest-listed wheels as local `--find-links` inputs and PyPI as fallback when needed
-8. Update shell startup files with the ModelSDK venv `PATH`
+8. Update shell startup files with the Model Compiler venv `PATH`
 9. Remove downloaded bundle payloads after successful installation
 
 ## Install Location
 
-The installer creates the ModelSDK venv in one of these locations:
+The installer creates the Model Compiler venv in one of these locations:
 
 - `/sdk-extensions/model-sdk` if `/sdk-extensions` exists and is writable
 - `/sdk-add-on/model-sdk` as a backward-compatible fallback
 - `~/sdk-extensions/model-sdk` otherwise
 
-Binary package contents such as the MLA toolchain are installed into that same venv under:
+Binary package contents are installed into that same venv under:
 - `bin/`
 - `include/`
 - `lib/`
+
+The downloaded MLA toolchain zip is sanitized during bundle creation so only
+its `bin/` payload is preserved.
 
 The installer also restores executable permissions for binaries copied into `model-sdk/bin`.
 
 ## Shell Environment Updates
 
-The installer adds ModelSDK environment setup to:
+The installer adds Model Compiler environment setup to:
 - `~/.bashrc` when it exists, otherwise
 - `~/.bash_profile`
 
@@ -273,7 +276,7 @@ Logging out and back in works too.
 
 ## Post-Install Smoke Tests
 
-After installing and activating the ModelSDK extension, run the fast smoke test:
+After installing and activating the Model Compiler extension, run the fast smoke test:
 
 ```bash
 source ~/sdk-extensions/model-sdk/bin/activate
@@ -281,8 +284,8 @@ python /path/to/model-sdk/scripts/smoke_test_modelsdk.py --tier basic
 ```
 
 The `basic` tier is intended for every CI/CD extension-install job. It checks:
-- the active Python is the ModelSDK venv
-- ModelSDK `bin/` is on `PATH`
+- the active Python is the Model Compiler venv
+- Model Compiler `bin/` is on `PATH`
 - core MLA tools such as `mla-nm`, `mla-size`, `mla-readelf`, and `mla-isim` are runnable
 - `afe-replay-compile`, `onnxsim`, and `llima-compile` entry points are runnable
 - required Python modules including `afe`, `onnx`, `torch`, `sima_lmm`, `gguf`, `llama_cpp`, and `safetensors` are importable
@@ -343,7 +346,7 @@ It keeps the installer and metadata files such as:
 
 ## Notes and Troubleshooting
 
-- If a sample or test script fails with missing Python modules, first confirm it is using the installed ModelSDK venv and not a separate local `.env`.
+- If a sample or test script fails with missing Python modules, first confirm it is using the installed Model Compiler venv and not a separate local `.env`.
 - If a compiled package fails at runtime with missing shared libraries, check that:
   - the required Ubuntu packages from `system_dependencies.ubuntu` were installed
 - If GitHub push fails from an automated environment, verify that the git remote has usable credentials.
@@ -363,7 +366,7 @@ python3 ./scripts/generate_metadata.py \
 ## Status
 
 This repository currently focuses on:
-- curated host-side ModelSDK installation
+- curated host-side Model Compiler installation
 - binary package inclusion for the MLA toolchain
 - `sima-cli`-style bundle metadata generation
 

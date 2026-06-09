@@ -25,7 +25,7 @@ import onnx
 from onnxsim import simplify
 import dataclasses
 
-# SiMa Model SDK Imports
+# SiMa Model Compiler Imports
 from afe.apis.defines import (
     default_quantization, quantization_scheme,
     RequantizationMode, CalibrationMethod, gen2_target,gen1_target, bfloat16_scheme,
@@ -113,7 +113,7 @@ class ModelProcessor:
         
         enable_verbose_error_messages()
         logger.info(DIVIDER)
-        logger.info(f"Model SDK Version: {get_model_sdk_version()}")
+        logger.info(f"Model Compiler Version: {get_model_sdk_version()}")
         logger.info(f"Python Version: {sys.version.split()[0]}")
         logger.info(f"Output Directory: {self.output_path}")
         logger.info(DIVIDER)

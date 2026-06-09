@@ -13,7 +13,7 @@ Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compil
 - You want a default, repeatable flow for Codex or Claude agents.
 
 ## Prerequisites
-- you must activate the ModelSDK virtual environment first:
+- you must activate the Model Compiler virtual environment first:
 ```bash
 activate-model-sdk
 ```

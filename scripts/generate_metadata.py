@@ -23,12 +23,12 @@ def main() -> int:
     )
     p.add_argument("--artifacts-dir", required=True, help="Directory containing bundle artifacts.")
     p.add_argument("--output", required=True, help="Path for generated metadata.json.")
-    p.add_argument("--name", default="sima-neat-model-sdk")
+    p.add_argument("--name", default="sima-neat-model-compiler")
     p.add_argument("--version", required=True)
     p.add_argument("--release", default="stable")
     p.add_argument(
         "--description",
-        default="SiMa.ai NEAT Model SDK",
+        default="SiMa.ai NEAT Model Compiler",
     )
     p.add_argument(
         "--host-os",
@@ -111,7 +111,7 @@ def main() -> int:
         "installation": {
             "script": f"bash ./{installer.name}",
             "post-message": (
-                "[bold green]Successfully installed ModelSDK.[/bold green]\n\n"
+                "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
                 "[bold]Virtual environment location:[/bold]\n"
                 "The installer creates the venv at "
                 "[green]/sdk-extensions/model-sdk[/green] when writable, "

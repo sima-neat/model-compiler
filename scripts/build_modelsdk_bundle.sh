@@ -36,7 +36,7 @@ source.json format:
   },
   "binary-packages": [
     {
-      "name": "toolchain/mla/mla-toolchain",
+      "name": "mla/toolchain/mla-toolchain",
       "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
       "extension": ".zip"
     }
@@ -51,9 +51,9 @@ EXTRA_INDEX_URL="https://pypi.org/simple"
 BUNDLE_VERSION="sdk_version.neat+branch.git-short-hash"
 BUNDLE_VERSION_EXPLICIT="0"
 OUTPUT_DIR="./dist"
-NAME="sima-neat-model-sdk"
+NAME="sima-neat-model-compiler"
 RELEASE="stable"
-DESCRIPTION="SiMa.ai NEAT Model SDK"
+DESCRIPTION="SiMa.ai NEAT Model Compiler"
 BOARD_COMPATIBLE="modalix"
 BOARD_VERSION=""
 PYTHON_VERSION=""
@@ -189,8 +189,9 @@ if [[ -z "$PYTHON_VERSION" ]]; then
   PYTHON_VERSION="312"
 fi
 
-spec_file="$(mktemp)"
-trap 'rm -f "$spec_file"' EXIT
+build_tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$build_tmp_dir"' EXIT
+spec_file="${build_tmp_dir}/sdk-release.txt"
 python3 -c '
 import json, sys
 path = sys.argv[1]
