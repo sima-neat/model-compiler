@@ -29,7 +29,7 @@ source.json format:
   ],
   "binary-packages": [
     {
-      "name": "toolchain/mla/mla-toolchain",
+      "name": "mla/toolchain/mla-toolchain",
       "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
       "extension": ".zip"
     }
