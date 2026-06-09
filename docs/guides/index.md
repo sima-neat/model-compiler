@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Compile Your Model
 
-The **Model SDK** is the SiMa.ai toolchain that turns a trained model into an
+The **Model Compiler** is the SiMa.ai toolchain that turns a trained model into an
 artifact the Neat runtime can execute on the MLSoC. It exposes the `afe` Python
 package, which you use to **import** a model, **quantize** it to a
 lower-precision data type the accelerator runs efficiently, **simulate** it to
