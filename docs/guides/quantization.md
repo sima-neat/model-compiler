@@ -16,6 +16,13 @@ convolution and pooling run on the MLA. The quantizer partitions the graph
 across compute units automatically and **only the parts that run on the MLA are
 quantized**.
 
+:::note Quantization-aware training (QAT)
+This page covers post-training quantization (PTQ). Quantization-aware training
+will be documented in the dedicated QAT repository.
+
+> **TODO(timothydo):** Link to the future QAT repo once it is published.
+:::
+
 ## Default quantization
 
 `default_quantization` is a baseline configuration that quantizes a model the
@@ -65,7 +72,7 @@ quant_model = loaded_net.quantize(
 BFloat16 quantization is available on **Modalix** (developer preview). Build a
 BF16 scheme with `bfloat16_scheme()` and apply it to activations and/or weights
 via `QuantizationParams.with_activation_quantization` /
-`with_weight_quantization`. See [Supported Operators](./supported-operators.md)
+`with_weight_quantization`. See [Model compatibility](./model-compatibility.md)
 for per-operator BF16 support.
 
 ## Calibration methods
