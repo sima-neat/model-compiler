@@ -1,6 +1,6 @@
 ---
 title: Quantization
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 # Quantization
@@ -65,7 +65,7 @@ quant_model = loaded_net.quantize(
 BFloat16 quantization is available on **Modalix** (developer preview). Build a
 BF16 scheme with `bfloat16_scheme()` and apply it to activations and/or weights
 via `QuantizationParams.with_activation_quantization` /
-`with_weight_quantization`. See [Supported Operators](./supported_operators.md)
+`with_weight_quantization`. See [Supported Operators](./supported-operators.md)
 for per-operator BF16 support.
 
 ## Calibration methods

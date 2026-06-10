@@ -1,39 +1,47 @@
 ---
-title: Compile Your Model
+title: Overview
 sidebar_label: Overview
-sidebar_position: 1
 ---
 
-# Compile Your Model
+# Compile a Model
 
-The **Model SDK** is the SiMa.ai toolchain that turns a trained model into an
-artifact the Neat runtime can execute on the MLSoC. It exposes the `afe` Python
-package, which you use to **import** a model, **quantize** it to a
+The compiled model artifact you use when building an application can come from
+one of three paths:
+
+- **Model Zoo** — precompiled models
+- **Normal compilation workflow** — vision and ONNX models
+- **GenAI compilation flow with LLiMa** — GenAI models
+
+## Start with the Model Zoo
+
+Before compiling your own model, check the <a href="/tools/model-zoo/">Model Zoo</a>.
+It provides ready-to-run artifacts for vision, other ONNX-style models, and
+GenAI models, which is the fastest path when a suitable model already exists.
+
+## Choose the right workflow
+
+For **GenAI** models, use <a href="/tools/model-sdk/">LLiMa</a> to compile, test,
+and benchmark the model for Modalix.
+
+For **vision and ONNX models**, use the normal compilation workflow in the
+ModelSDK extension to check compatibility, quantize, compile, and validate the
+model artifact before using it from the Neat Framework. The ModelSDK exposes the
+`afe` Python package, which you use to **import** a model, **quantize** it to a
 lower-precision data type the accelerator runs efficiently, **simulate** it to
 check accuracy, and **compile** it to the `.tar.gz` MPK archive consumed by the
 runtime.
 
-This section walks you through that workflow and then documents each step in
-depth.
-
-:::tip Compiling generative AI models?
-LLMs and other generative models use a different toolchain. See
-**[LLiMa → GenAI compilation](/llima/compilation_genai)**.
-:::
-
-## Start here
-
-- **[Compile Your First Model](./compile_your_first_model.md)** — an end-to-end
-  ResNet-50 walkthrough: load an ONNX model, calibrate, quantize to INT8,
-  validate accuracy, and compile to an MPK archive.
-
-## Reference guides
-
-- **[Quantization](./quantization.md)** — INT8 (default) and BF16 quantization,
-  plus calibration methods.
-- **[Compilation](./compilation.md)** — the `.compile()` API, batch sizing, MLA
-  tessellation, and the contents of the compiled `.tar.gz`.
-- **[Supported Operators](./supported_operators.md)** — the operators the MLA
-  compiler supports and their precision/constraint matrix.
-- **[API Reference](./api-reference/)** — the auto-generated `afe.apis` Python
-  API surface.
+<div class="overview-link-columns compile-workflow-columns">
+  <section class="overview-link-panel overview-link-panel-model">
+    <h2>Compilation workflow</h2>
+    <p>Follow this path for vision and other ONNX-style models that need ModelSDK preparation.</p>
+    <ul class="overview-link-list compile-workflow-list">
+      <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>Compile your first model</strong><span>Create a first compiled artifact with the ModelSDK extension.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/model-compatibility/"><strong>Model compatibility</strong><span>Check whether the model can be prepared for Modalix.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/graph-surgery/"><strong>Graph Surgery</strong><span>Adjust model graphs when compatibility work is required.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/quantization/"><strong>Quantization</strong><span>Prepare numeric precision for efficient execution.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/model-compilation/"><strong>Compilation</strong><span>Compile the prepared model into a Modalix-ready artifact.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/validate-accuracy-performance/"><strong>Validate accuracy and performance</strong><span>Compare outputs and measure runtime behavior.</span></a></li>
+    </ul>
+  </section>
+</div>

@@ -1,6 +1,6 @@
 ---
 title: Compile Your First Model
-sidebar_position: 2
+sidebar_position: 1
 ---
 
 # Compile Your First Model
@@ -63,7 +63,7 @@ project, or import it into Edgematic to build an application.
 The sections below explain what the script does at each stage, and the
 [full script](#full-script) is listed at the end. MLA tessellation is **enabled
 by default** so the compiled model feeds the accelerator directly (see
-[Compilation → Tessellation](./compilation.md#tessellation)).
+[Compilation → Tessellation](./model-compilation.md#tessellation)).
 
 ## How it works
 
@@ -188,7 +188,7 @@ sdk_net.compile(output_path=f"{MODELS_PATH}/compiled_resnet50")
 
 The output is a `.tar.gz` archive containing the compiled MLA program(s), an
 `_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./compilation.md)** for the full archive contents, batch sizing,
+**[Compilation](./model-compilation.md)** for the full archive contents, batch sizing,
 and tessellation options.
 
 ## Full script
@@ -368,5 +368,5 @@ if __name__ == "__main__":
 ## Next steps
 
 Use the compiled `.tar.gz` to build your first runtime pipeline, or continue to
-the in-depth **[Quantization](./quantization.md)** and **[Compilation](./compilation.md)**
+the in-depth **[Quantization](./quantization.md)** and **[Compilation](./model-compilation.md)**
 guides.
