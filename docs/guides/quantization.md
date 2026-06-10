@@ -20,7 +20,7 @@ quantized**.
 This page covers post-training quantization (PTQ). Quantization-aware training
 will be documented in the dedicated QAT repository.
 
-> **TODO(timothydo):** Link to the future QAT repo once it is published.
+> **TODO(florianvoss):** Link to the future QAT repo once it is published.
 :::
 
 ## Default quantization

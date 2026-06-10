@@ -18,7 +18,7 @@ For a worked `execute` accuracy check (classify a known image and compare the
 prediction), see the validate step in
 [Compile Your First Model](./compile-your-first-model.md).
 
-> **TODO(timothydo):** Add a standalone `execute` accuracy example — load the
+> **TODO(florianvoss):** Add a standalone `execute` accuracy example — load the
 > compiled model, run a representative input set, compare against the reference
 > outputs, and describe acceptable tolerances.
 
@@ -31,5 +31,5 @@ benchmark walkthrough in the beginner tutorials:
   model with deterministic synthetic tensors and print the headline latency,
   throughput, power, and energy.
 
-> **TODO(timothydo):** Summarize how to read the benchmark metrics and how they
+> **TODO(florianvoss):** Summarize how to read the benchmark metrics and how they
 > map back to compilation choices (batch size, tessellation).
