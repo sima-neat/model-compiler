@@ -6,7 +6,7 @@ sidebar_position: 1
 # Compile Your First Model
 
 This walkthrough takes a **ResNet-50** ONNX model end-to-end through the
-Model SDK's **Post-Training Quantization (PTQ)** workflow and produces a
+Model Compiler's **Post-Training Quantization (PTQ)** workflow and produces a
 compiled `.tar.gz` MPK archive ready for the Neat runtime.
 
 PTQ is an efficient, straightforward way to shrink a model and speed up
@@ -20,7 +20,7 @@ inference with minimal accuracy loss. The workflow is:
 ## Prerequisites
 
 - `sima-cli` installed (see the [official guide](https://docs.sima.ai/pages/sima_cli/main.html)).
-- The Model SDK environment. Enter it with:
+- The Model Compiler environment. Enter it with:
 
 ```bash
 sima-cli sdk model
@@ -28,7 +28,7 @@ sima-cli sdk model
 
 ## Get the example
 
-Inside the Model SDK container, install the ResNet-50 demo with `sima-cli`. It
+Inside the Model Compiler container, install the ResNet-50 demo with `sima-cli`. It
 provides everything you need to run end-to-end — the ONNX model, a calibration
 image set, the ImageNet labels, and a ready-to-run virtual environment:
 
