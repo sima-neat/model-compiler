@@ -1,39 +1,23 @@
 ---
-title: Compile Your Model
+title: Overview
 sidebar_label: Overview
-sidebar_position: 1
 ---
 
-# Compile Your Model
+# Compile a Model
 
 The **Model Compiler** is the SiMa.ai toolchain that turns a trained model into an
-artifact the Neat runtime can execute on the MLSoC. It exposes the `afe` Python
-package, which you use to **import** a model, **quantize** it to a
-lower-precision data type the accelerator runs efficiently, **simulate** it to
-check accuracy, and **compile** it to the `.tar.gz` MPK archive consumed by the
-runtime.
+artifact the Neat runtime can execute on the MLSoC. The vision/ONNX path uses
+the `afe` Python package to check compatibility, prepare the graph, quantize,
+compile, and validate accuracy and performance.
 
-This section walks you through that workflow and then documents each step in
-depth.
+## Choose a model path
 
-:::tip Compiling generative AI models?
-LLMs and other generative models use a different toolchain. See
-**[LLiMa → GenAI compilation](/llima/compilation_genai)**.
-:::
-
-## Start here
-
-- **[Compile Your First Model](./compile_your_first_model.md)** — an end-to-end
-  ResNet-50 walkthrough: load an ONNX model, calibrate, quantize to INT8,
-  validate accuracy, and compile to an MPK archive.
-
-## Reference guides
-
-- **[Quantization](./quantization.md)** — INT8 (default) and BF16 quantization,
-  plus calibration methods.
-- **[Compilation](./compilation.md)** — the `.compile()` API, batch sizing, MLA
-  tessellation, and the contents of the compiled `.tar.gz`.
-- **[Supported Operators](./supported_operators.md)** — the operators the MLA
-  compiler supports and their precision/constraint matrix.
-- **[API Reference](./api-reference/)** — the auto-generated `afe.apis` Python
-  API surface.
+<div class="overview-link-columns compile-workflow-columns">
+  <section class="overview-link-panel overview-link-panel-model">
+    <ul class="overview-link-list compile-workflow-list">
+      <li><a class="overview-link-card" href="/tools/model-zoo/"><strong>Use a precompiled model</strong><span>Grab a ready-to-run artifact from the Model Zoo — the fastest path when a suitable model already exists.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>Compile a vision / ONNX model</strong><span>Prepare, quantize, compile, and validate with the Model Compiler. Start with the first-model walkthrough.</span></a></li>
+      <li><a class="overview-link-card" href="/genai-llima/"><strong>Compile a GenAI / LLiMa model</strong><span>LLMs and other generative models use the LLiMa toolchain — see the GenAI section.</span></a></li>
+    </ul>
+  </section>
+</div>

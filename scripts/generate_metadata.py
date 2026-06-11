@@ -114,15 +114,15 @@ def main() -> int:
                 "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
                 "[bold]Virtual environment location:[/bold]\n"
                 "The installer creates the venv at "
-                "[green]/sdk-extensions/model-sdk[/green] when writable, "
-                "otherwise it falls back to [green]/sdk-add-on/model-sdk[/green], "
-                "or [green]~/sdk-extensions/model-sdk[/green].\n\n"
+                "[green]/sdk-extensions/model-compiler[/green] when writable, "
+                "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
+                "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
                 "[bold]Reload your shell environment:[/bold]\n"
                 "The installer updates [green]~/.bashrc[/green] when it exists, "
                 "otherwise [green]~/.bash_profile[/green]. Run "
                 "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
-                "or log out and log back in. Then run [green]activate-model-sdk[/green] "
-                "to activate the environment and [green]deactivate-model-sdk[/green] to leave it."
+                "or log out and log back in. Then run [green]activate-model-compiler[/green] "
+                "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
             ),
         },
     }

@@ -6,7 +6,7 @@ description: Generic graph-surgery workflow for ONNX models targeting SiMa MLA, 
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]
-  min_cli_version: 2.1.1
+  min_cli_version: 2.1.2
 runtime:
   requires:
     - python3

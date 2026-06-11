@@ -15,7 +15,7 @@ Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compil
 ## Prerequisites
 - you must activate the Model Compiler virtual environment first:
 ```bash
-activate-model-sdk
+activate-model-compiler
 ```
 - Ensure `sima-frontend` installed (provides `afe` modules).
 - Python deps: `onnx`, `onnxsim`, `torch`, `numpy`, `Pillow` must be available in the environment.
