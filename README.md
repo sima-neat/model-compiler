@@ -14,12 +14,15 @@ The main goal is to reproduce a working Model Compiler installation outside the 
 ## Installation
 
 First install and authenticate `sima-cli`. See the
-[sima-cli documentation](https://docs.sima.ai/pages/sima_cli/main.html) for setup instructions.
+[sima-cli documentation](https://github.com/sima-neat/sima-cli) for setup instructions.
 
 Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04 host with:
 
 ```bash
-sima-cli install -v 2.0.0 sdk-extensions/model
+# amd64 host
+sima-cli install -v 2.0.0 tools/model-compiler/amd64
+# arm64 host
+sima-cli install -v 2.1.2 tools/model-compiler/arm64
 ```
 
 ## Repository Layout
