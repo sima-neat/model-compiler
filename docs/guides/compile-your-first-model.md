@@ -19,20 +19,20 @@ The workflow has four stages:
 ## Prerequisites
 
 - `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
-- Model Compiler environment access. Enter the environment with:
+- Model Compiler installed in the Neat SDK or on an Ubuntu host. Enter the
+  environment with:
 
 ```bash
-sima-cli sdk model
+activate-model-compiler
 ```
 
 ## Get the example
 
-Inside the Model Compiler container, install the ResNet-50 demo with
-`sima-cli`. The demo includes the ONNX model, calibration images, ImageNet
-labels, and a ready-to-run virtual environment:
+On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
+ResNet-50 demo with `sima-cli`. The demo includes the ONNX model, calibration
+images, ImageNet labels, and a ready-to-run virtual environment:
 
 ```bash
-cd /home/docker/sima-cli/
 sima-cli install assets/demos/compile-resnet50-model
 ```
 

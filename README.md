@@ -9,9 +9,9 @@ The bundle contains:
 - an installer script for the target host
 - generated `metadata.json` for `sima-cli`
 
-Use this repository to build a repeatable Model Compiler installation outside
-the container, with a predictable package set and a self-contained extension
-layout.
+Use this repository to build a repeatable Model Compiler installation for the
+Neat SDK or an Ubuntu host, with a predictable package set and a self-contained
+extension layout.
 
 ## Installation
 
@@ -159,7 +159,7 @@ cd dist
 python3 -m http.server
 ```
 
-Then install the bundle from an Ubuntu host or an eLxr SDK environment:
+Then install the bundle from an Ubuntu host or a Neat SDK environment:
 
 ```bash
 sima-cli install -m http://<ip>:8000/metadata.json
