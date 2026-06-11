@@ -1,6 +1,6 @@
 ---
 title: Compilation
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 # Compilation
@@ -39,7 +39,7 @@ contains:
 MLA. Driving tensors **directly to and from the MLA** — inputs in `HWC` layout,
 outputs in `HWC16` — bypasses the EV74 data-reorder unit and reduces latency.
 This is the **recommended default** for models that feed the accelerator
-directly, and it is what the [first-model example](./compile_your_first_model.md)
+directly, and it is what the [first-model example](./compile-your-first-model.md)
 enables out of the box.
 
 Pass tessellation parameters per tensor when compiling:
