@@ -133,16 +133,15 @@ def main() -> int:
         "",
         "# Model compatibility",
         "",
-        "The SiMa.ai compilation toolchain imports **ONNX** models and prepares the "
-        "operators that run on the Machine Learning Accelerator (MLA). Use this page "
-        "to check whether a model's operators are supported before preparing it for "
-        "Modalix.",
+        "The SiMa.ai compilation toolchain imports **ONNX** models and prepares "
+        "operators for the Machine Learning Accelerator (MLA). Use this page to "
+        "check operator support before you prepare a model for Modalix.",
         "",
         "## Supported operators",
         "",
-        "The table lists the operators the MLA compiler supports and the precision "
-        "schemes each one runs in. **INT8** runs on the MLA; **BF16** is available on "
-        "Modalix (developer preview). **5D** marks operators that accept 5D "
+        "Use the table to check MLA compiler support by operator and precision "
+        "scheme. **INT8** runs on the MLA. **BF16** is available on Modalix "
+        "(developer preview). **5D** marks operators that accept 5D "
         "(N, D, H, W, C) tensors. **Opset** is the ONNX opset version.",
         "",
         "| Operator | INT8 | BF16 | 5D | Opset |",

@@ -4,19 +4,23 @@ This repository builds a distributable Model Compiler bundle for `sima-cli`.
 
 The bundle contains:
 - curated Python wheels for the Model Compiler package set
-- direct internal wheel dependencies needed by those packages
+- direct internal wheel dependencies required by those packages
 - binary package artifacts such as the MLA toolchain
 - an installer script for the target host
 - generated `metadata.json` for `sima-cli`
 
-The main goal is to reproduce a working Model Compiler installation outside the container with a predictable package set and a self-contained extension layout.
+Use this repository to build a repeatable Model Compiler installation outside
+the container, with a predictable package set and a self-contained extension
+layout.
 
 ## Installation
 
-First install and authenticate `sima-cli`. See the
-[sima-cli documentation](https://github.com/sima-neat/sima-cli) for setup instructions.
+Install and authenticate `sima-cli` first. See the
+[sima-cli documentation](https://github.com/sima-neat/sima-cli) for setup
+instructions.
 
-Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04 host with:
+Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04
+host:
 
 ```bash
 # amd64 host
@@ -37,12 +41,13 @@ sima-cli install -v 2.1.2 tools/model-compiler/arm64
 
 ## API Reference
 
-Generated API reference docs are available under [docs/generated](docs/generated).
-Start with [docs/generated/index.md](docs/generated/index.md), which links to the generated AFE API pages.
+Generated API reference docs live under [docs/generated](docs/generated). Start
+with [docs/generated/index.md](docs/generated/index.md), which links to the
+generated AFE API pages.
 
 ## Manifest Format
 
-The bundle is driven by [scripts/source.json](scripts/source.json).
+[scripts/source.json](scripts/source.json) defines the bundle contents.
 
 Example:
 
@@ -78,15 +83,17 @@ Example:
 
 Fields:
 - `sdk_version`: used when constructing the bundle version string
-- `python_version`: target interpreter version for the installed venv
-- `system_dependencies.ubuntu`: apt packages installed on the target host before Python/venv setup
+- `python_version`: target interpreter version for the installed virtual environment
+- `system_dependencies.ubuntu`: apt packages installed on the target host before Python and virtual environment setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
 - `python-packages`: top-level Python packages to include in the bundle
-- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler venv
+- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment
 
 ## Building a Bundle
 
-Before building, configure `~/.netrc` with credentials for `artifacts.eng.sima.ai`. The bundle build downloads internal wheels and binary artifacts from Artifactory, so valid access tokens are required.
+Before you build, configure `~/.netrc` with credentials for
+`artifacts.eng.sima.ai`. The build downloads wheels and binary artifacts from
+Artifactory, so it requires valid access tokens.
 
 Example:
 
@@ -96,7 +103,7 @@ machine artifacts.eng.sima.ai
   password <your-artifactory-access-token>
 ```
 
-Restrict the file permissions if needed:
+Restrict the file permissions when needed:
 
 ```bash
 chmod 600 ~/.netrc
@@ -118,16 +125,20 @@ Typical explicit build:
   --extra-index-url https://pypi.org/simple
 ```
 
-By default, the metadata version is derived from the exact git checkout. If `HEAD` has a release tag like `v1.0.0`, the generated `metadata.json` uses `1.0.0`; otherwise it falls back to `sdk_version.neat+branch.git-short-hash`. Passing `--bundle-version` overrides this behavior.
+By default, the metadata version comes from the exact git checkout. If `HEAD`
+has a release tag such as `v1.0.0`, the generated `metadata.json` uses
+`1.0.0`. Otherwise, it falls back to
+`sdk_version.neat+branch.git-short-hash`. Pass `--bundle-version` to override
+this behavior.
 
-What the build does:
-1. Reads the package manifest from `source.json`
-2. Downloads one wheel per requested Python package
-3. Downloads direct internal wheel dependencies referenced by those wheels
-4. Downloads binary package archives such as the MLA toolchain
-5. Copies the installer and source manifest into the output directory
-6. Generates `manifest.txt` with the bundled wheel filenames
-7. Generates `metadata.json`
+The build performs these steps:
+1. Read the package manifest from `source.json`.
+2. Download one wheel for each requested Python package.
+3. Download direct internal wheel dependencies referenced by those wheels.
+4. Download binary package archives such as the MLA toolchain.
+5. Copy the installer and source manifest into the output directory.
+6. Generate `manifest.txt` with the bundled wheel filenames.
+7. Generate `metadata.json`.
 
 Output files in `dist/` typically include:
 - `*.whl`
@@ -139,7 +150,7 @@ Output files in `dist/` typically include:
 
 ## Testing a Local Bundle
 
-You can test a freshly built bundle directly from your local machine without publishing it anywhere first.
+Test a freshly built bundle from your local machine before you publish it.
 
 From this repository:
 
@@ -148,19 +159,21 @@ cd dist
 python3 -m http.server
 ```
 
-Then, from either an Ubuntu host or an eLxr SDK environment, install the bundle with `sima-cli`:
+Then install the bundle from an Ubuntu host or an eLxr SDK environment:
 
 ```bash
 sima-cli install -m http://<ip>:8000/metadata.json
 ```
 
-Replace `<ip>` with the IP address of the machine serving the `dist/` directory.
+Replace `<ip>` with the IP address of the machine that serves the `dist/`
+directory.
 
-This lets you validate local Model Compiler bundle changes end-to-end using a local metadata source.
+This validates the Model Compiler bundle against a local metadata source.
 
 ## Authentication and Package Sources
 
-The scripts expect internal Python packages and binary artifacts to come from SiMa Artifactory.
+The scripts download internal Python packages and binary artifacts from SiMa
+Artifactory.
 
 Python wheels:
 - primary index: Artifactory
@@ -169,36 +182,43 @@ Python wheels:
 Binary packages:
 - fetched from `https://artifacts.eng.sima.ai/artifactory/...`
 
-If your environment requires authentication, make sure your Artifactory credentials are already configured, typically via `.netrc` or your shell environment.
+If your environment requires authentication, configure Artifactory credentials
+with `.netrc` or your shell environment before you run the scripts.
 
 ## Installing a Built Bundle
 
-After the bundle has been produced, copy the contents of `dist/` to the target machine and run:
+After you build the bundle, copy the contents of `dist/` to the target machine
+and run:
 
 ```bash
 bash ./install_modelsdk_wheels.sh
 ```
 
-The installer will:
-1. Read `source.json`
-2. Install required Ubuntu system packages from `system_dependencies.ubuntu`
-3. Find or install the required Python version, using `pyenv` if necessary
-4. Read `manifest.txt` to identify the bundled Model Compiler wheels
-5. Create a Model Compiler virtual environment
-6. Install bundled binary packages into that venv
-7. Install top-level package specs from `python-packages` (including extras like `sima_lmm[sdk]`), using only manifest-listed wheels as local `--find-links` inputs and PyPI as fallback when needed
-8. Update shell startup files with the Model Compiler venv `PATH`
-9. Remove downloaded bundle payloads after successful installation
+The installer performs these steps:
+1. Read `source.json`.
+2. Install required Ubuntu system packages from `system_dependencies.ubuntu`.
+3. Find or install the required Python version, using `pyenv` when needed.
+4. Read `manifest.txt` to identify the bundled Model Compiler wheels.
+5. Create a Model Compiler virtual environment.
+6. Install bundled binary packages into that virtual environment.
+7. Install top-level package specs from `python-packages`, including extras such
+   as `sima_lmm[sdk]`. It uses manifest-listed wheels as local `--find-links`
+   inputs and falls back to PyPI when needed.
+8. Update shell startup files with the Model Compiler virtual environment
+   `PATH`.
+9. Remove downloaded bundle payloads after successful installation.
 
 ## Install Location
 
-The installer creates the Model Compiler venv in one of these locations:
+The installer creates the Model Compiler virtual environment in one of these
+locations:
 
 - `/sdk-extensions/model-compiler` if `/sdk-extensions` exists and is writable
 - `/sdk-add-on/model-compiler` as a backward-compatible fallback
 - `~/sdk-extensions/model-compiler` otherwise
 
-Binary package contents such as the MLA toolchain are installed into that same venv under:
+Binary package contents, such as the MLA toolchain, are installed into the same
+virtual environment under:
 - `bin/`
 - `include/`
 - `lib/`
@@ -207,7 +227,7 @@ The installer also restores executable permissions for binaries copied into `mod
 
 ## Shell Environment Updates
 
-The installer adds Model Compiler environment setup to:
+The installer adds Model Compiler environment setup to one of these files:
 - `~/.bashrc` when it exists, otherwise
 - `~/.bash_profile`
 
@@ -229,19 +249,20 @@ or:
 source ~/.bash_profile
 ```
 
-Logging out and back in works too.
+You can also log out and back in.
 
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
 
 ## Cleanup Behavior
 
-On successful install, the installer removes downloaded bundle resources from the bundle directory, including:
+After a successful install, the installer removes downloaded bundle resources
+from the bundle directory, including:
 - manifest-listed wheel files
 - binary package archives such as the MLA toolchain zip
 - extracted binary package directories if present
 
-It keeps the installer and metadata files such as:
+It keeps installer and metadata files such as:
 - `install_modelsdk_wheels.sh`
 - `source.json`
 - `manifest.txt`
@@ -249,15 +270,19 @@ It keeps the installer and metadata files such as:
 
 ## Notes and Troubleshooting
 
-- If a sample or test script fails with missing Python modules, first confirm it is using the installed Model Compiler venv and not a separate local `.env`.
+- If a sample or test script fails with missing Python modules, confirm that it
+  uses the installed Model Compiler virtual environment and not a separate local
+  `.env`.
 - If a compiled package fails at runtime with missing shared libraries, check that:
   - the required Ubuntu packages from `system_dependencies.ubuntu` were installed
 - If GitHub push fails from an automated environment, verify that the git remote has usable credentials.
-- If a wheel is missing from Artifactory, the build flow can fall back to public PyPI for Python packages when `--extra-index-url` is provided.
+- If a wheel is missing from Artifactory, provide `--extra-index-url` so the
+  build can fall back to public PyPI for Python packages.
 
 ## Regenerating Metadata Only
 
-If you already have a populated bundle directory and only want to regenerate `metadata.json`:
+If you already have a populated bundle directory, regenerate only
+`metadata.json`:
 
 ```bash
 python3 ./scripts/generate_metadata.py \
@@ -273,4 +298,5 @@ This repository currently focuses on:
 - binary package inclusion for the MLA toolchain
 - `sima-cli`-style bundle metadata generation
 
-If you extend the repo with more add-ons later, the current layout is already set up to support an extension-style install root under `sdk-extensions/`.
+If you add more extensions later, use the existing extension-style install root
+under `sdk-extensions/`.
