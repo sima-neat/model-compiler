@@ -18,9 +18,7 @@ quantized**.
 
 :::note Quantization-aware training (QAT)
 This page covers post-training quantization (PTQ). Quantization-aware training
-will be documented in the dedicated QAT repository.
-
-> **TODO(florianvoss):** Link to the future QAT repo once it is published.
+uses a separate workflow and is not covered in this guide.
 :::
 
 ## Default quantization

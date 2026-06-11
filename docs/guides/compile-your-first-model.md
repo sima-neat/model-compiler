@@ -19,7 +19,7 @@ inference with minimal accuracy loss. The workflow is:
 
 ## Prerequisites
 
-- `sima-cli` installed (see the [official guide](https://docs.sima.ai/pages/sima_cli/main.html)).
+- `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
 - The Model Compiler environment. Enter it with:
 
 ```bash

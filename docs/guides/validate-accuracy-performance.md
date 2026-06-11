@@ -18,9 +18,11 @@ For a worked `execute` accuracy check (classify a known image and compare the
 prediction), see the validate step in
 [Compile Your First Model](./compile-your-first-model.md).
 
-> **TODO(florianvoss):** Add a standalone `execute` accuracy example — load the
-> compiled model, run a representative input set, compare against the reference
-> outputs, and describe acceptable tolerances.
+Use representative inputs from your target workload and compare against a
+trusted floating-point reference. Acceptable tolerances depend on the model and
+quantization scheme; start by checking top-line task metrics such as
+classification accuracy or detection mAP, then inspect per-output differences
+when a model-level metric regresses.
 
 ## Measure performance
 
@@ -31,5 +33,7 @@ benchmark walkthrough in the beginner tutorials:
   model with deterministic synthetic tensors and print the headline latency,
   throughput, power, and energy.
 
-> **TODO(florianvoss):** Summarize how to read the benchmark metrics and how they
-> map back to compilation choices (batch size, tessellation).
+Use benchmark results to confirm that the selected batch size, quantization
+scheme, and tessellation settings meet your application requirements. If latency
+or throughput misses the target, revisit compilation options before changing the
+runtime application.
