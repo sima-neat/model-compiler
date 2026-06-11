@@ -13,9 +13,9 @@ Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compil
 - You want a default, repeatable flow for Codex or Claude agents.
 
 ## Prerequisites
-- you must activate the ModelSDK virtual environment first:
+- you must activate the Model Compiler virtual environment first:
 ```bash
-activate-model-sdk
+activate-model-compiler
 ```
 - Ensure `sima-frontend` installed (provides `afe` modules).
 - Python deps: `onnx`, `onnxsim`, `torch`, `numpy`, `Pillow` must be available in the environment.
@@ -23,7 +23,10 @@ activate-model-sdk
 If required deps are missing:
 ```bash
 sima-cli login
-sima-cli install sdk-extensions/model
+# amd64 host
+sima-cli install tools/model-compiler/amd64
+# arm64 host
+sima-cli install tools/model-compiler/arm64
 ```
 
 ## Default Workflow

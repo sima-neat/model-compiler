@@ -559,6 +559,16 @@ PY
     echo "Installing binary package archive into ${target_root}: $archive" >&2
     mkdir -p "${target_root}/bin" "${target_root}/include" "${target_root}/lib"
     if [[ -d "$extract_root/bin" ]]; then
+      rm -f \
+        "$extract_root/bin/python" \
+        "$extract_root/bin/python3" \
+        "$extract_root/bin"/python3.* \
+        "$extract_root/bin/pip" \
+        "$extract_root/bin/pip3" \
+        "$extract_root/bin"/pip3.* \
+        "$extract_root/bin/activate" \
+        "$extract_root/bin"/activate.* \
+        "$extract_root/bin/Activate.ps1"
       cp -a "$extract_root/bin/." "${target_root}/bin/"
       find "${target_root}/bin" -maxdepth 1 -type f -exec chmod a+rx {} +
     fi
@@ -571,6 +581,42 @@ PY
 
     rm -rf "$tmpdir"
   done
+}
+
+validate_venv_python() {
+  local venv_dir="$1"
+  local python_bin="${venv_dir}/bin/python"
+  if [[ ! -x "$python_bin" ]]; then
+    echo "Virtual environment Python is missing or not executable: $python_bin" >&2
+    echo "The Model Compiler venv may be incomplete or a binary package may have overwritten the venv interpreter." >&2
+    return 1
+  fi
+  if ! "$python_bin" - <<'PY' >/dev/null
+import sys
+raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)
+PY
+  then
+    echo "Python at $python_bin does not appear to be running from a virtual environment." >&2
+    return 1
+  fi
+}
+
+reset_venv_dir() {
+  local venv_dir="$1"
+
+  case "$venv_dir" in
+    /sdk-extensions/model-compiler|/sdk-add-on/model-compiler|"$HOME"/sdk-extensions/model-compiler)
+      ;;
+    *)
+      echo "Refusing to reset unexpected Model Compiler venv path: $venv_dir" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ -e "$venv_dir" || -L "$venv_dir" ]]; then
+    echo "Removing existing Model Compiler virtual environment at: $venv_dir"
+    rm -rf "$venv_dir"
+  fi
 }
 
 write_managed_shell_block() {
@@ -609,16 +655,74 @@ PY
   rm -f "$block_file"
 }
 
+remove_managed_shell_block() {
+  local target_file="$1"
+  local marker_begin="$2"
+  local marker_end="$3"
+
+  [[ -f "$target_file" ]] || return 0
+  python3 - "$target_file" "$marker_begin" "$marker_end" <<'PY'
+import pathlib
+import sys
+
+target = pathlib.Path(sys.argv[1])
+marker_begin = sys.argv[2]
+marker_end = sys.argv[3]
+text = target.read_text(encoding="utf-8")
+
+begin = text.find(marker_begin)
+if begin == -1:
+    raise SystemExit(0)
+
+end = text.find(marker_end, begin)
+if end == -1:
+    raise SystemExit(0)
+
+end += len(marker_end)
+if end < len(text) and text[end : end + 1] == "\n":
+    end += 1
+
+target.write_text(text[:begin] + text[end:], encoding="utf-8")
+PY
+}
+
+ensure_bashrc_sourced_from_profile() {
+  local bashrc="$1"
+  local bash_profile="$2"
+
+  [[ -f "$bashrc" ]] || return 0
+
+  if [[ -f "$bash_profile" ]]; then
+    if grep -Eq '(^|[[:space:]])(\.|source)[[:space:]]+("?\$HOME"?/|~/)?\.bashrc' "$bash_profile" 2>/dev/null; then
+      return 0
+    fi
+  elif [[ -f "${HOME}/.profile" ]]; then
+    return 0
+  fi
+
+  touch "$bash_profile"
+  cat >> "$bash_profile" <<'EOF'
+
+if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+EOF
+}
+
 configure_shell_path() {
-  local modelsdk_dir="$1"
+  local model_compiler_dir="$1"
   local bin_dir="$2"
   local bashrc="${HOME}/.bashrc"
   local bash_profile="${HOME}/.bash_profile"
   local target_file=""
-  local marker_begin="# >>> modelsdk path >>>"
-  local marker_end="# <<< modelsdk path <<<"
-  local functions_marker_begin="# >>> modelsdk activation >>>"
-  local functions_marker_end="# <<< modelsdk activation <<<"
+  local legacy_marker_begin="# >>> modelsdk path >>>"
+  local legacy_marker_end="# <<< modelsdk path <<<"
+  local legacy_functions_marker_begin="# >>> modelsdk activation >>>"
+  local legacy_functions_marker_end="# <<< modelsdk activation <<<"
+  local marker_begin="# >>> model-compiler path >>>"
+  local marker_end="# <<< model-compiler path <<<"
+  local functions_marker_begin="# >>> model-compiler activation >>>"
+  local functions_marker_end="# <<< model-compiler activation <<<"
 
   if [[ -f "$bashrc" || ! -f "$bash_profile" ]]; then
     target_file="$bashrc"
@@ -627,22 +731,27 @@ configure_shell_path() {
   fi
 
   touch "$target_file"
+  ensure_bashrc_sourced_from_profile "$bashrc" "$bash_profile"
+  remove_managed_shell_block "$bashrc" "$legacy_marker_begin" "$legacy_marker_end"
+  remove_managed_shell_block "$bashrc" "$legacy_functions_marker_begin" "$legacy_functions_marker_end"
+  remove_managed_shell_block "$bash_profile" "$legacy_marker_begin" "$legacy_marker_end"
+  remove_managed_shell_block "$bash_profile" "$legacy_functions_marker_begin" "$legacy_functions_marker_end"
 
   write_managed_shell_block "$target_file" "$marker_begin" "$marker_end" <<EOF
 $marker_begin
-# ModelSDK PATH is managed by activate-model-sdk and deactivate-model-sdk.
+# Model Compiler PATH is managed by activate-model-compiler and deactivate-model-compiler.
 $marker_end
 EOF
 
   if ! grep -Fq "$functions_marker_begin" "$target_file" \
-    && { grep -Eq '^[[:space:]]*(function[[:space:]]+)?activate-model-sdk([[:space:]]*\(\))?[[:space:]]*\{' "$target_file" \
-      || grep -Eq '^[[:space:]]*(function[[:space:]]+)?deactivate-model-sdk([[:space:]]*\(\))?[[:space:]]*\{' "$target_file"; }; then
+    && { grep -Eq '^[[:space:]]*(function[[:space:]]+)?activate-model-compiler([[:space:]]*\(\))?[[:space:]]*\{' "$target_file" \
+      || grep -Eq '^[[:space:]]*(function[[:space:]]+)?deactivate-model-compiler([[:space:]]*\(\))?[[:space:]]*\{' "$target_file"; }; then
     return 0
   fi
 
   write_managed_shell_block "$target_file" "$functions_marker_begin" "$functions_marker_end" <<EOF
 $functions_marker_begin
-_modelsdk_path_without() {
+_model_compiler_path_without() {
   local remove_path="\$1"
   local entry=""
   local old_ifs="\$IFS"
@@ -662,14 +771,14 @@ _modelsdk_path_without() {
   printf '%s\n' "\$new_path"
 }
 
-activate-model-sdk() {
-  if [ ! -f "$modelsdk_dir/bin/activate" ]; then
-    echo "ModelSDK virtual environment not found: $modelsdk_dir" >&2
+activate-model-compiler() {
+  if [ ! -f "$model_compiler_dir/bin/activate" ]; then
+    echo "Model Compiler virtual environment not found: $model_compiler_dir" >&2
     return 1
   fi
-  PATH="\$(_modelsdk_path_without "$bin_dir")"
-  . "$modelsdk_dir/bin/activate"
-  PATH="\$(_modelsdk_path_without "$bin_dir")"
+  PATH="\$(_model_compiler_path_without "$bin_dir")"
+  . "$model_compiler_dir/bin/activate"
+  PATH="\$(_model_compiler_path_without "$bin_dir")"
   if [ -n "\$PATH" ]; then
     PATH="$bin_dir:\$PATH"
   else
@@ -679,15 +788,15 @@ activate-model-sdk() {
   hash -r 2>/dev/null || true
 }
 
-deactivate-model-sdk() {
-  if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$modelsdk_dir" ]; then
-    echo "Active virtual environment is not ModelSDK: \$VIRTUAL_ENV" >&2
+deactivate-model-compiler() {
+  if [ -n "\${VIRTUAL_ENV:-}" ] && [ "\$VIRTUAL_ENV" != "$model_compiler_dir" ]; then
+    echo "Active virtual environment is not Model Compiler: \$VIRTUAL_ENV" >&2
     return 1
   fi
   if command -v deactivate >/dev/null 2>&1; then
     deactivate
   fi
-  PATH="\$(_modelsdk_path_without "$bin_dir")"
+  PATH="\$(_model_compiler_path_without "$bin_dir")"
   export PATH
   hash -r 2>/dev/null || true
 }
@@ -771,7 +880,7 @@ HOST_OS_RAW="$(uname -s 2>/dev/null || echo unknown)"
 HOST_OS="$(printf '%s' "$HOST_OS_RAW" | tr '[:upper:]' '[:lower:]')"
 if [[ "$HOST_OS" != "linux" ]]; then
   echo "Unsupported host operating system: $HOST_OS_RAW" >&2
-  echo "This ModelSDK bundle installer currently supports Linux hosts only." >&2
+  echo "This Model Compiler bundle installer currently supports Linux hosts only." >&2
   echo "Detected host details: os=$HOST_OS_RAW arch=$(uname -m 2>/dev/null || echo unknown)" >&2
   exit 1
 fi
@@ -809,12 +918,24 @@ else
   mkdir -p "$EXTENSIONS_DIR"
 fi
 
-MODELSDK_DIR="${EXTENSIONS_DIR}/model-sdk"
-VENV_DIR="$MODELSDK_DIR"
+MODEL_COMPILER_DIR="${EXTENSIONS_DIR}/model-compiler"
+VENV_DIR="$MODEL_COMPILER_DIR"
 echo "Creating virtual environment at: $VENV_DIR (python: $PYTHON_CMD, arch: $HOST_ARCH)"
+# Reinstall into the fixed extension path. Python's venv module can leave a
+# stale broken interpreter untouched when the directory already exists, so reset
+# the target first to make retries after failed installs deterministic.
+if ! reset_venv_dir "$VENV_DIR"; then
+  exit 1
+fi
 "$PYTHON_CMD" -m venv "$VENV_DIR"
+if ! validate_venv_python "$VENV_DIR"; then
+  exit 1
+fi
 
 if ! install_binary_packages "$VENV_DIR"; then
+  exit 1
+fi
+if ! validate_venv_python "$VENV_DIR"; then
   exit 1
 fi
 
@@ -840,6 +961,6 @@ else
   run_host_build_env "$VENV_DIR/bin/python" -m pip install "${pip_args[@]}" "${MANIFEST_LINK_WHEELS[@]}"
 fi
 
-configure_shell_path "$MODELSDK_DIR" "$VENV_DIR/bin"
+configure_shell_path "$MODEL_COMPILER_DIR" "$VENV_DIR/bin"
 cleanup_downloaded_resources
-echo "ModelSDK wheel installation complete in $VENV_DIR."
+echo "Model Compiler wheel installation complete in $VENV_DIR."

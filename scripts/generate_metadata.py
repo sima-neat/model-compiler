@@ -23,12 +23,12 @@ def main() -> int:
     )
     p.add_argument("--artifacts-dir", required=True, help="Directory containing bundle artifacts.")
     p.add_argument("--output", required=True, help="Path for generated metadata.json.")
-    p.add_argument("--name", default="sima-neat-model-sdk")
+    p.add_argument("--name", default="sima-neat-model-compiler")
     p.add_argument("--version", required=True)
     p.add_argument("--release", default="stable")
     p.add_argument(
         "--description",
-        default="SiMa.ai NEAT Model SDK",
+        default="SiMa.ai NEAT Model Compiler",
     )
     p.add_argument(
         "--host-os",
@@ -111,18 +111,18 @@ def main() -> int:
         "installation": {
             "script": f"bash ./{installer.name}",
             "post-message": (
-                "[bold green]Successfully installed ModelSDK.[/bold green]\n\n"
+                "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
                 "[bold]Virtual environment location:[/bold]\n"
                 "The installer creates the venv at "
-                "[green]/sdk-extensions/model-sdk[/green] when writable, "
-                "otherwise it falls back to [green]/sdk-add-on/model-sdk[/green], "
-                "or [green]~/sdk-extensions/model-sdk[/green].\n\n"
+                "[green]/sdk-extensions/model-compiler[/green] when writable, "
+                "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
+                "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
                 "[bold]Reload your shell environment:[/bold]\n"
                 "The installer updates [green]~/.bashrc[/green] when it exists, "
                 "otherwise [green]~/.bash_profile[/green]. Run "
                 "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
-                "or log out and log back in. Then run [green]activate-model-sdk[/green] "
-                "to activate the environment and [green]deactivate-model-sdk[/green] to leave it."
+                "or log out and log back in. Then run [green]activate-model-compiler[/green] "
+                "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
             ),
         },
     }

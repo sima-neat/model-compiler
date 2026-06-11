@@ -1,12 +1,12 @@
 ---
 title: Compilation
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 # Compilation
 
-The `Model.compile` API converts a **quantized** model into a binary format that
-executes on the SiMa MLSoC.
+Use `Model.compile` to convert a **quantized** model into a binary format that
+runs on the SiMa MLSoC.
 
 ```python
 from afe.apis.model import Model
@@ -17,13 +17,13 @@ quant_model = Model.load("<quant_model_name>", "<path to quantized model file>")
 
 ## Compile with default options
 
-Just specify the output folder:
+Specify the output folder:
 
 ```python
 quant_model.compile(output_path="<output_folder_path>")
 ```
 
-The output is a `.tar.gz` archive (named after the quantized model file) that
+The output is a `.tar.gz` archive named after the quantized model file. It
 contains:
 
 | Contents | Purpose |
@@ -35,12 +35,12 @@ contains:
 
 ## Tessellation
 
-**Tessellation** controls how input/output tensors are laid out in DRAM for the
-MLA. Driving tensors **directly to and from the MLA** — inputs in `HWC` layout,
-outputs in `HWC16` — bypasses the EV74 data-reorder unit and reduces latency.
-This is the **recommended default** for models that feed the accelerator
-directly, and it is what the [first-model example](./compile_your_first_model.md)
-enables out of the box.
+**Tessellation** controls how input and output tensors are laid out in DRAM for
+the MLA. Driving tensors **directly to and from the MLA**, with inputs in `HWC`
+layout and outputs in `HWC16`, bypasses the EV74 data-reorder unit and reduces
+latency. This is the **recommended default** for models that feed the
+accelerator directly. The [first-model example](./compile-your-first-model.md)
+enables it by default.
 
 Pass tessellation parameters per tensor when compiling:
 
@@ -75,7 +75,7 @@ quant_model.compile(output_path="<output_folder_path>", batch_size=16)
 
 :::note
 The compiler implements the largest batch size it can, up to the requested
-value — there is no guarantee the exact size is met. To see what was actually
+value. It does not guarantee the exact requested size. To see what was
 implemented, search the `_mpk.json` for `desired_batch_size` and
 `actual_batch_size`:
 
@@ -92,7 +92,7 @@ implemented, search the `_mpk.json` for `desired_batch_size` and
 
 ## Inspecting the archive
 
-The compiler does not print the archive contents. List them with:
+The compiler does not print archive contents. List them with:
 
 ```python
 import tarfile
@@ -118,6 +118,7 @@ estimated cycle count per MLA layer:
   end_cycle: 79502
 ```
 
-These are static-schedule start/end cycles and do **not** account for stalls
-from instruction or memory fetches. For full runtime statistics including memory
-cycles, run the `.elf` model on hardware in the Palette/Neat accelerator mode.
+These values are static-schedule start and end cycles. They do **not** include
+stalls from instruction or memory fetches. For full runtime statistics,
+including memory cycles, run the `.elf` model on hardware in Palette/Neat
+accelerator mode.

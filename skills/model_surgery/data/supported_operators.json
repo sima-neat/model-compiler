@@ -1,5 +1,5 @@
 {
-  "source_file": "/Users/jimfan/Downloads/Supported Operators.xlsx",
+  "source_file": "Supported Operators.xlsx",
   "schema_version": 3,
   "release": "2.0",
   "operators": {
@@ -37,7 +37,7 @@
       "business_study": "count_include_pad = 0\ndilations > 1\nsize > 127",
       "int8": "Y",
       "bfloat16": "Y",
-      "notes": "1. If global pool, any shape.\n2. The 128 is from the HW instruction limit in gen1 and gen2. Possible to impove in compiler.\n3. Possible to improve compiler to support any shape.\n4. HW does not support count_include_pad=False. Possible to support in compiler or model sdk.\n5. ceil_mode=True is handled by the rewrite rule SetCeilModeToFalseForNDPooling.\n6. dilation>1 is not supported by HW."
+      "notes": "1. If global pool, any shape.\n2. The 128 is from the HW instruction limit in gen1 and gen2. Possible to impove in compiler.\n3. Possible to improve compiler to support any shape.\n4. HW does not support count_include_pad=False. Possible to support in compiler or Model Compiler.\n5. ceil_mode=True is handled by the rewrite rule SetCeilModeToFalseForNDPooling.\n6. dilation>1 is not supported by HW."
     },
     "BatchNorm": {
       "onnx-opset-version": "15",
@@ -385,7 +385,7 @@
       "business_study": "mode = reflect, edge",
       "int8": "Y",
       "bfloat16": "Y",
-      "notes": "Converted to average pool.\n1. Possible to support other constant values in model sdk.\n2. Pad in channel dimension can be supported in model sdk.\n3. Other padding modes do not have HW support but can be supported in compiler."
+      "notes": "Converted to average pool.\n1. Possible to support other constant values in Model Compiler.\n2. Pad in channel dimension can be supported in Model Compiler.\n3. Other padding modes do not have HW support but can be supported in compiler."
     },
     "Pow": {
       "onnx-opset-version": "15",

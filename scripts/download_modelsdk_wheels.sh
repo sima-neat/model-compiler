@@ -41,12 +41,31 @@ declare -a SUMMARY_RESOLVED=()
 declare -a SUMMARY_WHEEL=()
 declare -a BINARY_ARTIFACTS=()
 declare -a PIP_INDEX_ARGS=()
+declare -a TEMP_DIRS=()
 declare -a X86_PLATFORM_ARGS=(
   --platform manylinux_2_28_x86_64
   --platform manylinux_2_27_x86_64
   --platform manylinux2014_x86_64
   --platform linux_x86_64
 )
+
+cleanup_temp_dirs() {
+  local temp_dir=""
+  if [[ ${#TEMP_DIRS[@]} -eq 0 ]]; then
+    return 0
+  fi
+  for temp_dir in "${TEMP_DIRS[@]}"; do
+    [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
+  done
+  return 0
+}
+
+register_temp_dir() {
+  local temp_dir="$1"
+  TEMP_DIRS+=("$temp_dir")
+}
+
+trap cleanup_temp_dirs EXIT
 
 normalize_python_version() {
   local raw="$1"
@@ -334,6 +353,68 @@ for item in items:
 PY
 }
 
+is_mla_toolchain_package() {
+  local package_name="$1"
+  local archive_type="${2:-zip}"
+  local normalized=""
+  local leaf=""
+
+  normalized="$(echo "$package_name" | tr '[:upper:]' '[:lower:]' | sed -E 's#^/+|/+$##g')"
+  leaf="$(basename "$normalized")"
+  [[ "$archive_type" == "zip" && "$leaf" == "mla-toolchain" && "$normalized" == *mla*toolchain* ]]
+}
+
+sanitize_mla_toolchain_zip() {
+  local archive_path="$1"
+  local tmp_path=""
+
+  tmp_path="$(mktemp "${archive_path}.sanitized.XXXXXX")"
+  rm -f "$tmp_path"
+
+  python3 - "$archive_path" "$tmp_path" <<'PY'
+import pathlib
+import shutil
+import sys
+import zipfile
+
+source = pathlib.Path(sys.argv[1])
+dest = pathlib.Path(sys.argv[2])
+kept = 0
+
+try:
+    with zipfile.ZipFile(source, "r") as zin, zipfile.ZipFile(dest, "w") as zout:
+        for info in zin.infolist():
+            parts = pathlib.PurePosixPath(info.filename).parts
+            if "bin" not in parts:
+                continue
+
+            copied = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            copied.compress_type = info.compress_type
+            copied.comment = info.comment
+            copied.extra = info.extra
+            copied.internal_attr = info.internal_attr
+            copied.external_attr = info.external_attr
+            copied.create_system = info.create_system
+
+            if info.is_dir():
+                zout.writestr(copied, b"")
+            else:
+                with zin.open(info, "r") as src:
+                    with zout.open(copied, "w") as dst:
+                        shutil.copyfileobj(src, dst)
+                kept += 1
+except Exception:
+    dest.unlink(missing_ok=True)
+    raise
+
+if kept == 0:
+    dest.unlink(missing_ok=True)
+    raise SystemExit(f"No bin files found in MLA toolchain archive: {source.name}")
+PY
+
+  mv "$tmp_path" "$archive_path"
+}
+
 download_binary_package() {
   local package_name="$1"
   local package_version="$2"
@@ -350,6 +431,9 @@ download_binary_package() {
   out_path="${OUTPUT_DIR}/${artifact_name}"
 
   if [[ -f "$out_path" ]]; then
+    if is_mla_toolchain_package "$package_name" "$archive_type"; then
+      sanitize_mla_toolchain_zip "$out_path"
+    fi
     BINARY_ARTIFACTS+=("$artifact_name")
     return 0
   fi
@@ -377,6 +461,9 @@ download_binary_package() {
   fi
 
   mv "$tmp_path" "$out_path"
+  if is_mla_toolchain_package "$package_name" "$archive_type"; then
+    sanitize_mla_toolchain_zip "$out_path"
+  fi
   BINARY_ARTIFACTS+=("$artifact_name")
   return 0
 }
@@ -400,6 +487,7 @@ download_direct_internal_deps_for_wheel() {
 
   for dep_spec in "${dep_specs[@]}"; do
     dep_tmp="$(mktemp -d "${tmpdir}/dep.XXXXXX")"
+    register_temp_dir "$dep_tmp"
     if ! download_one_spec "$dep_spec" "$dep_tmp"; then
       if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
         cat "$DOWNLOAD_ERROR_LOG" >&2
@@ -643,19 +731,30 @@ fi
 
 echo "Found ${#SPECS[@]} python package spec(s)."
 
-for requested_spec in "${SPECS[@]}"; do
-  tmpdir="$(mktemp -d)"
-  resolved_spec="$requested_spec"
-  echo "Downloading wheel for: $requested_spec"
+if [[ ${#SPECS[@]} -gt 0 ]]; then
+  for requested_spec in "${SPECS[@]}"; do
+    tmpdir="$(mktemp -d)"
+    register_temp_dir "$tmpdir"
+    resolved_spec="$requested_spec"
+    echo "Downloading wheel for: $requested_spec"
 
-  if ! download_one_spec "$resolved_spec" "$tmpdir"; then
-    candidate_spec="$(resolve_latest_master_spec "$requested_spec" || true)"
-    if [[ -n "$candidate_spec" && "$candidate_spec" != "$requested_spec" ]]; then
-      echo "  Exact version not found. Trying latest compatible master build: $candidate_spec"
-      rm -rf "$tmpdir"
-      tmpdir="$(mktemp -d)"
-      if download_one_spec "$candidate_spec" "$tmpdir"; then
-        resolved_spec="$candidate_spec"
+    if ! download_one_spec "$resolved_spec" "$tmpdir"; then
+      candidate_spec="$(resolve_latest_master_spec "$requested_spec" || true)"
+      if [[ -n "$candidate_spec" && "$candidate_spec" != "$requested_spec" ]]; then
+        echo "  Exact version not found. Trying latest compatible master build: $candidate_spec"
+        rm -rf "$tmpdir"
+        tmpdir="$(mktemp -d)"
+        register_temp_dir "$tmpdir"
+        if download_one_spec "$candidate_spec" "$tmpdir"; then
+          resolved_spec="$candidate_spec"
+        else
+          if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
+            cat "$DOWNLOAD_ERROR_LOG" >&2
+          fi
+          rm -rf "$tmpdir"
+          echo "Failed to download package: $requested_spec" >&2
+          exit 1
+        fi
       else
         if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
           cat "$DOWNLOAD_ERROR_LOG" >&2
@@ -664,24 +763,17 @@ for requested_spec in "${SPECS[@]}"; do
         echo "Failed to download package: $requested_spec" >&2
         exit 1
       fi
-    else
-      if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
-        cat "$DOWNLOAD_ERROR_LOG" >&2
-      fi
-      rm -rf "$tmpdir"
-      echo "Failed to download package: $requested_spec" >&2
-      exit 1
     fi
-  fi
 
-  wheel_name="$(basename "$DOWNLOADED_WHEEL")"
-  patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
-  mv "$DOWNLOADED_WHEEL" "$OUTPUT_DIR/"
-  SUMMARY_REQUESTED+=("$requested_spec")
-  SUMMARY_RESOLVED+=("$resolved_spec")
-  SUMMARY_WHEEL+=("$wheel_name")
-  rm -rf "$tmpdir"
-done
+    wheel_name="$(basename "$DOWNLOADED_WHEEL")"
+    patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
+    mv "$DOWNLOADED_WHEEL" "$OUTPUT_DIR/"
+    SUMMARY_REQUESTED+=("$requested_spec")
+    SUMMARY_RESOLVED+=("$resolved_spec")
+    SUMMARY_WHEEL+=("$wheel_name")
+    rm -rf "$tmpdir"
+  done
+fi
 
 if [[ ${#BINARY_SPECS[@]} -gt 0 ]]; then
   echo "Downloading ${#BINARY_SPECS[@]} binary package(s)..."
@@ -723,23 +815,26 @@ while [[ $i -lt ${#SUMMARY_REQUESTED[@]} ]]; do
   i=$((i + 1))
 done
 
-echo "Downloading direct internal dependency wheels for resolved package set..."
-dep_tmp="$(mktemp -d)"
-for top_wheel in "${SUMMARY_WHEEL[@]}"; do
-  wheel_path="$OUTPUT_DIR/$top_wheel"
-  if [[ ! -f "$wheel_path" ]]; then
-    rm -rf "$dep_tmp"
-    echo "Top-level wheel missing for dependency bundling: $wheel_path" >&2
-    exit 1
-  fi
-  echo "  Collecting direct internal deps for wheel: $top_wheel"
-  if ! download_direct_internal_deps_for_wheel "$wheel_path" "$OUTPUT_DIR" "$dep_tmp"; then
-    rm -rf "$dep_tmp"
-    echo "Failed to download direct internal dependencies for wheel: $top_wheel" >&2
-    exit 1
-  fi
-done
-rm -rf "$dep_tmp"
+if [[ ${#SUMMARY_WHEEL[@]} -gt 0 ]]; then
+  echo "Downloading direct internal dependency wheels for resolved package set..."
+  dep_tmp="$(mktemp -d)"
+  register_temp_dir "$dep_tmp"
+  for top_wheel in "${SUMMARY_WHEEL[@]}"; do
+    wheel_path="$OUTPUT_DIR/$top_wheel"
+    if [[ ! -f "$wheel_path" ]]; then
+      rm -rf "$dep_tmp"
+      echo "Top-level wheel missing for dependency bundling: $wheel_path" >&2
+      exit 1
+    fi
+    echo "  Collecting direct internal deps for wheel: $top_wheel"
+    if ! download_direct_internal_deps_for_wheel "$wheel_path" "$OUTPUT_DIR" "$dep_tmp"; then
+      rm -rf "$dep_tmp"
+      echo "Failed to download direct internal dependencies for wheel: $top_wheel" >&2
+      exit 1
+    fi
+  done
+  rm -rf "$dep_tmp"
+fi
 
 total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"
 total_binary="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.zip' | wc -l | tr -d ' ')"
