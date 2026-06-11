@@ -1,12 +1,12 @@
 ---
 title: Compile Your First Model
-sidebar_position: 2
+sidebar_position: 1
 ---
 
 # Compile Your First Model
 
 This walkthrough takes a **ResNet-50** ONNX model end-to-end through the
-Model SDK's **Post-Training Quantization (PTQ)** workflow and produces a
+Model Compiler's **Post-Training Quantization (PTQ)** workflow and produces a
 compiled `.tar.gz` MPK archive ready for the Neat runtime.
 
 PTQ is an efficient, straightforward way to shrink a model and speed up
@@ -20,7 +20,7 @@ inference with minimal accuracy loss. The workflow is:
 ## Prerequisites
 
 - `sima-cli` installed (see the [official guide](https://docs.sima.ai/pages/sima_cli/main.html)).
-- The Model SDK environment. Enter it with:
+- The Model Compiler environment. Enter it with:
 
 ```bash
 sima-cli sdk model
@@ -28,7 +28,7 @@ sima-cli sdk model
 
 ## Get the example
 
-Inside the Model SDK container, install the ResNet-50 demo with `sima-cli`. It
+Inside the Model Compiler container, install the ResNet-50 demo with `sima-cli`. It
 provides everything you need to run end-to-end — the ONNX model, a calibration
 image set, the ImageNet labels, and a ready-to-run virtual environment:
 
@@ -63,7 +63,7 @@ project, or import it into Edgematic to build an application.
 The sections below explain what the script does at each stage, and the
 [full script](#full-script) is listed at the end. MLA tessellation is **enabled
 by default** so the compiled model feeds the accelerator directly (see
-[Compilation → Tessellation](./compilation.md#tessellation)).
+[Compilation → Tessellation](./model-compilation.md#tessellation)).
 
 ## How it works
 
@@ -188,7 +188,7 @@ sdk_net.compile(output_path=f"{MODELS_PATH}/compiled_resnet50")
 
 The output is a `.tar.gz` archive containing the compiled MLA program(s), an
 `_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./compilation.md)** for the full archive contents, batch sizing,
+**[Compilation](./model-compilation.md)** for the full archive contents, batch sizing,
 and tessellation options.
 
 ## Full script
@@ -368,5 +368,5 @@ if __name__ == "__main__":
 ## Next steps
 
 Use the compiled `.tar.gz` to build your first runtime pipeline, or continue to
-the in-depth **[Quantization](./quantization.md)** and **[Compilation](./compilation.md)**
+the in-depth **[Quantization](./quantization.md)** and **[Compilation](./model-compilation.md)**
 guides.
