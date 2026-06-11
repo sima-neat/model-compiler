@@ -191,16 +191,16 @@ The installer will:
 
 The installer creates the Model Compiler venv in one of these locations:
 
-- `/sdk-extensions/model-sdk` if `/sdk-extensions` exists and is writable
-- `/sdk-add-on/model-sdk` as a backward-compatible fallback
-- `~/sdk-extensions/model-sdk` otherwise
+- `/sdk-extensions/model-compiler` if `/sdk-extensions` exists and is writable
+- `/sdk-add-on/model-compiler` as a backward-compatible fallback
+- `~/sdk-extensions/model-compiler` otherwise
 
 Binary package contents such as the MLA toolchain are installed into that same venv under:
 - `bin/`
 - `include/`
 - `lib/`
 
-The installer also restores executable permissions for binaries copied into `model-sdk/bin`.
+The installer also restores executable permissions for binaries copied into `model-compiler/bin`.
 
 ## Shell Environment Updates
 
@@ -227,6 +227,9 @@ source ~/.bash_profile
 ```
 
 Logging out and back in works too.
+
+Use `activate-model-compiler` to enter the installed environment and
+`deactivate-model-compiler` to leave it.
 
 ## Cleanup Behavior
 

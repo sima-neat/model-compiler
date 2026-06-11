@@ -26,7 +26,7 @@ This skill generalizes the model surgery approach into one repeatable workflow:
 ## Prerequisites
 - Activate Model Compiler environment:
 ```bash
-activate-model-sdk
+activate-model-compiler
 ```
 - `onnx` must be available in the active Python env.
 - `skills/model_surgery/data/supported_operators.json` is the default support DB used by the guard script.

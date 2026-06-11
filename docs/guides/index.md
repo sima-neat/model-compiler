@@ -5,10 +5,10 @@ sidebar_label: Overview
 
 # Compile a Model
 
-Take a trained model and turn it into a SiMa-compiled artifact the Neat runtime
-can execute on the MLSoC. The vision/ONNX path runs through the Model Compiler
-workflow — check compatibility, prepare the graph, quantize, compile, and
-validate accuracy and performance — using the `afe` Python package.
+The **Model Compiler** is the SiMa.ai toolchain that turns a trained model into an
+artifact the Neat runtime can execute on the MLSoC. The vision/ONNX path uses
+the `afe` Python package to check compatibility, prepare the graph, quantize,
+compile, and validate accuracy and performance.
 
 ## Choose a model path
 
