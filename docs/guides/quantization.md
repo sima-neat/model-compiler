@@ -5,28 +5,26 @@ sidebar_position: 4
 
 # Quantization
 
-Once a trained model is imported into the `LoadedNet` form with `load_model()`,
-quantize it with `LoadedNet.quantize` (see the [API Reference](./api-reference/)).
+After you import a trained model into `LoadedNet` with `load_model()`, quantize
+it with `LoadedNet.quantize` (see the [API Reference](./api-reference/)).
 SiMa.ai silicon runs **INT8** and **BF16** on the Machine Learning Accelerator
 (MLA), and floating-point operations on the Application Processing Unit (APU)
 and Computer Vision Unit (CVU).
 
-Pre/post-processing functions run on the APU and CVU; model layers such as
-convolution and pooling run on the MLA. The quantizer partitions the graph
-across compute units automatically and **only the parts that run on the MLA are
-quantized**.
+Pre-processing and post-processing functions run on the APU and CVU. Model
+layers such as convolution and pooling run on the MLA. The quantizer partitions
+the graph across compute units automatically. **Only the parts that run on the
+MLA are quantized**.
 
 :::note Quantization-aware training (QAT)
 This page covers post-training quantization (PTQ). Quantization-aware training
-will be documented in the dedicated QAT repository.
-
-> **TODO(florianvoss):** Link to the future QAT repo once it is published.
+uses a separate workflow and is not covered in this guide.
 :::
 
 ## Default quantization
 
-`default_quantization` is a baseline configuration that quantizes a model the
-default way (INT8) and is a good starting point for custom configs.
+Use `default_quantization` as the baseline INT8 configuration before you create
+custom configurations.
 
 ```python
 from afe.apis.defines import default_quantization
@@ -39,13 +37,13 @@ quant_model = loaded_net.quantize(
 ```
 
 Channel equalization is an optional preprocessing step that equalizes weight
-distributions across channels and can improve quantization quality. Enable it
-with `QuantizationParams.with_channel_equalization`.
+distributions across channels. Enable it with
+`QuantizationParams.with_channel_equalization`.
 
 ## Quantization schemes
 
 Use `quantization_scheme(...)` to define a scheme. For **weights**, only
-symmetric quantization is supported; for **activations**, only per-tensor
+symmetric quantization is supported. For **activations**, only per-tensor
 quantization is supported.
 
 ```python
@@ -70,15 +68,15 @@ quant_model = loaded_net.quantize(
 ### BF16
 
 BFloat16 quantization is available on **Modalix** (developer preview). Build a
-BF16 scheme with `bfloat16_scheme()` and apply it to activations and/or weights
-via `QuantizationParams.with_activation_quantization` /
+BF16 scheme with `bfloat16_scheme()`. Apply it to activations and/or weights
+with `QuantizationParams.with_activation_quantization` /
 `with_weight_quantization`. See [Model compatibility](./model-compatibility.md)
 for per-operator BF16 support.
 
 ## Calibration methods
 
-Calibration determines per-layer quantization ranges. The **MSE** method
-consistently produces good results and is the default. Available methods:
+Calibration determines per-layer quantization ranges. The **MSE** method is the
+default. Available methods:
 
 | Method | Constructor |
 | --- | --- |
@@ -88,7 +86,7 @@ consistently produces good results and is the default. Available methods:
 | Histogram entropy | `HistogramEntropyMethod()` |
 | Histogram percentile | `HistogramPercentileMethod(percentile, num_bins)` |
 
-`CalibrationMethod.from_str(...)` is a convenient constructor:
+Use `CalibrationMethod.from_str(...)` as a constructor:
 
 ```python
 quant_configs = default_quantization.with_calibration(CalibrationMethod.from_str('mse'))
@@ -99,7 +97,7 @@ quant_configs = default_quantization.with_calibration(HistogramPercentileMethod(
 
 ## Overriding configuration parameters
 
-`QuantizationParams` exposes `with_*` helpers to override individual settings:
+Use `QuantizationParams` `with_*` helpers to override individual settings:
 `with_activation_quantization`, `with_weight_quantization`,
 `with_unquantized_nodes`, `with_requantization_mode`, `with_bias_correction`,
 `with_calibration`, `with_channel_equalization`, and
