@@ -11,16 +11,18 @@ Usage:
     [--source-json ./scripts/source.json] \
     [--sdk-release /path/to/sdk-release] \
     [--spec 'name==version']... \
-    [--python-version 312]
+    [--spec 'name @ wheel-file.whl']... \
+    [--python-version 312] \
+    [--target-arch x86_64|aarch64]
 
 Description:
   Downloads Python wheels from the configured Python index and optional
   binary packages from Artifactory. Python package specs can be provided with:
-    - --spec 'name==version' (repeatable), or
-    - --sdk-release file lines in format name==version.
+    - --spec 'name==version' or 'name @ wheel-file.whl' (repeatable), or
+    - --sdk-release file lines in format name==version or name @ wheel-file.whl.
   Selection priority per package:
     1) Pure-Python wheel (e.g. py3-none-any)
-    2) Linux x86 wheel (manylinux/linux_x86_64)
+    2) Linux target-architecture wheel (manylinux/linux_x86_64 or manylinux/linux_aarch64)
 
 Notes:
   - Auth should be handled by your environment/.netrc as needed.
@@ -32,9 +34,11 @@ SDK_RELEASE=""
 INDEX_URL=""
 EXTRA_INDEX_URL="https://pypi.org/simple"
 ARTIFACTORY_BASE_URL="${ARTIFACTORY_BASE_URL:-https://artifacts.eng.sima.ai/artifactory}"
+PYPI_ARTIFACTORY_BASE_URL="${PYPI_ARTIFACTORY_BASE_URL:-https://artifacts.eng.sima.ai/artifactory/sima-pypi}"
 OUTPUT_DIR=""
 SOURCE_JSON=""
 PYTHON_VERSION="312"
+TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
 declare -a CLI_SPECS=()
 declare -a SUMMARY_REQUESTED=()
 declare -a SUMMARY_RESOLVED=()
@@ -48,6 +52,13 @@ declare -a X86_PLATFORM_ARGS=(
   --platform manylinux2014_x86_64
   --platform linux_x86_64
 )
+declare -a AARCH64_PLATFORM_ARGS=(
+  --platform manylinux_2_28_aarch64
+  --platform manylinux_2_27_aarch64
+  --platform manylinux2014_aarch64
+  --platform linux_aarch64
+)
+declare -a TARGET_PLATFORM_ARGS=()
 
 cleanup_temp_dirs() {
   local temp_dir=""
@@ -71,18 +82,35 @@ normalize_python_version() {
   local raw="$1"
   raw="$(echo "$raw" | tr -d '[:space:]')"
   if [[ "$raw" =~ ^[0-9]+\.[0-9]+$ ]]; then
-    echo "$raw"
+    echo "$raw" | sed -E 's/^([0-9]+)\.([0-9]+)$/\1\2/'
     return 0
   fi
   if [[ "$raw" =~ ^[0-9]{3}$ ]]; then
-    echo "${raw:0:1}.${raw:1:2}"
+    echo "$raw"
     return 0
   fi
   if [[ "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "$(echo "$raw" | awk -F. '{print $1"."$2}')"
+    echo "$raw" | awk -F. '{print $1$2}'
     return 0
   fi
   return 1
+}
+
+normalize_target_arch() {
+  local raw="$1"
+  raw="$(echo "$raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  case "$raw" in
+    "")
+      case "$(uname -m 2>/dev/null || echo unknown)" in
+        x86_64|amd64) echo "x86_64" ;;
+        aarch64|arm64) echo "aarch64" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) return 1 ;;
+  esac
 }
 
 resolve_python_cmd() {
@@ -191,7 +219,7 @@ print_dependency_failure_details() {
 patch_wheel_metadata_requirements() {
   local wheel_file="$1"
   local source_json="$2"
-  python3 - "$wheel_file" "$source_json" <<'PY'
+  python3 - "$wheel_file" "$source_json" "$TARGET_ARCH" <<'PY'
 import base64
 import csv
 import hashlib
@@ -205,10 +233,15 @@ import zipfile
 
 wheel = pathlib.Path(sys.argv[1])
 source_json = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+target_arch = sys.argv[3] if len(sys.argv) > 3 else ""
 override_map = {}
 if source_json and source_json.is_file():
     doc = json.loads(source_json.read_text(encoding="utf-8"))
-    raw = doc.get("dependency_overrides", {})
+    arch_doc = doc.get(target_arch) if target_arch else None
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_overrides"), dict):
+        raw = arch_doc["dependency_overrides"]
+    else:
+        raw = doc.get("dependency_overrides", {})
     if isinstance(raw, dict):
         override_map = {
             str(k).strip().lower().replace("_", "-"): str(v).strip()
@@ -233,7 +266,7 @@ try:
             raise SystemExit(0)
 
         metadata_text = contents[metadata_name].decode("utf-8", "replace")
-        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(==)([^;\s]+)(.*)$")
+        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(\s*==\s*)([^;\s]+)(.*)$")
         new_lines = []
         for line in metadata_text.splitlines():
             match = req_re.match(line)
@@ -327,13 +360,18 @@ PY
 read_binary_package_specs() {
   local source_json="$1"
   [[ -n "$source_json" && -f "$source_json" ]] || return 0
-  python3 - "$source_json" <<'PY'
+  python3 - "$source_json" "$TARGET_ARCH" <<'PY'
 import json
 import pathlib
 import sys
 
 doc = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-items = doc.get("binary-packages", [])
+target_arch = sys.argv[2] if len(sys.argv) > 2 else ""
+arch_doc = doc.get(target_arch) if target_arch else None
+if isinstance(arch_doc, dict) and isinstance(arch_doc.get("binary-packages"), list):
+    items = arch_doc["binary-packages"]
+else:
+    items = doc.get("binary-packages", [])
 if not isinstance(items, list):
     raise SystemExit(0)
 for item in items:
@@ -498,9 +536,7 @@ download_direct_internal_deps_for_wheel() {
     fi
     dep_wheel="$(basename "$DOWNLOADED_WHEEL")"
     patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
-    if [[ ! -f "$dest_dir/$dep_wheel" ]]; then
-      mv "$DOWNLOADED_WHEEL" "$dest_dir/"
-    fi
+    mv -f "$DOWNLOADED_WHEEL" "$dest_dir/"
     rm -rf "$dep_tmp"
   done
 
@@ -534,7 +570,7 @@ resolve_latest_master_spec() {
   local escaped_base="${version_base//./\\.}"
 
   local versions_line=""
-  versions_line="$(python3 -m pip index versions "$pkg_name" "${PIP_INDEX_ARGS[@]}" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
+  versions_line="$(PIP_NO_INPUT=1 python3 -m pip index versions "$pkg_name" "${PIP_INDEX_ARGS[@]}" 2>/dev/null | sed -n 's/^Available versions: //p' | head -n1)"
   if [[ -z "$versions_line" ]]; then
     return 1
   fi
@@ -568,15 +604,66 @@ download_one_spec() {
   local x86_try_dir=""
   local pyv=""
   local seen_py_versions=" "
+  local direct_package=""
+  local direct_ref=""
+  local direct_url=""
+  local direct_name=""
+  local direct_path=""
   mkdir -p "$pure_dir" "$x86_dir"
 
   DOWNLOADED_WHEEL=""
   DOWNLOAD_ERROR_LOG=""
 
+  if [[ "$spec" == *" @ "* ]]; then
+    direct_package="${spec%% @ *}"
+    direct_package="${direct_package%%[*}"
+    direct_package="${direct_package//_/-}"
+    direct_ref="${spec#* @ }"
+    if [[ "$direct_ref" == http://* || "$direct_ref" == https://* ]]; then
+      direct_url="$direct_ref"
+    elif [[ "$direct_ref" == *.whl && "$direct_ref" != */* ]]; then
+      direct_url="${PYPI_ARTIFACTORY_BASE_URL%/}/${direct_package}/${direct_ref}"
+    elif [[ "$direct_ref" == *.whl ]]; then
+      direct_url="${PYPI_ARTIFACTORY_BASE_URL%/}/${direct_ref#/}"
+    fi
+  elif [[ "$spec" == http://* || "$spec" == https://* ]]; then
+    direct_url="$spec"
+  fi
+
+  if [[ -n "$direct_url" ]]; then
+    direct_name="${direct_url%%\?*}"
+    direct_name="${direct_name##*/}"
+    if [[ -z "$direct_name" || "$direct_name" != *.whl ]]; then
+      echo "Direct package URL must point to a .whl file: $direct_url" >&2
+      return 1
+    fi
+    direct_path="${tmpdir}/${direct_name}"
+    if command -v curl >/dev/null 2>&1; then
+      if ! curl -fsSL --netrc-optional -o "$direct_path" "$direct_url"; then
+        rm -f "$direct_path"
+        echo "Failed to download direct wheel URL: $direct_url" >&2
+        return 1
+      fi
+    elif command -v wget >/dev/null 2>&1; then
+      if ! wget --quiet -O "$direct_path" "$direct_url"; then
+        rm -f "$direct_path"
+        echo "Failed to download direct wheel URL: $direct_url" >&2
+        return 1
+      fi
+    else
+      echo "curl or wget is required to download direct wheel URLs." >&2
+      return 1
+    fi
+    DOWNLOADED_WHEEL="$direct_path"
+    return 0
+  fi
+
   # 1) Try pure-Python wheel first.
   set +e
-  python3 -m pip download \
+  PIP_NO_INPUT=1 python3 -m pip download \
     --disable-pip-version-check \
+    --verbose \
+    --verbose \
     --no-deps \
     --only-binary=:all: \
     "${PIP_INDEX_ARGS[@]}" \
@@ -599,7 +686,7 @@ download_one_spec() {
     return 1
   fi
 
-  # 2) Fallback to x86 wheel only when pure wheel is unavailable.
+  # 2) Fallback to a target-architecture wheel only when a pure wheel is unavailable.
   # Try requested python ABI first, then common alternatives.
   for pyv in "$PYTHON_VERSION" 312 311 310; do
     if [[ "$seen_py_versions" == *" $pyv "* ]]; then
@@ -612,13 +699,15 @@ download_one_spec() {
     x86_log="${tmpdir}/x86-cp${pyv}.log"
 
     set +e
-    python3 -m pip download \
+    PIP_NO_INPUT=1 python3 -m pip download \
       --disable-pip-version-check \
+      --verbose \
+      --verbose \
       --no-deps \
       --only-binary=:all: \
       "${PIP_INDEX_ARGS[@]}" \
       --dest "$x86_try_dir" \
-      "${X86_PLATFORM_ARGS[@]}" \
+      "${TARGET_PLATFORM_ARGS[@]}" \
       --implementation cp \
       --abi "cp${pyv}" \
       --python-version "$pyv" \
@@ -632,7 +721,7 @@ download_one_spec() {
       return 0
     fi
     if [[ ${#COLLECTED_WHEELS[@]} -gt 1 ]]; then
-      echo "Expected exactly one x86 wheel for '$spec' (cp${pyv}), found ${#COLLECTED_WHEELS[@]}." >&2
+      echo "Expected exactly one ${TARGET_ARCH} wheel for '$spec' (cp${pyv}), found ${#COLLECTED_WHEELS[@]}." >&2
       return 1
     fi
   done
@@ -675,6 +764,10 @@ while [[ $# -gt 0 ]]; do
       PYTHON_VERSION="${2:-}"
       shift 2
       ;;
+    --target-arch)
+      TARGET_ARCH="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -692,6 +785,25 @@ if [[ -z "$INDEX_URL" || -z "$OUTPUT_DIR" ]]; then
   usage
   exit 1
 fi
+
+if ! PYTHON_VERSION="$(normalize_python_version "$PYTHON_VERSION")"; then
+  echo "Unsupported python version for wheel selection: '$PYTHON_VERSION'" >&2
+  exit 1
+fi
+
+if ! TARGET_ARCH="$(normalize_target_arch "$TARGET_ARCH")"; then
+  echo "Unsupported target architecture for wheel selection: '${TARGET_ARCH:-}'" >&2
+  exit 1
+fi
+case "$TARGET_ARCH" in
+  x86_64) TARGET_PLATFORM_ARGS=("${X86_PLATFORM_ARGS[@]}") ;;
+  aarch64) TARGET_PLATFORM_ARGS=("${AARCH64_PLATFORM_ARGS[@]}") ;;
+  *)
+    echo "Unsupported target architecture for wheel selection: '$TARGET_ARCH'" >&2
+    exit 1
+    ;;
+esac
+echo "Using target architecture for wheel selection: $TARGET_ARCH"
 
 PIP_INDEX_ARGS=(--index-url "$INDEX_URL")
 if [[ -n "$EXTRA_INDEX_URL" ]]; then
@@ -715,7 +827,19 @@ if [[ -n "$SDK_RELEASE" ]]; then
   fi
   while IFS= read -r line; do
     [[ -n "$line" ]] && SPECS+=("$line")
-  done < <(grep -E '^[[:alnum:]_.-]+(\[[^]]+\])?==[^[:space:]]+$' "$SDK_RELEASE" || true)
+  done < <(
+    awk '
+      /^[[:space:]]*#/ { next }
+      {
+        line=$0
+        sub(/^[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        if (line ~ /^[[:alnum:]_.-]+(\[[^]]+\])?==[^[:space:]]+$/ || line ~ /^[[:alnum:]_.-]+(\[[^]]+\])?[[:space:]]+@[[:space:]]+[^[:space:]]+\.whl$/) {
+          print line
+        }
+      }
+    ' "$SDK_RELEASE"
+  )
 fi
 
 if [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]]; then
