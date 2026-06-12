@@ -23,7 +23,10 @@ activate-model-compiler
 If required deps are missing:
 ```bash
 sima-cli login
-sima-cli install sdk-extensions/model
+# amd64 host
+sima-cli install tools/model-compiler/amd64
+# arm64 host
+sima-cli install tools/model-compiler/arm64
 ```
 
 ## Default Workflow

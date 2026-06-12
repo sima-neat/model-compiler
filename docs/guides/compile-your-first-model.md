@@ -5,12 +5,11 @@ sidebar_position: 1
 
 # Compile Your First Model
 
-This walkthrough takes a **ResNet-50** ONNX model end-to-end through the
-Model Compiler's **Post-Training Quantization (PTQ)** workflow and produces a
-compiled `.tar.gz` MPK archive ready for the Neat runtime.
+This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
+**Post-Training Quantization (PTQ)** workflow. The result is a compiled
+`.tar.gz` MPK archive for the Neat runtime.
 
-PTQ is an efficient, straightforward way to shrink a model and speed up
-inference with minimal accuracy loss. The workflow is:
+The workflow has four stages:
 
 1. **Load** the model.
 2. **Quantize** it to `int8` (or `bf16`).
@@ -19,21 +18,21 @@ inference with minimal accuracy loss. The workflow is:
 
 ## Prerequisites
 
-- `sima-cli` installed (see the [official guide](https://docs.sima.ai/pages/sima_cli/main.html)).
-- The Model Compiler environment. Enter it with:
+- `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
+- Model Compiler installed in the Neat SDK or on an Ubuntu host. Enter the
+  environment with:
 
 ```bash
-sima-cli sdk model
+activate-model-compiler
 ```
 
 ## Get the example
 
-Inside the Model Compiler container, install the ResNet-50 demo with `sima-cli`. It
-provides everything you need to run end-to-end — the ONNX model, a calibration
-image set, the ImageNet labels, and a ready-to-run virtual environment:
+On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
+ResNet-50 demo with `sima-cli`. The demo includes the ONNX model, calibration
+images, ImageNet labels, and a ready-to-run virtual environment:
 
 ```bash
-cd /home/docker/sima-cli/
 sima-cli install assets/demos/compile-resnet50-model
 ```
 
@@ -45,8 +44,8 @@ cd ptq-example/src/modelsdk_quantize_model
 python3 resnet50_quant.py --boardtype modalix   # or: mlsoc
 ```
 
-The run ends with a correctly classified Golden Retriever (ImageNet class 207)
-and a compiled archive:
+The run should classify a Golden Retriever as ImageNet class 207 and produce a
+compiled archive:
 
 ```text
 ***** Test Inference on a Golden Retriever (Class 207) *****
@@ -57,20 +56,19 @@ and a compiled archive:
 quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` with `mpk project create` to scaffold an MPK
-project, or import it into Edgematic to build an application.
+Use the resulting `.tar.gz` with `mpk project create` to create an MPK project,
+or import it into Edgematic to build an application.
 
-The sections below explain what the script does at each stage, and the
-[full script](#full-script) is listed at the end. MLA tessellation is **enabled
-by default** so the compiled model feeds the accelerator directly (see
-[Compilation → Tessellation](./model-compilation.md#tessellation)).
+The following sections explain each stage. The [full script](#full-script)
+appears at the end. MLA tessellation is **enabled by default**, so the compiled
+model feeds the accelerator directly. See
+[Compilation > Tessellation](./model-compilation.md#tessellation).
 
 ## How it works
 
 ### 1. Load the model
 
-The first step is to load an ONNX ResNet-50 into the SDK's internal
-representation.
+Load the ONNX ResNet-50 model into the SDK's internal representation.
 
 ```python
 from afe.apis.loaded_net import load_model
@@ -99,10 +97,9 @@ into a `LoadedNet` ready for quantization. `TARGET` selects the platform:
 
 ### 2. Prepare a calibration dataset
 
-Quantization needs a small, representative calibration dataset to determine the
-scaling factors that map FP32 values into the limited integer range without
-clipping or excessive precision loss. Calibrating on real input distributions
-preserves important activations while reducing compute cost.
+Quantization needs a small, representative calibration dataset. The dataset
+sets scaling factors that map FP32 values into the integer range while avoiding
+excessive clipping or precision loss.
 
 ```python
 from sima_utils.data.data_generator import DataGenerator
@@ -123,11 +120,12 @@ images_generator = DataGenerator({MODEL_INPUT_NAME: calibration_images})
 images_generator.map({MODEL_INPUT_NAME: preprocess})
 ```
 
-A few dozen representative images are typically enough for calibration.
+Use representative images from the same input distribution as your deployment
+workload.
 
 ### 3. Quantize
 
-With the model loaded and the calibration data prepared, quantize to INT8:
+After you load the model and prepare calibration data, quantize to INT8:
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -149,14 +147,15 @@ sdk_net = loaded_net.quantize(
 )
 ```
 
-Here activations use 8-bit asymmetric per-tensor quantization and weights use
-8-bit symmetric per-channel quantization. For BF16 and calibration options, see
+This example uses 8-bit asymmetric per-tensor quantization for activations and
+8-bit symmetric per-channel quantization for weights. For BF16 and calibration
+options, see
 **[Quantization](./quantization.md)**.
 
 ### 4. Validate accuracy
 
-Before compiling, confirm the quantized model still classifies correctly by
-executing it in software with `sdk_net.execute(...)`:
+Before you compile, run the quantized model in software with
+`sdk_net.execute(...)` and confirm that it still classifies correctly:
 
 ```python
 import numpy as np
@@ -173,31 +172,32 @@ label, score = postprocess_output(sdk_net.execute(inputs={"input": pp}))
 print(f"class {label} -> {score:.2%}")   # expect 207 'golden retriever'
 ```
 
-A correct, high-confidence prediction (e.g. `207 'golden retriever' -> 98.82%`)
-confirms preprocessing and quantization are sound. A misclassification points to
-a preprocessing mismatch or a quantization issue worth retuning.
+A correct, high-confidence prediction, such as
+`207 'golden retriever' -> 98.82%`, confirms that preprocessing and
+quantization are aligned. A misclassification usually indicates a preprocessing
+mismatch or a quantization issue to retune.
 
 ### 5. Compile
 
-Once you are satisfied, save and compile the model:
+After validation passes, save and compile the model:
 
 ```python
 sdk_net.save(model_name="quantized_resnet50", output_directory=MODELS_PATH)
 sdk_net.compile(output_path=f"{MODELS_PATH}/compiled_resnet50")
 ```
 
-The output is a `.tar.gz` archive containing the compiled MLA program(s), an
+The output is a `.tar.gz` archive that contains the compiled MLA programs, an
 `_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./model-compilation.md)** for the full archive contents, batch sizing,
+**[Compilation](./model-compilation.md)** for archive contents, batch sizing,
 and tessellation options.
 
 ## Full script
 
-The complete, annotated program is below. It is also available in the
-model-sdk repo as
+The complete annotated program is below. It is also available in the model-sdk
+repo as
 [`examples/compile_first_model.py`](https://github.com/sima-neat/model-sdk/blob/main/examples/compile_first_model.py).
-Unlike the bundled demo above, this version runs against **your own** ONNX model
-and a folder of calibration images:
+Unlike the bundled demo, this version runs against **your own** ONNX model and
+a folder of calibration images:
 
 ```bash
 python3 examples/compile_first_model.py \
