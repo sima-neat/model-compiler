@@ -59,7 +59,7 @@ Example:
     "ubuntu": [
       "build-essential",
       "curl",
-      "libllvm14",
+      "libllvm18",
       "libopenblas0-pthread"
     ]
   },
@@ -77,7 +77,38 @@ Example:
       "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
       "extension": ".zip"
     }
-  ]
+  ],
+  "aarch64": {
+    "system_dependencies": {
+      "ubuntu": [
+        "build-essential",
+        "curl",
+        "libllvm18",
+        "libopenblas0-pthread"
+      ]
+    },
+    "dependency_overrides": {},
+    "python-packages": [
+      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
+      {
+        "name": "spconv",
+        "version": "2.3.8",
+        "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl"
+      },
+      {
+        "name": "cumm",
+        "version": "0.7.13",
+        "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl"
+      }
+    ],
+    "binary-packages": [
+      {
+        "name": "mla/toolchain/mla-toolchain",
+        "version": "v2.1.3523-neat.4-ubuntu",
+        "extension": ".zip"
+      }
+    ]
+  }
 }
 ```
 
@@ -86,8 +117,14 @@ Fields:
 - `python_version`: target interpreter version for the installed virtual environment
 - `system_dependencies.ubuntu`: apt packages installed on the target host before Python and virtual environment setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
-- `python-packages`: top-level Python packages to include in the bundle
+- `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
 - `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment
+- `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
+
+Native source builds triggered during installation, such as
+`llama_cpp_python`, use the build backend's default parallelism. Set
+`MODELSDK_BUILD_PARALLEL_LEVEL` to limit or override build parallelism on
+resource-constrained machines.
 
 ## Building a Bundle
 
@@ -123,6 +160,12 @@ Typical explicit build:
   --output-dir ./dist \
   --index-url https://artifacts.eng.sima.ai/artifactory/api/pypi/sima-pypi-group/simple \
   --extra-index-url https://pypi.org/simple
+```
+
+Build a bundle for a specific architecture:
+
+```bash
+./scripts/build_modelsdk_bundle.sh --target-arch aarch64
 ```
 
 By default, the metadata version comes from the exact git checkout. If `HEAD`
@@ -223,6 +266,9 @@ virtual environment under:
 - `include/`
 - `lib/`
 
+The downloaded MLA toolchain zip is sanitized during bundle creation so only
+its `bin/` payload is preserved.
+
 The installer also restores executable permissions for binaries copied into `model-compiler/bin`.
 
 ## Shell Environment Updates
@@ -250,6 +296,63 @@ source ~/.bash_profile
 ```
 
 You can also log out and back in.
+
+## Post-Install Smoke Tests
+
+After installing and activating the Model Compiler extension, run the fast smoke test:
+
+```bash
+activate-model-compiler
+python /path/to/model-sdk/scripts/smoke_test_modelsdk.py --tier basic
+```
+
+The `basic` tier is intended for every CI/CD extension-install job. It checks:
+- the active Python is the Model Compiler venv
+- Model Compiler `bin/` is on `PATH`
+- core MLA tools such as `mla-nm`, `mla-size`, `mla-readelf`, and `mla-isim` are runnable
+- `afe-replay-compile`, `onnxsim`, and `llima-compile` entry points are runnable
+- required Python modules including `afe`, `onnx`, `torch`, `sima_lmm`, `gguf`, `llama_cpp`, and `safetensors` are importable
+
+Heavier tiers are available for scheduled or pre-release jobs:
+
+```bash
+# Export a synthetic ResNet50 ONNX model with torchvision.
+python scripts/smoke_test_modelsdk.py --tier resnet-export
+
+# Export or reuse ResNet50, audit it, simplify it, and run quantize-only.
+python scripts/smoke_test_modelsdk.py --tier resnet-quantize
+
+# Same as resnet-quantize, but also runs the compile step.
+python scripts/smoke_test_modelsdk.py --tier resnet-compile
+
+# Download YOLOv8n ONNX, simplify/audit it, and run quantize+compile.
+python scripts/smoke_test_modelsdk.py --tier yolo
+
+# Run all long-form smoke cases and print a final result summary.
+python scripts/smoke_test_modelsdk.py --tier all
+
+# Reuse a cached YOLO ONNX model and optionally verify model-to-pipeline references.
+python scripts/smoke_test_modelsdk.py \
+  --tier yolo \
+  --yolo-model /path/to/yolo.onnx \
+  --model-to-pipeline-dir /path/to/tool-model-to-pipeline
+```
+
+The ONNX operator audit is informational by default. Add `--strict-audit` when
+you want the smoke test to fail on unknown or unsupported operators in the
+bundled support database.
+
+When `--work-dir` is omitted, model tiers create temporary work directories
+under `~/tmp`. If `--work-dir` is supplied, model tiers create a fresh per-run
+subdirectory under that path for intermediate and compiled artifacts. This
+avoids collisions with stale files from previous smoke-test runs.
+If an explicit `--work-dir` exists but is not writable, the runner falls back
+to a per-user sibling such as `~/tmp/modelsdk-smoke-$USER`.
+
+The `all`, `resnet-compile`, and `yolo` tiers also collect lightweight
+compiled-artifact metrics. They report package counts/sizes and run MLA
+toolchain checks such as `mla-size` and `mla-readelf` on ELF files packaged in
+the generated MPK archive when those files are present.
 
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
