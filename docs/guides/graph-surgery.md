@@ -67,7 +67,7 @@ module before you modify a graph:
 from sima_utils.onnx import onnx_helpers as oh
 ```
 
-For Model Compiler APIs, see the [AFE API reference](../generated/index.md).
+For Model Compiler APIs, see the [AFE API reference](/reference/model-sdk-api/).
 
 ## Analyze MLA coverage
 
