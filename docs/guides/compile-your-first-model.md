@@ -57,8 +57,8 @@ Compiling model. Output directory: .../compiled_resnet50
 Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` with `mpk project create` to create an MPK project,
-or import it into Edgematic to build an application.
+Use the resulting `.tar.gz` to [validate accuracy and performance](./validate-accuracy-performance.md),
+or use it to [build a pipeline application](/develop-apps/).
 
 The following sections explain each stage. The [full script](#full-script)
 appears at the end. MLA tessellation is **enabled by default**, so the compiled
