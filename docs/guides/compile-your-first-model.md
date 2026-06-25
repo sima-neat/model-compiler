@@ -42,7 +42,7 @@ model and downloads public Open Images calibration data if they are not already
 present:
 
 ```bash
-python3 compile_first_model.py --boardtype modalix   # or: mlsoc
+python3 compile_first_model.py
 ```
 
 When validation inputs are provided, the run should classify a Golden Retriever
@@ -209,7 +209,6 @@ images:
 python3 compile_first_model.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
-  --device modalix \
   --output ./compiled_resnet50
 # optional accuracy check:
 #   --validate golden_retriever_207.jpg --labels imagenet_labels.txt
@@ -229,7 +228,7 @@ directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
 ``--no-mla-tessellation`` if your pipeline needs the EV74 reorder path.
 
 Example:
-    python3 compile_first_model.py --boardtype modalix
+    python3 compile_first_model.py
 """
 
 import argparse

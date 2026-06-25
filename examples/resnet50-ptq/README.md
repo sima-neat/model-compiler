@@ -34,14 +34,14 @@ cd resnet50-ptq
 python3 models/download_resnet50.py
 python3 src/x86_reference_app/resnet50_reference_classification_app.py
 python3 data/download_openimages_calibration.py --samples 50
-python3 src/modelsdk_quantize_model/resnet50_quant.py --boardtype modalix
+python3 src/modelsdk_quantize_model/resnet50_quant.py
 ```
 
 For the shortest end-to-end Model Compiler flow, run from the installed examples
 root:
 
 ```bash
-python3 compile_first_model.py --boardtype modalix
+python3 compile_first_model.py
 ```
 
 This wrapper generates the ResNet-50 ONNX model and Open Images calibration

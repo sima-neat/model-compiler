@@ -92,5 +92,5 @@ Model Compiler examples installed in:
   ${install_root}
 
 Run an example from this directory, for example:
-  python3 compile_first_model.py --boardtype modalix
+  python3 compile_first_model.py
 EOF

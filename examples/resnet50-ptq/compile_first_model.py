@@ -11,7 +11,7 @@ directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
 ``--no-mla-tessellation`` if your pipeline needs the EV74 reorder path.
 
 Example:
-    python3 compile_first_model.py --boardtype modalix
+    python3 compile_first_model.py
 """
 
 import argparse

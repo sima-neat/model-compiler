@@ -20,8 +20,8 @@ parser.add_argument(
     "--boardtype", 
     type=str, 
     choices=["mlsoc", "modalix"], 
-    default="mlsoc",
-    help="Specify the target board type: 'mlsoc' (Gen1) or 'modalix' (Gen2). Defaults to mlsoc."
+    default="modalix",
+    help="Specify the target board type: 'mlsoc' (Gen1) or 'modalix' (Gen2). Defaults to modalix."
 )
 args = parser.parse_args()
 
