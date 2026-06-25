@@ -213,7 +213,7 @@ def main() -> int:
             weight_quantization_scheme=quantization_scheme(asymmetric=False, per_channel=True, bits=8),
         )
     sdk_net = loaded_net.quantize(calib_data, quant_configs, model_name="quantized_resnet50")
-    log.info("Quantization complete")
+    print("Quantization complete.", flush=True)
 
     # 4. (Optional) Validate accuracy.
     validate_image = Path(args.validate).expanduser().resolve() if args.validate else DEFAULT_VALIDATE_IMAGE
@@ -228,16 +228,18 @@ def main() -> int:
     tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
     if tess:
         log.info("MLA tessellation enabled (inputs HWC, outputs HWC16)")
+    output_dir = Path(args.output).expanduser().resolve()
+    print(f"Compiling model. Output directory: {output_dir}", flush=True)
     sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
-    compiled_archive = Path(args.output).expanduser().resolve() / "quantized_resnet50_mpk.tar.gz"
+    compiled_archive = output_dir / "quantized_resnet50_mpk.tar.gz"
     if compiled_archive.is_file():
-        log.info("Compiled MPK archive written to %s", compiled_archive)
+        print(f"Compiled MPK archive written to: {compiled_archive}", flush=True)
     else:
-        archives = sorted(Path(args.output).expanduser().resolve().glob("*_mpk.tar.gz"))
+        archives = sorted(output_dir.glob("*_mpk.tar.gz"))
         if archives:
-            log.info("Compiled MPK archive written to %s", archives[-1])
+            print(f"Compiled MPK archive written to: {archives[-1]}", flush=True)
         else:
-            log.info("Compiled model artifacts written to %s", Path(args.output).expanduser().resolve())
+            print(f"Compiled model artifacts written to: {output_dir}", flush=True)
     return 0
 
 
