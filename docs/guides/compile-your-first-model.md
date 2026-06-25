@@ -450,7 +450,15 @@ def main() -> int:
     if tess:
         log.info("MLA tessellation enabled (inputs HWC, outputs HWC16)")
     sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
-    log.info("Compiled MPK archive written to %s", args.output)
+    compiled_archive = Path(args.output).expanduser().resolve() / "quantized_resnet50_mpk.tar.gz"
+    if compiled_archive.is_file():
+        log.info("Compiled MPK archive written to %s", compiled_archive)
+    else:
+        archives = sorted(Path(args.output).expanduser().resolve().glob("*_mpk.tar.gz"))
+        if archives:
+            log.info("Compiled MPK archive written to %s", archives[-1])
+        else:
+            log.info("Compiled model artifacts written to %s", Path(args.output).expanduser().resolve())
     return 0
 
 
