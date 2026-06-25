@@ -29,27 +29,27 @@ activate-model-compiler
 ## Get the example
 
 On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
-ResNet-50 demo with `sima-cli`. The demo includes the ONNX model, calibration
-images, ImageNet labels, and the scripts used below:
+Model Compiler examples with `sima-cli`:
 
 ```bash
-sima-cli install assets/demos/compile-resnet50-model
+sima-cli neat install model-compiler/examples
 ```
 
 Keep the Model Compiler environment active for the rest of the walkthrough.
 
-Generate the ResNet-50 ONNX model, then run the quantize-and-compile example:
+Generate the ResNet-50 ONNX model, download public Open Images calibration
+data, then run the quantize-and-compile example:
 
 ```bash
-cd ptq-example/models
-python3 download_resnet50.py
+cd resnet50-ptq
 
-cd ../src/modelsdk_quantize_model
-python3 resnet50_quant.py --boardtype modalix   # or: mlsoc
+python3 models/download_resnet50.py
+python3 data/download_openimages_calibration.py --samples 50
+python3 src/modelsdk_quantize_model/resnet50_quant.py --boardtype modalix   # or: mlsoc
 ```
 
-The run should classify a Golden Retriever as ImageNet class 207 and produce a
-compiled archive:
+When validation inputs are provided, the run should classify a Golden Retriever
+as ImageNet class 207 and produce a compiled archive:
 
 ```text
 ***** Test Inference on a Golden Retriever (Class 207) *****
@@ -197,14 +197,18 @@ and tessellation options.
 
 ## Full script
 
-The complete annotated program is below. It is also available in the model-sdk
-repo as
-[`examples/compile_first_model.py`](https://github.com/sima-neat/model-sdk/blob/main/examples/compile_first_model.py).
-Unlike the bundled demo, this version runs against **your own** ONNX model and
-a folder of calibration images:
+The complete annotated program is below. It is also available in the Model
+Compiler examples package as `resnet50-ptq/compile_first_model.py`:
 
 ```bash
-python3 examples/compile_first_model.py \
+sima-cli neat install model-compiler/examples
+```
+
+The script runs against **your own** ONNX model and a folder of calibration
+images:
+
+```bash
+python3 resnet50-ptq/compile_first_model.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
   --device modalix \
