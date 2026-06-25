@@ -37,8 +37,7 @@ python3 data/download_openimages_calibration.py --samples 50
 python3 src/modelsdk_quantize_model/resnet50_quant.py
 ```
 
-For the shortest end-to-end Model Compiler flow, run from the installed examples
-root:
+For the shortest end-to-end Model Compiler flow, run from this directory:
 
 ```bash
 python3 compile_first_model.py

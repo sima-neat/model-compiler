@@ -42,6 +42,7 @@ model and downloads public Open Images calibration data if they are not already
 present:
 
 ```bash
+cd resnet50-ptq
 python3 compile_first_model.py
 ```
 
@@ -198,11 +199,11 @@ and tessellation options.
 ## Full script
 
 The complete annotated program is below. It is also available in the Model
-Compiler examples package as `compile_first_model.py` and
-`resnet50-ptq/compile_first_model.py`:
+Compiler examples package as `resnet50-ptq/compile_first_model.py`:
 
 ```bash
 sima-cli neat install model-compiler/examples
+cd resnet50-ptq
 ```
 
 The script runs against **your own** ONNX model and a folder of calibration

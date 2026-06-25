@@ -84,6 +84,7 @@ EOF
 fi
 
 python3 -m zipfile -e "${archive}" "${install_root}"
+rm -f "${archive}"
 
 find "${install_root}" -type f -name '*.py' -exec chmod a+x {} +
 
@@ -91,6 +92,7 @@ cat <<EOF
 Model Compiler examples installed in:
   ${install_root}
 
-Run an example from this directory, for example:
+Run the ResNet-50 example:
+  cd resnet50-ptq
   python3 compile_first_model.py
 EOF
