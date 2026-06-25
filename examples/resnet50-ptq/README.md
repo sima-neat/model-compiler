@@ -24,15 +24,12 @@ dependencies.
   Softmax, simplifies the graph, and saves `models/resnet50_model.onnx`.
 - `src/modelsdk_quantize_model/resnet50_quant.py`: quantizes and compiles the
   generated ResNet-50 model with Model Compiler.
-- `src/x86_reference_app/resnet50_reference_classification_app.py`: runs the
-  ONNX model with ONNX Runtime as an x86 reference application.
 
 ## Typical Flow
 
 ```bash
 cd resnet50-ptq
 python3 models/download_resnet50.py
-python3 src/x86_reference_app/resnet50_reference_classification_app.py
 python3 data/download_openimages_calibration.py --samples 50
 python3 src/modelsdk_quantize_model/resnet50_quant.py
 ```

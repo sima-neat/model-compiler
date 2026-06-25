@@ -75,5 +75,9 @@ if python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'compile.py' 
 fi
 python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/compile.py' >/dev/null
 python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/src/modelsdk_quantize_model/resnet50_quant.py' >/dev/null
+if python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/src/x86_reference_app/' >/dev/null; then
+  echo "Unexpected x86_reference_app in examples package." >&2
+  exit 1
+fi
 
 echo "Examples package written to: ${OUTPUT_DIR_ABS}"
