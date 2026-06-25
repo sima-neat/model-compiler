@@ -69,10 +69,11 @@ def main() -> int:
         output = Path(__file__).resolve().parent / output
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    print(f"Downloading {args.samples} Open Images calibration images...")
     images = []
     labels = []
-    for image_id, title in iter_validation_image_ids(args.samples):
-        print(f"Downloading validation/{image_id}.jpg")
+    for index, (image_id, title) in enumerate(iter_validation_image_ids(args.samples), start=1):
+        print(f"[{index}/{args.samples}] Downloading validation/{image_id}.jpg", flush=True)
         images.append(download_rgb_image(image_id))
         labels.append([title or image_id])
 
