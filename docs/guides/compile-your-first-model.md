@@ -12,7 +12,7 @@ This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
 The workflow has four stages:
 
 1. **Load** the model.
-2. **Quantize** it to `int8` (or `bf16`).
+2. **Quantize** it to INT8 by default, or BF16 when requested.
 3. **Validate** its accuracy.
 4. **Compile** it for execution on the MLSoC.
 
@@ -29,35 +29,36 @@ activate-model-compiler
 ## Get the example
 
 On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
-ResNet-50 demo with `sima-cli`. The demo includes the ONNX model, calibration
-images, ImageNet labels, and a ready-to-run virtual environment:
+Model Compiler examples with `sima-cli`:
 
 ```bash
-sima-cli install assets/demos/compile-resnet50-model
+sima-cli neat install model-compiler/examples
 ```
 
-Activate the environment and run the example:
+Keep the Model Compiler environment active for the rest of the walkthrough.
+
+Run the quantize-and-compile example. The script generates the ResNet-50 ONNX
+model and downloads public Open Images calibration data if they are not already
+present:
 
 ```bash
-source ptq-example/.env/bin/activate
-cd ptq-example/src/modelsdk_quantize_model
-python3 resnet50_quant.py --boardtype modalix   # or: mlsoc
+cd resnet50-ptq
+python3 compile.py
 ```
 
-The run should classify a Golden Retriever as ImageNet class 207 and produce a
-compiled archive:
+When validation inputs are provided, the run should classify a Golden Retriever
+as ImageNet class 207 and produce a compiled archive:
 
 ```text
-***** Test Inference on a Golden Retriever (Class 207) *****
-[5] --> 207: 'golden retriever' -> 98.82%
-
-***** Compiling Model for MODALIX *****
-***** Compiled Model at .../models/compiled_resnet50 *****
-quantized_resnet50_mpk.tar.gz
+Validation image prediction:
+  class 207: 'golden retriever' -> 98.82%
+Quantization complete.
+Compiling model. Output directory: .../compiled_resnet50
+Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` with `mpk project create` to create an MPK project,
-or import it into Edgematic to build an application.
+Use the resulting `.tar.gz` to [validate accuracy and performance](./validate-accuracy-performance.md),
+or use it to [build a pipeline application](/develop-apps/).
 
 The following sections explain each stage. The [full script](#full-script)
 appears at the end. MLA tessellation is **enabled by default**, so the compiled
@@ -125,7 +126,10 @@ workload.
 
 ### 3. Quantize
 
-After you load the model and prepare calibration data, quantize to INT8:
+After you load the model and prepare calibration data, quantize it. The
+packaged example defaults to INT8 because it is the broadly supported path.
+Some models may emit saturation warnings during INT8 quantization; validate the
+quantized model before using the compiled output:
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -193,17 +197,21 @@ and tessellation options.
 
 ## Full script
 
-The complete annotated program is below. It is also available in the model-sdk
-repo as
-[`examples/compile_first_model.py`](https://github.com/sima-neat/model-sdk/blob/main/examples/compile_first_model.py).
-Unlike the bundled demo, this version runs against **your own** ONNX model and
-a folder of calibration images:
+The complete annotated program is below. It is also available in the Model
+Compiler examples package as `resnet50-ptq/compile.py`:
 
 ```bash
-python3 examples/compile_first_model.py \
+sima-cli neat install model-compiler/examples
+cd resnet50-ptq
+```
+
+The script runs against **your own** ONNX model and a folder of calibration
+images:
+
+```bash
+python3 compile.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
-  --device modalix \
   --output ./compiled_resnet50
 # optional accuracy check:
 #   --validate golden_retriever_207.jpg --labels imagenet_labels.txt
@@ -211,19 +219,28 @@ python3 examples/compile_first_model.py \
 
 ```python
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """Compile your first model — ResNet-50 PTQ end-to-end.
 
 Loads an ONNX ResNet-50, calibrates on a folder of images, quantizes to INT8
-(or BF16), optionally validates accuracy, and compiles to an MPK .tar.gz.
+by default, optionally validates accuracy, and compiles to an MPK ``.tar.gz``.
 
-MLA tessellation is enabled by default (inputs HWC, outputs HWC16, driven
+MLA tessellation is **enabled by default** (inputs HWC, outputs HWC16, driven
 directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
---no-mla-tessellation if your pipeline needs the EV74 reorder path.
+``--no-mla-tessellation`` if your pipeline needs the EV74 reorder path.
+
+Example:
+    python3 compile.py
 """
 
 import argparse
 import logging
 import os
+import pickle
+import subprocess
+import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -244,9 +261,15 @@ from sima_utils.data.data_generator import DataGenerator
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 INPUT_SHAPE = (1, 3, 224, 224)  # NCHW
+EXAMPLE_ROOT = Path(__file__).resolve().parent
+DEFAULT_MODEL = EXAMPLE_ROOT / "models" / "resnet50_model.onnx"
+DEFAULT_CALIBRATION_DATASET = EXAMPLE_ROOT / "data" / "openimages_v7_images_and_labels.pkl"
+DEFAULT_VALIDATE_IMAGE = EXAMPLE_ROOT / "data" / "golden_retriever_207.jpg"
+DEFAULT_LABELS = EXAMPLE_ROOT / "data" / "imagenet_labels.txt"
+PRECISION_CHOICES = ("auto", "bf16", "int8")
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-log = logging.getLogger("compile_first_model")
+log = logging.getLogger("compile")
 
 
 def preprocess(image: np.ndarray, size=(224, 224)) -> np.ndarray:
@@ -264,6 +287,46 @@ def load_calibration_images(folder: str, num_samples: int) -> np.ndarray:
         raise FileNotFoundError(f"No calibration images found in {folder}")
     images = [preprocess(cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)) for p in paths]
     return np.stack(images)  # (N, 224, 224, 3) — the SDK expects NHWC
+
+
+def load_calibration_dataset(path: Path, num_samples: int) -> np.ndarray:
+    """Read calibration images from the generated Open Images pickle."""
+    with path.open("rb") as file_obj:
+        dataset = pickle.load(file_obj)
+
+    images = dataset.get("data")
+    if not isinstance(images, list) or not images:
+        raise ValueError(f"Calibration dataset does not contain image data: {path}")
+
+    return np.stack([preprocess(image) for image in images[:num_samples]])
+
+
+def run_helper(script: Path, *args: str) -> None:
+    cmd = [sys.executable, str(script), *args]
+    log.info("Running: %s", " ".join(cmd))
+    subprocess.run(cmd, check=True, cwd=str(EXAMPLE_ROOT))
+
+
+def ensure_default_model(model_path: Path) -> None:
+    if model_path.is_file():
+        return
+    log.info("Model not found at %s; downloading and exporting ResNet-50.", model_path)
+    run_helper(EXAMPLE_ROOT / "models" / "download_resnet50.py")
+    if not model_path.is_file():
+        raise FileNotFoundError(f"Model generation did not create expected file: {model_path}")
+
+
+def ensure_default_calibration_dataset(dataset_path: Path, num_samples: int) -> None:
+    if dataset_path.is_file():
+        return
+    log.info("Calibration dataset not found at %s; downloading Open Images samples.", dataset_path)
+    run_helper(
+        EXAMPLE_ROOT / "data" / "download_openimages_calibration.py",
+        "--samples", str(num_samples),
+        "--output", str(dataset_path),
+    )
+    if not dataset_path.is_file():
+        raise FileNotFoundError(f"Calibration download did not create expected file: {dataset_path}")
 
 
 def mla_tessellate_params(quant_model):
@@ -290,19 +353,34 @@ def validate(sdk_net, image_path: str, labels_path: str, input_name: str) -> Non
     probabilities = output[0][0]
     idx = int(np.argmax(probabilities))
     name = labels[idx] if idx < len(labels) else "?"
-    log.info("Prediction: %d '%s' -> %.2f%%", idx, name, 100.0 * probabilities[idx])
+    print("Validation image prediction:", flush=True)
+    print(f"  class {idx}: '{name}' -> {100.0 * probabilities[idx]:.2f}%", flush=True)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compile your first model (ResNet-50 PTQ).")
-    ap.add_argument("--model", required=True, help="Path to the ResNet-50 ONNX model.")
-    ap.add_argument("--calib_images", required=True, help="Folder of calibration images.")
+    ap.add_argument(
+        "--model",
+        default=None,
+        help=f"Path to the ResNet-50 ONNX model. Defaults to {DEFAULT_MODEL}.",
+    )
+    ap.add_argument(
+        "--calib_images",
+        default=None,
+        help="Folder of calibration images. Defaults to generated Open Images calibration data.",
+    )
     ap.add_argument("--output", default="./compiled_resnet50", help="Output directory.")
-    ap.add_argument("--device", default="modalix", choices=["modalix", "mlsoc"],
+    ap.add_argument("--device", "--boardtype", default="modalix", choices=["modalix", "mlsoc"],
                     help="Target hardware (modalix=gen2, mlsoc=gen1).")
     ap.add_argument("--input_name", default="input", help="Model input tensor name.")
     ap.add_argument("--num_calib_samples", type=int, default=50, help="Calibration sample count.")
-    ap.add_argument("--bf16", action="store_true", help="Quantize to BF16 (Modalix) instead of INT8.")
+    ap.add_argument(
+        "--precision",
+        choices=PRECISION_CHOICES,
+        default="auto",
+        help="Quantization precision. Defaults to int8.",
+    )
+    ap.add_argument("--bf16", action="store_true", help="Compatibility alias for --precision bf16.")
     ap.add_argument("--validate", metavar="IMAGE",
                     help="Validate the quantized model on IMAGE (requires --labels).")
     ap.add_argument("--labels", help="ImageNet labels file, one class per line.")
@@ -313,24 +391,37 @@ def main() -> int:
 
     os.makedirs(args.output, exist_ok=True)
     target = gen2_target if args.device == "modalix" else gen1_target
+    precision = "bf16" if args.bf16 else args.precision
+    if precision == "auto":
+        precision = "int8"
+    if precision == "bf16" and args.device != "modalix":
+        ap.error("BF16 is only supported for Modalix. Use --device modalix or --precision int8.")
+
+    model_path = Path(args.model).expanduser().resolve() if args.model else DEFAULT_MODEL
+    ensure_default_model(model_path)
 
     # 1. Load the ONNX model.
     importer = onnx_source(
-        args.model,
+        str(model_path),
         {args.input_name: INPUT_SHAPE},
         {args.input_name: ScalarType.float32},
     )
     loaded_net = load_model(importer, target=target)
-    log.info("Loaded %s for %s", args.model, args.device)
+    log.info("Loaded %s for %s", model_path, args.device)
 
     # 2. Prepare the calibration dataset.
-    calib_images = load_calibration_images(args.calib_images, args.num_calib_samples)
+    if args.calib_images:
+        calib_images = load_calibration_images(args.calib_images, args.num_calib_samples)
+    else:
+        ensure_default_calibration_dataset(DEFAULT_CALIBRATION_DATASET, args.num_calib_samples)
+        calib_images = load_calibration_dataset(DEFAULT_CALIBRATION_DATASET, args.num_calib_samples)
     calib_data = convert_data_generator_to_iterable(
         DataGenerator({args.input_name: calib_images}))
     log.info("Prepared %d calibration samples", len(calib_images))
 
-    # 3. Quantize (INT8 by default; BF16 with --bf16).
-    if args.bf16:
+    # 3. Quantize. INT8 is the default; BF16 remains explicit while compiler support matures.
+    log.info("Quantizing with %s precision", precision.upper())
+    if precision == "bf16":
         quant_configs = QuantizationParams(
             calibration_method=CalibrationMethod.from_str("mse"),
             activation_quantization_scheme=bfloat16_scheme(),
@@ -343,21 +434,33 @@ def main() -> int:
             weight_quantization_scheme=quantization_scheme(asymmetric=False, per_channel=True, bits=8),
         )
     sdk_net = loaded_net.quantize(calib_data, quant_configs, model_name="quantized_resnet50")
-    log.info("Quantization complete")
+    print("Quantization complete.", flush=True)
 
     # 4. (Optional) Validate accuracy.
-    if args.validate:
-        if not args.labels:
-            ap.error("--validate requires --labels")
-        validate(sdk_net, args.validate, args.labels, args.input_name)
+    validate_image = Path(args.validate).expanduser().resolve() if args.validate else DEFAULT_VALIDATE_IMAGE
+    labels_path = Path(args.labels).expanduser().resolve() if args.labels else DEFAULT_LABELS
+    if validate_image.is_file() and labels_path.is_file():
+        validate(sdk_net, str(validate_image), str(labels_path), args.input_name)
+    elif args.validate or args.labels:
+        ap.error("--validate and --labels must both point to existing files")
 
     # 5. Compile (MLA tessellation on by default).
     sdk_net.save(model_name="quantized_resnet50", output_directory=args.output)
     tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
     if tess:
         log.info("MLA tessellation enabled (inputs HWC, outputs HWC16)")
+    output_dir = Path(args.output).expanduser().resolve()
+    print(f"Compiling model. Output directory: {output_dir}", flush=True)
     sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
-    log.info("Compiled MPK archive written to %s", args.output)
+    compiled_archive = output_dir / "quantized_resnet50_mpk.tar.gz"
+    if compiled_archive.is_file():
+        print(f"Compiled MPK archive written to: {compiled_archive}", flush=True)
+    else:
+        archives = sorted(output_dir.glob("*_mpk.tar.gz"))
+        if archives:
+            print(f"Compiled MPK archive written to: {archives[-1]}", flush=True)
+        else:
+            print(f"Compiled model artifacts written to: {output_dir}", flush=True)
     return 0
 
 
