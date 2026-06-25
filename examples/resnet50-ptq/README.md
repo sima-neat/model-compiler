@@ -37,6 +37,16 @@ python3 data/download_openimages_calibration.py --samples 50
 python3 src/modelsdk_quantize_model/resnet50_quant.py --boardtype modalix
 ```
 
+For the shortest end-to-end Model Compiler flow, run from the installed examples
+root:
+
+```bash
+python3 compile_first_model.py --boardtype modalix
+```
+
+This wrapper generates the ResNet-50 ONNX model and Open Images calibration
+pickle if they are missing, then quantizes, validates, and compiles the model.
+
 The `resnet50_quant.py` script expects `data/openimages_v7_images_and_labels.pkl`
 to contain a dictionary with `data` and `target` lists. `data` is used as the
 representative calibration image set during quantization; `target` is printed as
