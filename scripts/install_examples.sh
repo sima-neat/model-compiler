@@ -85,8 +85,10 @@ fi
 
 python3 -m zipfile -e "${archive}" "${install_root}"
 rm -f "${archive}"
+rm -rf "${install_root}/model-compiler-examples"
 
 find "${install_root}" -type f -name '*.py' -exec chmod a+x {} +
+rm -f "${install_root}/install_examples.sh"
 
 cat <<EOF
 Model Compiler examples installed in:
