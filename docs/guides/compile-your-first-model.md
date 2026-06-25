@@ -12,7 +12,7 @@ This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
 The workflow has four stages:
 
 1. **Load** the model.
-2. **Quantize** it to BF16 on Modalix by default, or INT8 when requested.
+2. **Quantize** it to INT8 by default, or BF16 when requested.
 3. **Validate** its accuracy.
 4. **Compile** it for execution on the MLSoC.
 
@@ -128,9 +128,9 @@ workload.
 ### 3. Quantize
 
 After you load the model and prepare calibration data, quantize it. The
-packaged example defaults to BF16 on Modalix to avoid noisy INT8 saturation
-warnings on the first run. Use `--precision int8` when you explicitly want an
-INT8 PTQ run:
+packaged example defaults to INT8 because it is the broadly supported path.
+Some models may emit saturation warnings during INT8 quantization; validate the
+quantized model before using the compiled output:
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -213,7 +213,6 @@ images:
 python3 compile_first_model.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
-  --precision bf16 \
   --output ./compiled_resnet50
 # optional accuracy check:
 #   --validate golden_retriever_207.jpg --labels imagenet_labels.txt
@@ -225,9 +224,8 @@ python3 compile_first_model.py \
 
 """Compile your first model — ResNet-50 PTQ end-to-end.
 
-Loads an ONNX ResNet-50, calibrates on a folder of images, quantizes to BF16
-on Modalix by default, optionally validates accuracy, and compiles to an MPK
-``.tar.gz``.
+Loads an ONNX ResNet-50, calibrates on a folder of images, quantizes to INT8
+by default, optionally validates accuracy, and compiles to an MPK ``.tar.gz``.
 
 MLA tessellation is **enabled by default** (inputs HWC, outputs HWC16, driven
 directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
@@ -380,7 +378,7 @@ def main() -> int:
         "--precision",
         choices=PRECISION_CHOICES,
         default="auto",
-        help="Quantization precision. Defaults to bf16 on Modalix and int8 on MLSoC.",
+        help="Quantization precision. Defaults to int8.",
     )
     ap.add_argument("--bf16", action="store_true", help="Compatibility alias for --precision bf16.")
     ap.add_argument("--validate", metavar="IMAGE",
@@ -395,7 +393,7 @@ def main() -> int:
     target = gen2_target if args.device == "modalix" else gen1_target
     precision = "bf16" if args.bf16 else args.precision
     if precision == "auto":
-        precision = "bf16" if args.device == "modalix" else "int8"
+        precision = "int8"
     if precision == "bf16" and args.device != "modalix":
         ap.error("BF16 is only supported for Modalix. Use --device modalix or --precision int8.")
 
@@ -421,7 +419,7 @@ def main() -> int:
         DataGenerator({args.input_name: calib_images}))
     log.info("Prepared %d calibration samples", len(calib_images))
 
-    # 3. Quantize. Modalix defaults to BF16 to keep the first run clean; INT8 is explicit.
+    # 3. Quantize. INT8 is the default; BF16 remains explicit while compiler support matures.
     log.info("Quantizing with %s precision", precision.upper())
     if precision == "bf16":
         quant_configs = QuantizationParams(
