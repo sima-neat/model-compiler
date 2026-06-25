@@ -30,17 +30,21 @@ activate-model-compiler
 
 On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
 ResNet-50 demo with `sima-cli`. The demo includes the ONNX model, calibration
-images, ImageNet labels, and a ready-to-run virtual environment:
+images, ImageNet labels, and the scripts used below:
 
 ```bash
 sima-cli install assets/demos/compile-resnet50-model
 ```
 
-Activate the environment and run the example:
+Keep the Model Compiler environment active for the rest of the walkthrough.
+
+Generate the ResNet-50 ONNX model, then run the quantize-and-compile example:
 
 ```bash
-source ptq-example/.env/bin/activate
-cd ptq-example/src/modelsdk_quantize_model
+cd ptq-example/models
+python3 download_resnet50.py
+
+cd ../src/modelsdk_quantize_model
 python3 resnet50_quant.py --boardtype modalix   # or: mlsoc
 ```
 
