@@ -43,7 +43,7 @@ present:
 
 ```bash
 cd resnet50-ptq
-python3 compile_first_model.py
+python3 compile.py
 ```
 
 When validation inputs are provided, the run should classify a Golden Retriever
@@ -199,7 +199,7 @@ and tessellation options.
 ## Full script
 
 The complete annotated program is below. It is also available in the Model
-Compiler examples package as `resnet50-ptq/compile_first_model.py`:
+Compiler examples package as `resnet50-ptq/compile.py`:
 
 ```bash
 sima-cli neat install model-compiler/examples
@@ -210,7 +210,7 @@ The script runs against **your own** ONNX model and a folder of calibration
 images:
 
 ```bash
-python3 compile_first_model.py \
+python3 compile.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
   --output ./compiled_resnet50
@@ -232,7 +232,7 @@ directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
 ``--no-mla-tessellation`` if your pipeline needs the EV74 reorder path.
 
 Example:
-    python3 compile_first_model.py
+    python3 compile.py
 """
 
 import argparse
@@ -270,7 +270,7 @@ DEFAULT_LABELS = EXAMPLE_ROOT / "data" / "imagenet_labels.txt"
 PRECISION_CHOICES = ("auto", "bf16", "int8")
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-log = logging.getLogger("compile_first_model")
+log = logging.getLogger("compile")
 
 
 def preprocess(image: np.ndarray, size=(224, 224)) -> np.ndarray:

@@ -11,7 +11,7 @@ directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
 ``--no-mla-tessellation`` if your pipeline needs the EV74 reorder path.
 
 Example:
-    python3 compile_first_model.py
+    python3 compile.py
 """
 
 import argparse
@@ -49,7 +49,7 @@ DEFAULT_LABELS = EXAMPLE_ROOT / "data" / "imagenet_labels.txt"
 PRECISION_CHOICES = ("auto", "bf16", "int8")
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-log = logging.getLogger("compile_first_model")
+log = logging.getLogger("compile")
 
 
 def preprocess(image: np.ndarray, size=(224, 224)) -> np.ndarray:

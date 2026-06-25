@@ -69,11 +69,11 @@ sima-cli packages build "${OUTPUT_DIR_ABS}" \
   --palette-platform
 
 python3 -m json.tool "${OUTPUT_DIR_ABS}/metadata.json" >/dev/null
-if python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'compile_first_model.py' | grep -Fv 'resnet50-ptq/compile_first_model.py' >/dev/null; then
-  echo "Unexpected root compile_first_model.py in examples package." >&2
+if python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'compile.py' | grep -Fv 'resnet50-ptq/compile.py' >/dev/null; then
+  echo "Unexpected root compile.py in examples package." >&2
   exit 1
 fi
-python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/compile_first_model.py' >/dev/null
+python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/compile.py' >/dev/null
 python3 -m zipfile -l "${OUTPUT_DIR_ABS}/${ZIP_NAME}" | grep -F 'resnet50-ptq/src/modelsdk_quantize_model/resnet50_quant.py' >/dev/null
 
 echo "Examples package written to: ${OUTPUT_DIR_ABS}"

@@ -11,7 +11,7 @@ dependencies.
 
 ## Contents
 
-- `compile_first_model.py`: standalone first-model script that accepts your own
+- `compile.py`: standalone first-model script that accepts your own
   ONNX model and calibration image folder.
 - `data/golden_retriever_207.jpg`: validation image used by the example.
 - `data/imagenet_labels.txt`: ImageNet class labels used for postprocessing.
@@ -40,7 +40,7 @@ python3 src/modelsdk_quantize_model/resnet50_quant.py
 For the shortest end-to-end Model Compiler flow, run from this directory:
 
 ```bash
-python3 compile_first_model.py
+python3 compile.py
 ```
 
 This wrapper generates the ResNet-50 ONNX model and Open Images calibration

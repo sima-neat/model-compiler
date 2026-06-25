@@ -96,5 +96,5 @@ Model Compiler examples installed in:
 
 Run the ResNet-50 example:
   cd resnet50-ptq
-  python3 compile_first_model.py
+  python3 compile.py
 EOF
