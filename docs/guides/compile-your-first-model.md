@@ -50,12 +50,11 @@ When validation inputs are provided, the run should classify a Golden Retriever
 as ImageNet class 207 and produce a compiled archive:
 
 ```text
-***** Test Inference on a Golden Retriever (Class 207) *****
-[5] --> 207: 'golden retriever' -> 98.82%
-
-***** Compiling Model for MODALIX *****
-***** Compiled Model at .../models/compiled_resnet50 *****
-quantized_resnet50_mpk.tar.gz
+Validation image prediction:
+  class 207: 'golden retriever' -> 98.82%
+Quantization complete.
+Compiling model. Output directory: .../compiled_resnet50
+Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
 Use the resulting `.tar.gz` with `mpk project create` to create an MPK project,
@@ -354,7 +353,8 @@ def validate(sdk_net, image_path: str, labels_path: str, input_name: str) -> Non
     probabilities = output[0][0]
     idx = int(np.argmax(probabilities))
     name = labels[idx] if idx < len(labels) else "?"
-    log.info("Prediction: %d '%s' -> %.2f%%", idx, name, 100.0 * probabilities[idx])
+    print("Validation image prediction:", flush=True)
+    print(f"  class {idx}: '{name}' -> {100.0 * probabilities[idx]:.2f}%", flush=True)
 
 
 def main() -> int:

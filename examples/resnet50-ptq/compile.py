@@ -133,7 +133,8 @@ def validate(sdk_net, image_path: str, labels_path: str, input_name: str) -> Non
     probabilities = output[0][0]
     idx = int(np.argmax(probabilities))
     name = labels[idx] if idx < len(labels) else "?"
-    log.info("Prediction: %d '%s' -> %.2f%%", idx, name, 100.0 * probabilities[idx])
+    print("Validation image prediction:", flush=True)
+    print(f"  class {idx}: '{name}' -> {100.0 * probabilities[idx]:.2f}%", flush=True)
 
 
 def main() -> int:
