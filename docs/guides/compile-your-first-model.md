@@ -12,7 +12,7 @@ This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
 The workflow has four stages:
 
 1. **Load** the model.
-2. **Quantize** it to `int8` (or `bf16`).
+2. **Quantize** it to BF16 on Modalix by default, or INT8 when requested.
 3. **Validate** its accuracy.
 4. **Compile** it for execution on the MLSoC.
 
@@ -126,7 +126,10 @@ workload.
 
 ### 3. Quantize
 
-After you load the model and prepare calibration data, quantize to INT8:
+After you load the model and prepare calibration data, quantize it. The
+packaged example defaults to BF16 on Modalix to avoid noisy INT8 saturation
+warnings on the first run. Use `--precision int8` when you explicitly want an
+INT8 PTQ run:
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -209,6 +212,7 @@ images:
 python3 compile_first_model.py \
   --model resnet50.onnx \
   --calib_images ./calib_images \
+  --precision bf16 \
   --output ./compiled_resnet50
 # optional accuracy check:
 #   --validate golden_retriever_207.jpg --labels imagenet_labels.txt
@@ -220,8 +224,9 @@ python3 compile_first_model.py \
 
 """Compile your first model — ResNet-50 PTQ end-to-end.
 
-Loads an ONNX ResNet-50, calibrates on a folder of images, quantizes to INT8
-(or BF16), optionally validates accuracy, and compiles to an MPK ``.tar.gz``.
+Loads an ONNX ResNet-50, calibrates on a folder of images, quantizes to BF16
+on Modalix by default, optionally validates accuracy, and compiles to an MPK
+``.tar.gz``.
 
 MLA tessellation is **enabled by default** (inputs HWC, outputs HWC16, driven
 directly to/from the MLA, bypassing the EV74 reorder unit). Disable it with
@@ -263,6 +268,7 @@ DEFAULT_MODEL = EXAMPLE_ROOT / "models" / "resnet50_model.onnx"
 DEFAULT_CALIBRATION_DATASET = EXAMPLE_ROOT / "data" / "openimages_v7_images_and_labels.pkl"
 DEFAULT_VALIDATE_IMAGE = EXAMPLE_ROOT / "data" / "golden_retriever_207.jpg"
 DEFAULT_LABELS = EXAMPLE_ROOT / "data" / "imagenet_labels.txt"
+PRECISION_CHOICES = ("auto", "bf16", "int8")
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger("compile_first_model")
@@ -369,7 +375,13 @@ def main() -> int:
                     help="Target hardware (modalix=gen2, mlsoc=gen1).")
     ap.add_argument("--input_name", default="input", help="Model input tensor name.")
     ap.add_argument("--num_calib_samples", type=int, default=50, help="Calibration sample count.")
-    ap.add_argument("--bf16", action="store_true", help="Quantize to BF16 (Modalix) instead of INT8.")
+    ap.add_argument(
+        "--precision",
+        choices=PRECISION_CHOICES,
+        default="auto",
+        help="Quantization precision. Defaults to bf16 on Modalix and int8 on MLSoC.",
+    )
+    ap.add_argument("--bf16", action="store_true", help="Compatibility alias for --precision bf16.")
     ap.add_argument("--validate", metavar="IMAGE",
                     help="Validate the quantized model on IMAGE (requires --labels).")
     ap.add_argument("--labels", help="ImageNet labels file, one class per line.")
@@ -380,6 +392,12 @@ def main() -> int:
 
     os.makedirs(args.output, exist_ok=True)
     target = gen2_target if args.device == "modalix" else gen1_target
+    precision = "bf16" if args.bf16 else args.precision
+    if precision == "auto":
+        precision = "bf16" if args.device == "modalix" else "int8"
+    if precision == "bf16" and args.device != "modalix":
+        ap.error("BF16 is only supported for Modalix. Use --device modalix or --precision int8.")
+
     model_path = Path(args.model).expanduser().resolve() if args.model else DEFAULT_MODEL
     ensure_default_model(model_path)
 
@@ -402,8 +420,9 @@ def main() -> int:
         DataGenerator({args.input_name: calib_images}))
     log.info("Prepared %d calibration samples", len(calib_images))
 
-    # 3. Quantize (INT8 by default; BF16 with --bf16).
-    if args.bf16:
+    # 3. Quantize. Modalix defaults to BF16 to keep the first run clean; INT8 is explicit.
+    log.info("Quantizing with %s precision", precision.upper())
+    if precision == "bf16":
         quant_configs = QuantizationParams(
             calibration_method=CalibrationMethod.from_str("mse"),
             activation_quantization_scheme=bfloat16_scheme(),

@@ -46,6 +46,8 @@ python3 compile_first_model.py
 
 This wrapper generates the ResNet-50 ONNX model and Open Images calibration
 pickle if they are missing, then quantizes, validates, and compiles the model.
+It defaults to BF16 on Modalix to keep the first run clean. Use
+`--precision int8` when you want an INT8 PTQ run.
 
 The `resnet50_quant.py` script expects `data/openimages_v7_images_and_labels.pkl`
 to contain a dictionary with `data` and `target` lists. `data` is used as the
