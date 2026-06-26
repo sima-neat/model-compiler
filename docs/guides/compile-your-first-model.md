@@ -103,22 +103,25 @@ sets scaling factors that map FP32 values into the integer range while avoiding
 excessive clipping or precision loss.
 
 ```python
+import cv2
+import numpy as np
+
 from sima_utils.data.data_generator import DataGenerator
+from afe.core.utils import convert_data_generator_to_iterable
 
 MODEL_INPUT_NAME = "input"
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-def preprocess(image, input_shape=(224, 224)):
-    """Resize to 224x224, scale to [0,1], and normalize with ImageNet stats."""
-    mean = [0.485, 0.456, 0.406]
-    stddev = [0.229, 0.224, 0.225]
-    image = cv2.resize(image, input_shape)
-    image = image / 255.0
-    image = (image - mean) / stddev
-    return image
+def preprocess(image: np.ndarray, size=(224, 224)) -> np.ndarray:
+    """Resize to 224x224, scale to [0, 1], normalize. Returns HWC float32."""
+    image = cv2.resize(image, size).astype(np.float32) / 255.0
+    return ((image - IMAGENET_MEAN) / IMAGENET_STD).astype(np.float32)
 
-# Build a DataGenerator from your calibration images and map the preprocessing.
-images_generator = DataGenerator({MODEL_INPUT_NAME: calibration_images})
-images_generator.map({MODEL_INPUT_NAME: preprocess})
+# Build a DataGenerator from preprocessed NHWC calibration images.
+calibration_images = np.stack([preprocess(image) for image in raw_calibration_images])
+calib_data = convert_data_generator_to_iterable(
+    DataGenerator({MODEL_INPUT_NAME: calibration_images}))
 ```
 
 Use representative images from the same input distribution as your deployment
@@ -144,10 +147,9 @@ quant_configs = QuantizationParams(
 )
 
 sdk_net = loaded_net.quantize(
-    convert_data_generator_to_iterable(images_generator),
+    calib_data,
     quant_configs,
     model_name="quantized_resnet50",
-    arm_only=False,
 )
 ```
 
@@ -164,16 +166,19 @@ Before you compile, run the quantized model in software with
 ```python
 import numpy as np
 
-def postprocess_output(output: np.ndarray):
+def postprocess_output(output: np.ndarray, labels: list[str]):
     probabilities = output[0][0]
-    max_idx = np.argmax(probabilities)
-    return max_idx, probabilities[max_idx]
+    idx = int(np.argmax(probabilities))
+    name = labels[idx] if idx < len(labels) else "?"
+    return idx, name, probabilities[idx]
 
 # A known image: a Golden Retriever is ImageNet class 207.
-dog = preprocess(cv2.cvtColor(cv2.imread("golden_retriever_207.jpg"), cv2.COLOR_BGR2RGB))
-pp = np.expand_dims(dog, axis=0).astype(np.float32)
-label, score = postprocess_output(sdk_net.execute(inputs={"input": pp}))
-print(f"class {label} -> {score:.2%}")   # expect 207 'golden retriever'
+with open("data/imagenet_labels.txt") as f:
+    labels = [line.strip() for line in f]
+dog = preprocess(cv2.cvtColor(cv2.imread("data/golden_retriever_207.jpg"), cv2.COLOR_BGR2RGB))
+output = sdk_net.execute(inputs={"input": np.expand_dims(dog, axis=0)})
+idx, name, score = postprocess_output(output, labels)
+print(f"class {idx}: '{name}' -> {100.0 * score:.2f}%")
 ```
 
 A correct, high-confidence prediction, such as
@@ -186,8 +191,9 @@ mismatch or a quantization issue to retune.
 After validation passes, save and compile the model:
 
 ```python
-sdk_net.save(model_name="quantized_resnet50", output_directory=MODELS_PATH)
-sdk_net.compile(output_path=f"{MODELS_PATH}/compiled_resnet50")
+sdk_net.save(model_name="quantized_resnet50", output_directory=args.output)
+tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
+sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 ```
 
 The output is a `.tar.gz` archive that contains the compiled MLA programs, an
@@ -198,7 +204,9 @@ and tessellation options.
 ## Full script
 
 The complete annotated program is below. It is also available in the Model
-Compiler examples package as `resnet50-ptq/compile.py`:
+Compiler examples package as `resnet50-ptq/compile.py`, and in the
+[ResNet-50 PTQ example source](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)
+on GitHub:
 
 ```bash
 sima-cli neat install model-compiler/examples
@@ -297,6 +305,10 @@ def load_calibration_dataset(path: Path, num_samples: int) -> np.ndarray:
     images = dataset.get("data")
     if not isinstance(images, list) or not images:
         raise ValueError(f"Calibration dataset does not contain image data: {path}")
+    if len(images) < num_samples:
+        raise ValueError(
+            f"Calibration dataset has {len(images)} image(s), but {num_samples} were requested: {path}"
+        )
 
     return np.stack([preprocess(image) for image in images[:num_samples]])
 
@@ -316,17 +328,41 @@ def ensure_default_model(model_path: Path) -> None:
         raise FileNotFoundError(f"Model generation did not create expected file: {model_path}")
 
 
+def calibration_dataset_size(dataset_path: Path) -> int:
+    if not dataset_path.is_file():
+        return 0
+    with dataset_path.open("rb") as file_obj:
+        dataset = pickle.load(file_obj)
+    images = dataset.get("data") if isinstance(dataset, dict) else None
+    if not isinstance(images, list):
+        return 0
+    return len(images)
+
+
 def ensure_default_calibration_dataset(dataset_path: Path, num_samples: int) -> None:
-    if dataset_path.is_file():
+    existing_samples = calibration_dataset_size(dataset_path)
+    if existing_samples >= num_samples:
         return
-    log.info("Calibration dataset not found at %s; downloading Open Images samples.", dataset_path)
+    if existing_samples:
+        log.info(
+            "Calibration dataset at %s has %d samples; regenerating with %d samples.",
+            dataset_path,
+            existing_samples,
+            num_samples,
+        )
+    else:
+        log.info("Calibration dataset not found at %s; downloading Open Images samples.", dataset_path)
     run_helper(
         EXAMPLE_ROOT / "data" / "download_openimages_calibration.py",
         "--samples", str(num_samples),
         "--output", str(dataset_path),
     )
-    if not dataset_path.is_file():
-        raise FileNotFoundError(f"Calibration download did not create expected file: {dataset_path}")
+    generated_samples = calibration_dataset_size(dataset_path)
+    if generated_samples < num_samples:
+        raise RuntimeError(
+            f"Calibration download created {generated_samples} image(s), "
+            f"but {num_samples} were requested: {dataset_path}"
+        )
 
 
 def mla_tessellate_params(quant_model):

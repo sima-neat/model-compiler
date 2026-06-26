@@ -77,6 +77,10 @@ def load_calibration_dataset(path: Path, num_samples: int) -> np.ndarray:
     images = dataset.get("data")
     if not isinstance(images, list) or not images:
         raise ValueError(f"Calibration dataset does not contain image data: {path}")
+    if len(images) < num_samples:
+        raise ValueError(
+            f"Calibration dataset has {len(images)} image(s), but {num_samples} were requested: {path}"
+        )
 
     return np.stack([preprocess(image) for image in images[:num_samples]])
 
@@ -96,17 +100,41 @@ def ensure_default_model(model_path: Path) -> None:
         raise FileNotFoundError(f"Model generation did not create expected file: {model_path}")
 
 
+def calibration_dataset_size(dataset_path: Path) -> int:
+    if not dataset_path.is_file():
+        return 0
+    with dataset_path.open("rb") as file_obj:
+        dataset = pickle.load(file_obj)
+    images = dataset.get("data") if isinstance(dataset, dict) else None
+    if not isinstance(images, list):
+        return 0
+    return len(images)
+
+
 def ensure_default_calibration_dataset(dataset_path: Path, num_samples: int) -> None:
-    if dataset_path.is_file():
+    existing_samples = calibration_dataset_size(dataset_path)
+    if existing_samples >= num_samples:
         return
-    log.info("Calibration dataset not found at %s; downloading Open Images samples.", dataset_path)
+    if existing_samples:
+        log.info(
+            "Calibration dataset at %s has %d samples; regenerating with %d samples.",
+            dataset_path,
+            existing_samples,
+            num_samples,
+        )
+    else:
+        log.info("Calibration dataset not found at %s; downloading Open Images samples.", dataset_path)
     run_helper(
         EXAMPLE_ROOT / "data" / "download_openimages_calibration.py",
         "--samples", str(num_samples),
         "--output", str(dataset_path),
     )
-    if not dataset_path.is_file():
-        raise FileNotFoundError(f"Calibration download did not create expected file: {dataset_path}")
+    generated_samples = calibration_dataset_size(dataset_path)
+    if generated_samples < num_samples:
+        raise RuntimeError(
+            f"Calibration download created {generated_samples} image(s), "
+            f"but {num_samples} were requested: {dataset_path}"
+        )
 
 
 def mla_tessellate_params(quant_model):
