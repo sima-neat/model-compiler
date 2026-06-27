@@ -61,9 +61,10 @@ for name in mla_node.input_names:
 quant_model.compile(output_path="<output_folder_path>", tessellate_parameters=tess_params)
 ```
 
-`examples/compile_first_model.py` wires this up automatically. Leave
-tessellation unset (`tessellate_parameters=None`) only when the EV74 reorder path
-is required for your pipeline.
+The first-model example installed by
+`sima-cli neat install model-compiler/examples` wires this up automatically.
+Leave tessellation unset (`tessellate_parameters=None`) only when the EV74
+reorder path is required for your pipeline.
 
 ## Compiling for batch sizes > 1
 
