@@ -13,7 +13,8 @@ Usage:
     [--spec 'name==version']... \
     [--spec 'name @ wheel-file.whl']... \
     [--python-version 312] \
-    [--target-arch x86_64|aarch64]
+    [--target-arch x86_64|aarch64] \
+    [--include-dependencies]
 
 Description:
   Downloads Python wheels from the configured Python index and optional
@@ -39,6 +40,7 @@ OUTPUT_DIR=""
 SOURCE_JSON=""
 PYTHON_VERSION="312"
 TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
+INCLUDE_DEPENDENCIES="0"
 declare -a CLI_SPECS=()
 declare -a SUMMARY_REQUESTED=()
 declare -a SUMMARY_RESOLVED=()
@@ -235,6 +237,8 @@ wheel = pathlib.Path(sys.argv[1])
 source_json = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
 target_arch = sys.argv[3] if len(sys.argv) > 3 else ""
 override_map = {}
+replacement_map = {}
+exclusion_set = set()
 if source_json and source_json.is_file():
     doc = json.loads(source_json.read_text(encoding="utf-8"))
     arch_doc = doc.get(target_arch) if target_arch else None
@@ -248,7 +252,29 @@ if source_json and source_json.is_file():
             for k, v in raw.items()
             if str(k).strip() and str(v).strip()
         }
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_replacements"), dict):
+        raw_replacements = arch_doc["dependency_replacements"]
+    else:
+        raw_replacements = doc.get("dependency_replacements", {})
+    if isinstance(raw_replacements, dict):
+        replacement_map = {
+            str(k).strip().lower().replace("_", "-"): str(v).strip()
+            for k, v in raw_replacements.items()
+            if str(k).strip() and str(v).strip()
+        }
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_exclusions"), list):
+        raw_exclusions = arch_doc["dependency_exclusions"]
+    else:
+        raw_exclusions = doc.get("dependency_exclusions", [])
+    if isinstance(raw_exclusions, list):
+        exclusion_set = {
+            str(v).strip().lower().replace("_", "-")
+            for v in raw_exclusions
+            if str(v).strip()
+        }
 if not override_map:
+    override_map = {}
+if not override_map and not replacement_map and not exclusion_set:
     raise SystemExit(0)
 
 tmp = tempfile.NamedTemporaryFile(prefix="patched-", suffix=".whl", dir=str(wheel.parent), delete=False)
@@ -266,15 +292,34 @@ try:
             raise SystemExit(0)
 
         metadata_text = contents[metadata_name].decode("utf-8", "replace")
-        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(\s*==\s*)([^;\s]+)(.*)$")
+        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(.*)$")
         new_lines = []
         for line in metadata_text.splitlines():
             match = req_re.match(line)
             if not match:
                 new_lines.append(line)
                 continue
-            prefix, name, eq, version, suffix = match.groups()
+            prefix, name, remainder = match.groups()
             normalized = name.strip().lower().replace("_", "-")
+            if normalized in exclusion_set:
+                patched = True
+                patched_pairs.append((name, remainder.strip() or "<any>", "<removed>"))
+                continue
+            replacement = replacement_map.get(normalized)
+            if replacement:
+                marker = ""
+                if ";" in remainder:
+                    marker = ";" + remainder.split(";", 1)[1]
+                new_lines.append(f"{prefix}{replacement}{marker}")
+                patched = True
+                patched_pairs.append((name, remainder.strip() or "<any>", replacement))
+                continue
+
+            eq_match = re.match(r"^(\s*==\s*)([^;\s]+)(.*)$", remainder)
+            if not eq_match:
+                new_lines.append(line)
+                continue
+            eq, version, suffix = eq_match.groups()
             target = override_map.get(normalized)
             if target and target != version:
                 new_lines.append(f"{prefix}{name}{eq}{target}{suffix}")
@@ -543,6 +588,51 @@ download_direct_internal_deps_for_wheel() {
   return 0
 }
 
+download_full_dependency_closure() {
+  local dep_dir=""
+  local dep_log=""
+  local wheel=""
+  local -a wheels=()
+
+  while IFS= read -r wheel; do
+    [[ -n "$wheel" ]] && wheels+=("$wheel")
+  done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | sort)
+
+  if [[ ${#wheels[@]} -eq 0 ]]; then
+    echo "No wheels found for dependency closure." >&2
+    return 1
+  fi
+
+  dep_dir="$(mktemp -d)"
+  register_temp_dir "$dep_dir"
+  dep_log="${dep_dir}/pip-download-dependencies.log"
+
+  echo "Downloading full dependency closure for offline bundle..."
+  set +e
+  PIP_NO_INPUT=1 python3 -m pip download \
+    --disable-pip-version-check \
+    --only-binary=:all: \
+    "${PIP_INDEX_ARGS[@]}" \
+    --find-links "$OUTPUT_DIR" \
+    --dest "$OUTPUT_DIR" \
+    "${TARGET_PLATFORM_ARGS[@]}" \
+    --implementation cp \
+    --abi "cp${PYTHON_VERSION}" \
+    --python-version "$PYTHON_VERSION" \
+    "${wheels[@]}" >"$dep_log" 2>&1
+  dep_rc=$?
+  set -e
+
+  if [[ $dep_rc -ne 0 ]]; then
+    cat "$dep_log" >&2
+    echo "Failed to download full dependency closure for offline bundle." >&2
+    return 1
+  fi
+
+  sed 's/^/  /' "$dep_log"
+  return 0
+}
+
 collect_wheels() {
   local dir="$1"
   COLLECTED_WHEELS=()
@@ -768,6 +858,10 @@ while [[ $# -gt 0 ]]; do
       TARGET_ARCH="${2:-}"
       shift 2
       ;;
+    --include-dependencies)
+      INCLUDE_DEPENDENCIES="1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -958,6 +1052,10 @@ if [[ ${#SUMMARY_WHEEL[@]} -gt 0 ]]; then
     fi
   done
   rm -rf "$dep_tmp"
+fi
+
+if [[ "$INCLUDE_DEPENDENCIES" == "1" ]]; then
+  download_full_dependency_closure
 fi
 
 total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"
