@@ -11,6 +11,7 @@ Usage:
     [--output-dir ./dist] \
     [--source-json ./scripts/source.json] \
     [--target-arch x86_64|aarch64] \
+    [--offline-package] \
     [--prod]
 
 Description:
@@ -59,6 +60,7 @@ BOARD_VERSION=""
 PYTHON_VERSION=""
 HOST_OS="linux"
 TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
+OFFLINE_PACKAGE="0"
 PROD_MODE="0"
 
 while [[ $# -gt 0 ]]; do
@@ -74,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --host-os) HOST_OS="${2:-}"; shift 2 ;;
     --python-version) PYTHON_VERSION="${2:-}"; shift 2 ;;
     --target-arch) TARGET_ARCH="${2:-}"; shift 2 ;;
+    --offline-package) OFFLINE_PACKAGE="1"; shift 1 ;;
     --prod) PROD_MODE="1"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
@@ -112,6 +115,11 @@ if [[ -z "$TARGET_ARCH" ]]; then
   exit 1
 fi
 echo "Using target architecture: $TARGET_ARCH"
+case "$TARGET_ARCH" in
+  x86_64) PACKAGE_ARCH="amd64" ;;
+  aarch64) PACKAGE_ARCH="arm64" ;;
+  *) PACKAGE_ARCH="$TARGET_ARCH" ;;
+esac
 
 SDK_VERSION="$(
   python3 -c '
@@ -230,6 +238,7 @@ mkdir -p "$OUTPUT_DIR"
 echo "Cleaning generated bundle artifacts from: $OUTPUT_DIR"
 find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -name '*.whl' \
+  -o -name '*.tar.gz' \
   -o -name '*.zip' \
   -o -name 'manifest.txt' \
   -o -name 'metadata.json' \
@@ -237,7 +246,7 @@ find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -o -name 'install_modelsdk_wheels.sh' \
 \) -delete
 
-"$SCRIPT_DIR/download_modelsdk_wheels.sh" \
+download_args=(
   --sdk-release "$spec_file" \
   --index-url "$INDEX_URL" \
   --extra-index-url "$EXTRA_INDEX_URL" \
@@ -245,11 +254,16 @@ find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   --source-json "$SOURCE_JSON" \
   --python-version "$PYTHON_VERSION" \
   --target-arch "$TARGET_ARCH"
+)
+if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
+  download_args+=(--include-dependencies)
+fi
+"$SCRIPT_DIR/download_modelsdk_wheels.sh" "${download_args[@]}"
 
 cp "$SCRIPT_DIR/install_modelsdk_wheels.sh" "$OUTPUT_DIR/"
 cp "$SOURCE_JSON" "$OUTPUT_DIR/source.json"
 
-"$SCRIPT_DIR/generate_metadata.py" \
+metadata_args=(
   --artifacts-dir "$OUTPUT_DIR" \
   --output "$OUTPUT_DIR/metadata.json" \
   --name "$NAME" \
@@ -258,6 +272,14 @@ cp "$SOURCE_JSON" "$OUTPUT_DIR/source.json"
   --description "$DESCRIPTION" \
   --host-os "$HOST_OS" \
   --installer-script "install_modelsdk_wheels.sh"
+)
+if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
+  metadata_args+=(
+    --offline-package
+    --offline-archive-name "model-compiler-offline-${PACKAGE_ARCH}.zip"
+  )
+fi
+"$SCRIPT_DIR/generate_metadata.py" "${metadata_args[@]}"
 
 if [[ "$PROD_MODE" == "1" ]]; then
   python3 -c '
