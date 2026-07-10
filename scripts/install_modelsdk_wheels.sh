@@ -2,6 +2,36 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OFFLINE_PACKAGE="0"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  install_modelsdk_wheels.sh [--offline-package]
+
+Options:
+  --offline-package  Install only from wheels included in this downloaded package.
+  -h, --help         Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline-package)
+      OFFLINE_PACKAGE="1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 resolve_bundle_dir() {
   if [[ -f "$SCRIPT_DIR/manifest.txt" ]]; then
@@ -93,7 +123,13 @@ elif expr == "binary_package_archives":
             base = name.rsplit("/", 1)[-1]
             print(f"{base}-{version}.{archive_type}")
 elif expr == "python_package_specs":
-    items = arch_or_top_level("python-packages", doc.get("components", []))
+    items = []
+    primary = arch_or_top_level("python-packages", doc.get("components", []))
+    source_items = arch_or_top_level("source-packages", [])
+    if isinstance(primary, list):
+        items.extend(primary)
+    if isinstance(source_items, list):
+        items.extend(source_items)
     if not isinstance(items, list):
         raise SystemExit(0)
     for item in items:
@@ -107,6 +143,10 @@ elif expr == "python_package_specs":
 }
 
 is_offline_package() {
+  if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
+    return 0
+  fi
+
   local metadata="$BUNDLE_DIR/metadata.json"
   [[ -f "$metadata" ]] || return 1
   python3 - "$metadata" <<'PY'
@@ -497,8 +537,8 @@ load_manifest_wheels() {
     entry="${entry//$'\r'/}"
     [[ -n "$entry" ]] || continue
 
-    if [[ "$entry" == */* || "$entry" == "."* || "$entry" != *.whl ]]; then
-      echo "Invalid wheel manifest entry: $entry" >&2
+    if [[ "$entry" == */* || "$entry" == "."* || ( "$entry" != *.whl && "$entry" != *.tar.gz && "$entry" != *.zip ) ]]; then
+      echo "Invalid package manifest entry: $entry" >&2
       return 1
     fi
 
@@ -1018,7 +1058,7 @@ if ! load_manifest_wheels "$WHEEL_MANIFEST"; then
 fi
 wheels=("${MANIFEST_WHEELS[@]}")
 if [[ ${#wheels[@]} -eq 0 ]]; then
-  echo "No wheel files listed in $WHEEL_MANIFEST" >&2
+  echo "No package files listed in $WHEEL_MANIFEST" >&2
   exit 1
 fi
 
@@ -1040,6 +1080,7 @@ fi
 
 bad_wheels=()
 for wheel in "${wheels[@]}"; do
+  [[ "$wheel" == *.whl ]] || continue
   if ! wheel_arch_compatible "$wheel" "$HOST_ARCH"; then
     bad_wheels+=("$(basename "$wheel")")
   fi

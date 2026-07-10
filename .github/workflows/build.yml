@@ -124,14 +124,40 @@ jobs:
       - name: Validate package
         run: |
           set -euo pipefail
-          for package_type in online offline; do
-            test -f "dist/${{ matrix.arch }}/${package_type}/metadata.json"
-            test -f "dist/${{ matrix.arch }}/${package_type}/manifest.txt"
-            test -f "dist/${{ matrix.arch }}/${package_type}/source.json"
-            test -f "dist/${{ matrix.arch }}/${package_type}/install_modelsdk_wheels.sh"
-            python3 -m json.tool "dist/${{ matrix.arch }}/${package_type}/metadata.json" >/dev/null
-            ls -lah "dist/${{ matrix.arch }}/${package_type}"
-          done
+          test -f "dist/${{ matrix.arch }}/online/metadata.json"
+          test -f "dist/${{ matrix.arch }}/online/manifest.txt"
+          test -f "dist/${{ matrix.arch }}/online/source.json"
+          test -f "dist/${{ matrix.arch }}/online/install_modelsdk_wheels.sh"
+          python3 -m json.tool "dist/${{ matrix.arch }}/online/metadata.json" >/dev/null
+
+          test -f "dist/${{ matrix.arch }}/offline/metadata.json"
+          test -f "dist/${{ matrix.arch }}/offline/model-compiler-offline-${{ matrix.arch }}.zip"
+          python3 -m json.tool "dist/${{ matrix.arch }}/offline/metadata.json" >/dev/null
+          python3 - <<'PY'
+          import json
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          arch = "${{ matrix.arch }}"
+          offline_dir = Path("dist") / arch / "offline"
+          metadata = json.loads((offline_dir / "metadata.json").read_text(encoding="utf-8"))
+          archive_name = metadata.get("offline", {}).get("archive")
+          if archive_name != f"model-compiler-offline-{arch}.zip":
+              raise SystemExit(f"Unexpected archive in metadata: {archive_name!r}")
+          archive = offline_dir / archive_name
+          with zipfile.ZipFile(archive) as zf:
+              names = set(zf.namelist())
+          required = {"install_modelsdk_wheels.sh", "source.json", "manifest.txt"}
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f"Offline archive missing required files: {missing}")
+          if not any(name.endswith(".whl") for name in names):
+              raise SystemExit("Offline archive contains no wheels")
+          PY
+
+          ls -lah "dist/${{ matrix.arch }}/online"
+          ls -lah "dist/${{ matrix.arch }}/offline"
 
       - name: Upload package
         uses: actions/upload-artifact@v7
@@ -149,11 +175,120 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  test-package-install:
+    name: Test ${{ matrix.arch }} ${{ matrix.package_type }} package install
+    needs:
+      - package-model-compiler
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            package_type: online
+            artifact_name: model-compiler-amd64
+          - arch: amd64
+            runner: ubuntu-24.04
+            package_type: offline
+            artifact_name: model-compiler-amd64-offline
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            package_type: online
+            artifact_name: model-compiler-arm64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            package_type: offline
+            artifact_name: model-compiler-arm64-offline
+
+    steps:
+      - name: Checkout smoke test
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/smoke_test_modelsdk.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Show test environment
+        run: |
+          set -euo pipefail
+          uname -a
+          python3 --version
+          python3 -m pip --version
+          df -h
+
+      - name: Download generated package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: _package
+
+      - name: Prepare offline package
+        if: matrix.package_type == 'offline'
+        run: |
+          set -euo pipefail
+          archive="_package/model-compiler-offline-${{ matrix.arch }}.zip"
+          test -f "$archive"
+          mkdir -p _install
+          unzip -q "$archive" -d _install
+          ls -lah _install
+
+      - name: Prepare online package
+        if: matrix.package_type == 'online'
+        run: |
+          set -euo pipefail
+          mkdir -p _install
+          cp -a _package/. _install/
+          ls -lah _install
+
+      - name: Install package
+        working-directory: _install
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.package_type }}" == "offline" ]]; then
+            bash ./install_modelsdk_wheels.sh --offline-package
+          else
+            bash ./install_modelsdk_wheels.sh
+          fi
+
+      - name: Run basic smoke test
+        run: |
+          set -euo pipefail
+
+          model_compiler_dir="${HOME}/sdk-extensions/model-compiler"
+          if [[ ! -f "${model_compiler_dir}/bin/activate" ]]; then
+            echo "Model Compiler venv was not installed at ${model_compiler_dir}" >&2
+            exit 1
+          fi
+
+          source "${model_compiler_dir}/bin/activate"
+          export PATH="${model_compiler_dir}/bin:${PATH}"
+
+          site_packages="$(
+            find "${model_compiler_dir}/lib" -maxdepth 3 -type d -name site-packages 2>/dev/null | head -n 1
+          )"
+          export LD_LIBRARY_PATH="${model_compiler_dir}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+          if [[ -n "${site_packages}" ]]; then
+            export LD_LIBRARY_PATH="${site_packages}:${site_packages}/tvm:${LD_LIBRARY_PATH}"
+            export PYTHONPATH="${site_packages}${PYTHONPATH:+:${PYTHONPATH}}"
+          fi
+
+          echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
+          which python
+          python --version
+          python scripts/smoke_test_modelsdk.py --tier basic
+
   publish-amd64:
     name: Publish amd64 Package to Vulcan
     needs:
       - resolve-vulcan-config
       - package-model-compiler
+      - test-package-install
     uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
     with:
       aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
@@ -173,6 +308,7 @@ jobs:
     needs:
       - resolve-vulcan-config
       - package-model-compiler
+      - test-package-install
     uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
     with:
       aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
@@ -192,6 +328,7 @@ jobs:
     needs:
       - resolve-vulcan-config
       - package-model-compiler
+      - test-package-install
     runs-on: ubuntu-latest
     environment: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
     strategy:

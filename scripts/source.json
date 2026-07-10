@@ -39,7 +39,39 @@
     "zmq": "pyzmq>=27.1.0"
   },
   "dependency_exclusions": [
-    "grpcio-tools"
+    "grpcio-tools",
+    "llama-cpp-python",
+    "sqlitedict",
+    "word2number"
+  ],
+  "preload-packages": [
+    {
+      "name": "lm_eval[hf]",
+      "version": "0.4.12"
+    }
+  ],
+  "source-packages": [
+    {
+      "name": "llama_cpp_python",
+      "version": "0.3.16",
+      "build-dependencies": [
+        "scikit-build-core[pyproject]>=0.9.2"
+      ],
+      "dependencies": [
+        "typing-extensions>=4.5.0",
+        "numpy==1.26.4",
+        "diskcache>=5.6.1",
+        "jinja2>=2.11.3"
+      ]
+    },
+    {
+      "name": "sqlitedict",
+      "version": "2.1.0"
+    },
+    {
+      "name": "word2number",
+      "version": "1.1"
+    }
   ],
   "python-packages": [
     { "name": "sima-frontend", "version": "2.1.0.dev0+master.388" },
@@ -108,7 +140,39 @@
       "zmq": "pyzmq>=27.1.0"
     },
     "dependency_exclusions": [
-      "grpcio-tools"
+      "grpcio-tools",
+      "llama-cpp-python",
+      "sqlitedict",
+      "word2number"
+    ],
+    "preload-packages": [
+      {
+        "name": "lm_eval[hf]",
+        "version": "0.4.12"
+      }
+    ],
+    "source-packages": [
+      {
+        "name": "llama_cpp_python",
+        "version": "0.3.16",
+        "build-dependencies": [
+          "scikit-build-core[pyproject]>=0.9.2"
+        ],
+        "dependencies": [
+          "typing-extensions>=4.5.0",
+          "numpy==1.26.4",
+          "diskcache>=5.6.1",
+          "jinja2>=2.11.3"
+        ]
+      },
+      {
+        "name": "sqlitedict",
+        "version": "2.1.0"
+      },
+      {
+        "name": "word2number",
+        "version": "1.1"
+      }
     ],
     "python-packages": [
       { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },

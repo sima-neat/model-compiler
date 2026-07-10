@@ -85,8 +85,8 @@ def main() -> int:
 
     download_path = Path(args.download_path)
     files = [p for p in sorted(download_path.glob("*")) if p.is_file()]
-    if len(files) < 4:
-        raise SystemExit(f"Expected at least 4 offline package files, found {len(files)}")
+    if len(files) < 2:
+        raise SystemExit(f"Expected at least 2 offline package files, found {len(files)}")
 
     manifest_entries = []
     for path in files:

@@ -115,6 +115,11 @@ if [[ -z "$TARGET_ARCH" ]]; then
   exit 1
 fi
 echo "Using target architecture: $TARGET_ARCH"
+case "$TARGET_ARCH" in
+  x86_64) PACKAGE_ARCH="amd64" ;;
+  aarch64) PACKAGE_ARCH="arm64" ;;
+  *) PACKAGE_ARCH="$TARGET_ARCH" ;;
+esac
 
 SDK_VERSION="$(
   python3 -c '
@@ -233,6 +238,7 @@ mkdir -p "$OUTPUT_DIR"
 echo "Cleaning generated bundle artifacts from: $OUTPUT_DIR"
 find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -name '*.whl' \
+  -o -name '*.tar.gz' \
   -o -name '*.zip' \
   -o -name 'manifest.txt' \
   -o -name 'metadata.json' \
@@ -268,7 +274,10 @@ metadata_args=(
   --installer-script "install_modelsdk_wheels.sh"
 )
 if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
-  metadata_args+=(--offline-package)
+  metadata_args+=(
+    --offline-package
+    --offline-archive-name "model-compiler-offline-${PACKAGE_ARCH}.zip"
+  )
 fi
 "$SCRIPT_DIR/generate_metadata.py" "${metadata_args[@]}"
 
