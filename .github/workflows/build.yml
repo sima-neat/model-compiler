@@ -1,0 +1,277 @@
+name: Build
+
+run-name: Build Model Compiler packages from ${{ github.ref_name }}
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  resolve-vulcan-config:
+    name: Resolve Vulcan Config
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'production' }}
+
+  package-model-compiler:
+    name: Package Model Compiler (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            target_arch: x86_64
+            runner:
+              - self-hosted
+              - Linux
+              - X64
+              - issue-triage
+          - arch: arm64
+            target_arch: aarch64
+            runner:
+              - self-hosted
+              - macOS
+              - ARM64
+              - osx
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Upgrade pip
+        run: python3 -m pip install --upgrade pip
+
+      - name: Show build environment
+        run: |
+          set -euo pipefail
+          uname -a
+          python3 --version
+          python3 -m pip --version
+
+      - name: Resolve bundle version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sdk_version="$(
+            python3 - <<'PY'
+          import json
+          with open("scripts/source.json", "r", encoding="utf-8") as f:
+              print(str(json.load(f).get("sdk_version", "")).strip())
+          PY
+          )"
+          if [[ -z "${sdk_version}" ]]; then
+            echo "scripts/source.json is missing sdk_version." >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            branch="$(printf '%s' "${branch}" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+|-+$//g')"
+            short_sha="$(printf '%.12s' "${GITHUB_SHA}")"
+            version="${sdk_version}.neat+${branch}.${short_sha}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved bundle version: ${version}"
+
+      - name: Build package
+        run: |
+          set -euo pipefail
+          scripts/build_modelsdk_bundle.sh \
+            --source-json scripts/source.json \
+            --target-arch "${{ matrix.target_arch }}" \
+            --output-dir "dist/${{ matrix.arch }}/online" \
+            --bundle-version "${{ steps.version.outputs.version }}" \
+            --prod
+          scripts/build_modelsdk_bundle.sh \
+            --source-json scripts/source.json \
+            --target-arch "${{ matrix.target_arch }}" \
+            --output-dir "dist/${{ matrix.arch }}/offline" \
+            --bundle-version "${{ steps.version.outputs.version }}" \
+            --description "SiMa.ai NEAT Model Compiler - Offline Package" \
+            --offline-package \
+            --prod
+
+      - name: Validate package
+        run: |
+          set -euo pipefail
+          for package_type in online offline; do
+            test -f "dist/${{ matrix.arch }}/${package_type}/metadata.json"
+            test -f "dist/${{ matrix.arch }}/${package_type}/manifest.txt"
+            test -f "dist/${{ matrix.arch }}/${package_type}/source.json"
+            test -f "dist/${{ matrix.arch }}/${package_type}/install_modelsdk_wheels.sh"
+            python3 -m json.tool "dist/${{ matrix.arch }}/${package_type}/metadata.json" >/dev/null
+            ls -lah "dist/${{ matrix.arch }}/${package_type}"
+          done
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-${{ matrix.arch }}
+          path: dist/${{ matrix.arch }}/online/*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload offline package
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-${{ matrix.arch }}-offline
+          path: dist/${{ matrix.arch }}/offline/*
+          if-no-files-found: error
+          retention-days: 3
+
+  publish-amd64:
+    name: Publish amd64 Package to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-model-compiler
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: amd64
+      artifact_pattern: model-compiler-amd64
+      artifact_glob: "*"
+      min_artifact_count: 4
+      publish_manifest: true
+
+  publish-arm64:
+    name: Publish arm64 Package to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-model-compiler
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: arm64
+      artifact_pattern: model-compiler-arm64
+      artifact_glob: "*"
+      min_artifact_count: 4
+      publish_manifest: true
+
+  publish-offline:
+    name: Publish ${{ matrix.arch }} Offline Package to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-model-compiler
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+          - arch: arm64
+    env:
+      AWS_REGION: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      ARTIFACT_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      ROLE_TO_ASSUME: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      SSE_KMS_KEY_ID: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          role-session-name: vulcan-publish-offline-${{ github.run_id }}
+
+      - name: Verify aws cli is available
+        run: |
+          set -euo pipefail
+          aws --version
+
+      - name: Checkout scripts
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/publish_vulcan_offline_package.py
+          sparse-checkout-cone-mode: false
+
+      - name: Download offline package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: model-compiler-${{ matrix.arch }}-offline
+          path: _vulcan/offline-package
+
+      - name: Publish offline package
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          python3 scripts/publish_vulcan_offline_package.py \
+            --download-path _vulcan/offline-package \
+            --bucket "${ARTIFACT_BUCKET}" \
+            --target-arch "${TARGET_ARCH}" \
+            --sse-kms-key-id "${SSE_KMS_KEY_ID}" \
+            --cloudfront-distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}"
+
+  update-amd64-latest:
+    name: Update amd64 Vulcan Latest Tag
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    needs:
+      - resolve-vulcan-config
+      - publish-amd64
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      artifact_folder: amd64
+      validate_manifest: true
+
+  update-arm64-latest:
+    name: Update arm64 Vulcan Latest Tag
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    needs:
+      - resolve-vulcan-config
+      - publish-arm64
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      artifact_folder: arm64
+      validate_manifest: true

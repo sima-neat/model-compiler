@@ -106,6 +106,23 @@ elif expr == "python_package_specs":
 ' "$SOURCE_JSON" "$expr"
 }
 
+is_offline_package() {
+  local metadata="$BUNDLE_DIR/metadata.json"
+  [[ -f "$metadata" ]] || return 1
+  python3 - "$metadata" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+except Exception:
+    raise SystemExit(1)
+
+raise SystemExit(0 if isinstance(metadata.get("offline"), dict) else 1)
+PY
+}
+
 normalize_python_version() {
   local raw="$1"
   raw="$(echo "$raw" | tr -d '[:space:]')"
@@ -1078,7 +1095,10 @@ pip_args=(
 )
 prepare_manifest_find_links
 pip_args+=(--find-links "$WHEEL_LINK_DIR")
-if [[ -n "$EXTRA_INDEX_URL" ]]; then
+if is_offline_package; then
+  echo "Offline package metadata detected; installing with --no-index."
+  pip_args+=(--no-index)
+elif [[ -n "$EXTRA_INDEX_URL" ]]; then
   pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
 fi
 

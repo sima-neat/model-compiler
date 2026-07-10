@@ -50,6 +50,11 @@ def main() -> int:
         default="manifest.txt",
         help="Wheel manifest filename generated and included in resources.",
     )
+    p.add_argument(
+        "--offline-package",
+        action="store_true",
+        help="Generate metadata for an offline download package. The install script only prints instructions.",
+    )
     args = p.parse_args()
 
     artifacts_dir = Path(args.artifacts_dir)
@@ -90,6 +95,47 @@ def main() -> int:
         checksums[name] = sha256_file(f)
         total_download_bytes += f.stat().st_size
 
+    install_script = f"bash ./{installer.name}"
+    post_message = (
+        "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
+        "[bold]Virtual environment location:[/bold]\n"
+        "The installer creates the venv at "
+        "[green]/sdk-extensions/model-compiler[/green] when writable, "
+        "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
+        "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
+        "[bold]Reload your shell environment:[/bold]\n"
+        "The installer updates [green]~/.bashrc[/green] when it exists, "
+        "otherwise [green]~/.bash_profile[/green]. Run "
+        "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
+        "or log out and log back in. Then run [green]activate-model-compiler[/green] "
+        "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
+    )
+    if args.offline_package:
+        install_script = (
+            "echo 'Model Compiler offline package downloaded. "
+            "Copy the downloaded files to the target SDK workspace, then run: "
+            "bash ./install_modelsdk_wheels.sh'"
+        )
+        post_message = (
+            "[bold green]Successfully downloaded Model Compiler offline package.[/bold green]\n\n"
+            "[bold]Install Model Compiler in an offline SDK:[/bold]\n"
+            "Copy the downloaded files to the host workspace folder that is mounted into "
+            "the SDK container as [green]/workspace[/green]. Open a terminal in the SDK "
+            "container, change to that copied folder, then run "
+            "[green]bash ./install_modelsdk_wheels.sh[/green].\n\n"
+            "[bold]Virtual environment location:[/bold]\n"
+            "The installer creates the venv at "
+            "[green]/sdk-extensions/model-compiler[/green] when writable, "
+            "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
+            "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
+            "[bold]Reload your shell environment:[/bold]\n"
+            "The installer updates [green]~/.bashrc[/green] when it exists, "
+            "otherwise [green]~/.bash_profile[/green]. Run "
+            "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
+            "or log out and log back in. Then run [green]activate-model-compiler[/green] "
+            "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
+        )
+
     metadata = {
         "name": args.name,
         "version": args.version,
@@ -109,23 +155,15 @@ def main() -> int:
             "install": "9 GB",
         },
         "installation": {
-            "script": f"bash ./{installer.name}",
-            "post-message": (
-                "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
-                "[bold]Virtual environment location:[/bold]\n"
-                "The installer creates the venv at "
-                "[green]/sdk-extensions/model-compiler[/green] when writable, "
-                "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
-                "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
-                "[bold]Reload your shell environment:[/bold]\n"
-                "The installer updates [green]~/.bashrc[/green] when it exists, "
-                "otherwise [green]~/.bash_profile[/green]. Run "
-                "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
-                "or log out and log back in. Then run [green]activate-model-compiler[/green] "
-                "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
-            ),
+            "script": install_script,
+            "post-message": post_message,
         },
     }
+    if args.offline_package:
+        metadata["offline"] = {
+            "install-script": installer.name,
+            "wheel-manifest": wheel_manifest.name,
+        }
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
