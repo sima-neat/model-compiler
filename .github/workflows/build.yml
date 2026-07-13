@@ -206,7 +206,10 @@ jobs:
       - name: Checkout smoke test
         uses: actions/checkout@v5
         with:
-          sparse-checkout: scripts/smoke_test_modelsdk.py
+          sparse-checkout: |
+            scripts/smoke_test_modelsdk.py
+            skills/model_surgery
+            skills/quantize_compile
           sparse-checkout-cone-mode: false
 
       - name: Set up Python
