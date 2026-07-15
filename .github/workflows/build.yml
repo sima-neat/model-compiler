@@ -180,7 +180,7 @@ jobs:
     needs:
       - package-model-compiler
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -206,7 +206,10 @@ jobs:
       - name: Checkout smoke test
         uses: actions/checkout@v5
         with:
-          sparse-checkout: scripts/smoke_test_modelsdk.py
+          sparse-checkout: |
+            scripts/smoke_test_modelsdk.py
+            skills/model_surgery
+            skills/quantize_compile
           sparse-checkout-cone-mode: false
 
       - name: Set up Python
@@ -256,7 +259,7 @@ jobs:
             bash ./install_modelsdk_wheels.sh
           fi
 
-      - name: Run basic smoke test
+      - name: Run post-install smoke test
         run: |
           set -euo pipefail
 
@@ -281,7 +284,13 @@ jobs:
           echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
           which python
           python --version
-          python scripts/smoke_test_modelsdk.py --tier basic
+
+          smoke_tier="basic"
+          if [[ "${{ matrix.arch }}" == "amd64" && "${{ matrix.package_type }}" == "offline" ]]; then
+            smoke_tier="resnet-compile"
+          fi
+          echo "Running Model Compiler smoke tier: ${smoke_tier}"
+          python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
 
   publish-amd64:
     name: Publish amd64 Package to Vulcan
