@@ -46,6 +46,10 @@
   ],
   "preload-packages": [
     {
+      "name": "ninja",
+      "version": "1.13.0"
+    },
+    {
       "name": "lm_eval[hf]",
       "version": "0.4.12"
     }
@@ -146,6 +150,10 @@
       "word2number"
     ],
     "preload-packages": [
+      {
+        "name": "ninja",
+        "version": "1.13.0"
+      },
       {
         "name": "lm_eval[hf]",
         "version": "0.4.12"
