@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import shlex
 import zipfile
 
 
@@ -18,7 +19,7 @@ def human_mb(num_bytes: int) -> str:
     return f"{num_bytes / (1024 * 1024):.1f} MB"
 
 
-def binary_archive_names(source_manifest: Path) -> set[str]:
+def binary_archive_names(source_manifest: Path, target_arch: str) -> set[str]:
     if not source_manifest.is_file():
         return set()
     doc = json.loads(source_manifest.read_text(encoding="utf-8"))
@@ -37,14 +38,20 @@ def binary_archive_names(source_manifest: Path) -> set[str]:
             if extension:
                 archive_type = extension[1:] if extension.startswith(".") else extension
             if name and version:
-                names.add(f"{name.rsplit('/', 1)[-1]}-{version}.{archive_type}")
+                base = name.rsplit("/", 1)[-1]
+                normalized = name.lower()
+                if archive_type == "zip" and base == "mla-toolchain" and "mla" in normalized:
+                    arch_suffix = {"x86_64": "x86", "aarch64": "aarch64"}.get(target_arch)
+                    if not arch_suffix:
+                        raise SystemExit(f"Unsupported MLA toolchain architecture: {target_arch!r}")
+                    version = f"{version}-{arch_suffix}-ubuntu"
+                names.add(f"{base}-{version}.{archive_type}")
         return names
 
-    names = names_from_items(doc.get("binary-packages", []))
-    for value in doc.values():
-        if isinstance(value, dict):
-            names.update(names_from_items(value.get("binary-packages", [])))
-    return names
+    arch_doc = doc.get(target_arch)
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("binary-packages"), list):
+        return names_from_items(arch_doc["binary-packages"])
+    return names_from_items(doc.get("binary-packages", []))
 
 
 def main() -> int:
@@ -70,6 +77,7 @@ def main() -> int:
         default="install_modelsdk_wheels.sh",
         help="Installer script filename included in resources.",
     )
+    p.add_argument("--target-arch", choices=["x86_64", "aarch64"], required=True)
     p.add_argument(
         "--source-manifest",
         default="source.json",
@@ -81,14 +89,9 @@ def main() -> int:
         help="Wheel manifest filename generated and included in resources.",
     )
     p.add_argument(
-        "--offline-package",
-        action="store_true",
-        help="Generate metadata for an offline download package. The install script only prints instructions.",
-    )
-    p.add_argument(
-        "--offline-archive-name",
-        default="model-compiler-offline-package.zip",
-        help="Archive filename to create for --offline-package.",
+        "--archive-name",
+        default="model-compiler-package.zip",
+        help="Archive filename to create for the self-installing package.",
     )
     args = p.parse_args()
 
@@ -96,16 +99,14 @@ def main() -> int:
     if not artifacts_dir.is_dir():
         raise SystemExit(f"artifacts-dir does not exist: {artifacts_dir}")
 
-    archive_name = ""
-    if args.offline_package:
-        archive_name = args.offline_archive_name.strip()
-        if not archive_name or "/" in archive_name or archive_name.startswith("."):
-            raise SystemExit(f"Invalid offline archive name: {args.offline_archive_name!r}")
-        if not archive_name.endswith(".zip"):
-            raise SystemExit("offline archive name must end with .zip")
+    archive_name = args.archive_name.strip()
+    if not archive_name or "/" in archive_name or archive_name.startswith("."):
+        raise SystemExit(f"Invalid archive name: {args.archive_name!r}")
+    if not archive_name.endswith(".zip"):
+        raise SystemExit("archive name must end with .zip")
 
     source_manifest = artifacts_dir / args.source_manifest
-    binary_names = binary_archive_names(source_manifest)
+    binary_names = binary_archive_names(source_manifest, args.target_arch)
 
     artifacts = sorted(
         [
@@ -146,18 +147,15 @@ def main() -> int:
     if source_manifest.is_file():
         resources.append(source_manifest.name)
 
-    archived_resources = []
-    if args.offline_package:
-        archive_path = artifacts_dir / archive_name
-        archived_resources = resources[:]
-        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for name in archived_resources:
-                zf.write(artifacts_dir / name, arcname=name)
-        for name in archived_resources:
-            path = artifacts_dir / name
-            if path.exists():
-                path.unlink()
-        resources = [archive_name]
+    archive_path = artifacts_dir / archive_name
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in resources:
+            zf.write(artifacts_dir / name, arcname=name)
+    for name in resources:
+        path = artifacts_dir / name
+        if path.exists():
+            path.unlink()
+    resources = [archive_name]
 
     checksums = {}
     total_download_bytes = 0
@@ -166,7 +164,12 @@ def main() -> int:
         checksums[name] = sha256_file(f)
         total_download_bytes += f.stat().st_size
 
-    install_script = f"bash ./{installer.name}"
+    install_script = (
+        "bundle_dir=$(mktemp -d) && "
+        "trap 'rm -rf \"$bundle_dir\"' EXIT && "
+        f"unzip -oq {shlex.quote(archive_name)} -d \"$bundle_dir\" && "
+        f"bash \"$bundle_dir\"/{shlex.quote(installer.name)}"
+    )
     post_message = (
         "[bold green]Successfully installed Model Compiler.[/bold green]\n\n"
         "[bold]Virtual environment location:[/bold]\n"
@@ -181,32 +184,6 @@ def main() -> int:
         "or log out and log back in. Then run [green]activate-model-compiler[/green] "
         "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
     )
-    if args.offline_package:
-        install_script = (
-            "echo 'Model Compiler offline package downloaded. "
-            "Copy the downloaded zip to the target SDK workspace, unzip it, then run: "
-            "bash ./install_modelsdk_wheels.sh --offline-package'"
-        )
-        post_message = (
-            "[bold green]Successfully downloaded Model Compiler offline package.[/bold green]\n\n"
-            "[bold]Install Model Compiler in an offline SDK:[/bold]\n"
-            "Copy the downloaded zip file to the host workspace folder that is mounted into "
-            "the SDK container as [green]/workspace[/green]. Unzip it, open a terminal in "
-            "the SDK container, change to the extracted folder, then run "
-            "[green]bash ./install_modelsdk_wheels.sh --offline-package[/green].\n\n"
-            "[bold]Virtual environment location:[/bold]\n"
-            "The installer creates the venv at "
-            "[green]/sdk-extensions/model-compiler[/green] when writable, "
-            "otherwise it falls back to [green]/sdk-add-on/model-compiler[/green], "
-            "or [green]~/sdk-extensions/model-compiler[/green].\n\n"
-            "[bold]Reload your shell environment:[/bold]\n"
-            "The installer updates [green]~/.bashrc[/green] when it exists, "
-            "otherwise [green]~/.bash_profile[/green]. Run "
-            "[green]source ~/.bashrc[/green] or [green]source ~/.bash_profile[/green], "
-            "or log out and log back in. Then run [green]activate-model-compiler[/green] "
-            "to activate the environment and [green]deactivate-model-compiler[/green] to leave it."
-        )
-
     metadata = {
         "name": args.name,
         "version": args.version,
@@ -230,14 +207,6 @@ def main() -> int:
             "post-message": post_message,
         },
     }
-    if args.offline_package:
-        metadata["offline"] = {
-            "install-script": installer.name,
-            "wheel-manifest": wheel_manifest.name,
-            "archive": archive_name,
-            "archive-contents": archived_resources,
-        }
-
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

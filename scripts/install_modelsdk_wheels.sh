@@ -2,25 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OFFLINE_PACKAGE="0"
 
 usage() {
   cat <<'EOF'
 Usage:
-  install_modelsdk_wheels.sh [--offline-package]
+  install_modelsdk_wheels.sh
 
 Options:
-  --offline-package  Install only from wheels included in this downloaded package.
   -h, --help         Show this help.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --offline-package)
-      OFFLINE_PACKAGE="1"
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
@@ -48,7 +42,6 @@ resolve_bundle_dir() {
 BUNDLE_DIR="$(resolve_bundle_dir)"
 SOURCE_JSON="$BUNDLE_DIR/source.json"
 WHEEL_MANIFEST="$BUNDLE_DIR/manifest.txt"
-EXTRA_INDEX_URL="${EXTRA_INDEX_URL:-https://pypi.org/simple}"
 WHEEL_LINK_DIR=""
 MANIFEST_WHEELS=()
 MANIFEST_WHEEL_NAMES=()
@@ -121,6 +114,12 @@ elif expr == "binary_package_archives":
                 archive_type = extension
         if name and version:
             base = name.rsplit("/", 1)[-1]
+            normalized = name.lower()
+            if archive_type == "zip" and base == "mla-toolchain" and "mla" in normalized:
+                arch_suffix = {"x86_64": "x86", "aarch64": "aarch64"}.get(target_arch)
+                if not arch_suffix:
+                    raise SystemExit(f"Unsupported MLA toolchain architecture: {target_arch!r}")
+                version = f"{version}-{arch_suffix}-ubuntu"
             print(f"{base}-{version}.{archive_type}")
 elif expr == "python_package_specs":
     items = []
@@ -140,27 +139,6 @@ elif expr == "python_package_specs":
         if name and version:
             print(f"{name}=={version}")
 ' "$SOURCE_JSON" "$expr"
-}
-
-is_offline_package() {
-  if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
-    return 0
-  fi
-
-  local metadata="$BUNDLE_DIR/metadata.json"
-  [[ -f "$metadata" ]] || return 1
-  python3 - "$metadata" <<'PY'
-import json
-import sys
-
-try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-except Exception:
-    raise SystemExit(1)
-
-raise SystemExit(0 if isinstance(metadata.get("offline"), dict) else 1)
-PY
 }
 
 normalize_python_version() {
@@ -1136,12 +1114,8 @@ pip_args=(
 )
 prepare_manifest_find_links
 pip_args+=(--find-links "$WHEEL_LINK_DIR")
-if is_offline_package; then
-  echo "Offline package metadata detected; installing with --no-index."
-  pip_args+=(--no-index)
-elif [[ -n "$EXTRA_INDEX_URL" ]]; then
-  pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
-fi
+echo "Installing from bundled artifacts with --no-index."
+pip_args+=(--no-index)
 
 if [[ ${#package_specs[@]} -gt 0 ]]; then
   echo "Installing ${#package_specs[@]} package spec(s) from source.json into $VENV_DIR (extras supported)"

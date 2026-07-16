@@ -74,41 +74,10 @@ Example:
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "version": "v2.1.3560-develop.409",
       "extension": ".zip"
     }
-  ],
-  "aarch64": {
-    "system_dependencies": {
-      "ubuntu": [
-        "build-essential",
-        "curl",
-        "libllvm18",
-        "libopenblas0-pthread"
-      ]
-    },
-    "dependency_overrides": {},
-    "python-packages": [
-      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
-      {
-        "name": "spconv",
-        "version": "2.3.8",
-        "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl"
-      },
-      {
-        "name": "cumm",
-        "version": "0.7.13",
-        "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl"
-      }
-    ],
-    "binary-packages": [
-      {
-        "name": "mla/toolchain/mla-toolchain",
-        "version": "v2.1.3523-neat.4-ubuntu",
-        "extension": ".zip"
-      }
-    ]
-  }
+  ]
 }
 ```
 
@@ -118,8 +87,8 @@ Fields:
 - `system_dependencies.ubuntu`: apt packages installed on the target host before Python and virtual environment setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
 - `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
-- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment
-- `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
+- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment; the MLA toolchain derives its `x86` or `aarch64` archive suffix from the build target
+- `aarch64`: optional architecture-specific overrides for fields that genuinely differ on ARM64; omit it when both architectures share the same dependencies
 
 Native source builds triggered during installation, such as
 `llama_cpp_python`, use the build backend's default parallelism. Set
@@ -174,21 +143,21 @@ has a release tag such as `v1.0.0`, the generated `metadata.json` uses
 `sdk_version.neat+branch.git-short-hash`. Pass `--bundle-version` to override
 this behavior.
 
-The build performs these steps:
+The build creates a self-contained archive by default and performs these steps:
 1. Read the package manifest from `source.json`.
-2. Download one wheel for each requested Python package.
-3. Download direct internal wheel dependencies referenced by those wheels.
-4. Download binary package archives such as the MLA toolchain.
-5. Copy the installer and source manifest into the output directory.
-6. Generate `manifest.txt` with the bundled wheel filenames.
-7. Generate `metadata.json`.
+2. Download every wheel in the target architecture's dependency closure.
+3. Download binary package archives such as the MLA toolchain.
+4. Copy the installer and source manifest into the output directory.
+5. Generate `manifest.txt` with the bundled wheel filenames.
+6. Generate the ZIP archive and matching `metadata.json`.
+
+The release workflow builds the full dependency closure into one archive.
+`metadata.json` downloads that archive, extracts it into a temporary directory,
+runs the installer locally, and removes the extracted directory afterward.
 
 Output files in `dist/` typically include:
-- `*.whl`
-- `*.zip`
-- `manifest.txt`
-- `install_modelsdk_wheels.sh`
-- `source.json`
+
+- `model-compiler-<arch>.zip`
 - `metadata.json`
 
 ## Testing a Local Bundle
@@ -382,17 +351,11 @@ It keeps installer and metadata files such as:
 - If a wheel is missing from Artifactory, provide `--extra-index-url` so the
   build can fall back to public PyPI for Python packages.
 
-## Regenerating Metadata Only
+## Regenerating a Package
 
-If you already have a populated bundle directory, regenerate only
-`metadata.json`:
-
-```bash
-python3 ./scripts/generate_metadata.py \
-  --artifacts-dir ./dist \
-  --output ./dist/metadata.json \
-  --version 2.0.0.neat+local
-```
+The archive contains the installer and every dependency, so regenerate it and
+its matching metadata together with `build_modelsdk_bundle.sh` rather than
+editing metadata independently.
 
 ## Status
 
