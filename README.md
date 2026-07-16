@@ -156,7 +156,9 @@ The release workflow builds the full dependency closure into one archive.
 runs the installer locally, and removes the extracted directory afterward.
 `metadata-offline.json` references the same archive but provides manual
 distribution instructions for transferring the ZIP to another environment and
-running its included installer there.
+running its included installer there. It is available from Linux, macOS, and
+Windows hosts so the archive can be downloaded before transfer; the installer
+inside the archive remains Linux-only.
 
 Output files in `dist/` typically include:
 

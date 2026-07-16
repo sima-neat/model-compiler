@@ -144,6 +144,13 @@ jobs:
               raise SystemExit("Metadata resources must contain only the package archive")
           if offline_metadata.get("resources") != [archive_name]:
               raise SystemExit("Manual-distribution metadata must contain only the package archive")
+          offline_platforms = offline_metadata.get("platforms", [])
+          offline_host = next(
+              (platform for platform in offline_platforms if platform.get("type") == "host"),
+              {},
+          )
+          if set(offline_host.get("os", [])) != {"linux", "mac", "windows"}:
+              raise SystemExit("Manual-distribution metadata must support Linux, macOS, and Windows hosts")
           script = metadata.get("installation", {}).get("script", "")
           expected = (
               "bundle_dir=$(mktemp -d) && trap 'rm -rf \"$bundle_dir\"' EXIT && "

@@ -221,6 +221,13 @@ def main() -> int:
         else output.with_name("metadata-offline.json")
     )
     manual_metadata = dict(metadata)
+    # This metadata only downloads the archive; its installer is run after the
+    # archive is transferred to a supported Linux target. Allow users on any
+    # common host OS to fetch it for manual distribution.
+    manual_metadata["platforms"] = [
+        {"type": "host", "os": ["linux", "mac", "windows"]},
+        {"type": "palette"},
+    ]
     manual_metadata["installation"] = {
         "script": (
             "echo 'Model Compiler archive downloaded. Transfer or distribute the ZIP as needed, then extract it and run: "
