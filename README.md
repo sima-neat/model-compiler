@@ -149,16 +149,20 @@ The build creates a self-contained archive by default and performs these steps:
 3. Download binary package archives such as the MLA toolchain.
 4. Copy the installer and source manifest into the output directory.
 5. Generate `manifest.txt` with the bundled wheel filenames.
-6. Generate the ZIP archive and matching `metadata.json`.
+6. Generate the ZIP archive plus `metadata.json` and `metadata-offline.json`.
 
 The release workflow builds the full dependency closure into one archive.
 `metadata.json` downloads that archive, extracts it into a temporary directory,
 runs the installer locally, and removes the extracted directory afterward.
+`metadata-offline.json` references the same archive but provides manual
+distribution instructions for transferring the ZIP to another environment and
+running its included installer there.
 
 Output files in `dist/` typically include:
 
 - `model-compiler-<arch>.zip`
 - `metadata.json`
+- `metadata-offline.json`
 
 ## Testing a Local Bundle
 

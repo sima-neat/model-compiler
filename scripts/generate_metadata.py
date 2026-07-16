@@ -93,6 +93,10 @@ def main() -> int:
         default="model-compiler-package.zip",
         help="Archive filename to create for the self-installing package.",
     )
+    p.add_argument(
+        "--offline-output",
+        help="Path for generated manual-distribution metadata (default: metadata-offline.json beside --output).",
+    )
     args = p.parse_args()
 
     artifacts_dir = Path(args.artifacts_dir)
@@ -210,6 +214,29 @@ def main() -> int:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+    offline_output = (
+        Path(args.offline_output)
+        if args.offline_output
+        else output.with_name("metadata-offline.json")
+    )
+    manual_metadata = dict(metadata)
+    manual_metadata["installation"] = {
+        "script": (
+            "echo 'Model Compiler archive downloaded. Transfer or distribute the ZIP as needed, then extract it and run: "
+            f"bash ./{installer.name}'"
+        ),
+        "post-message": (
+            "[bold green]Model Compiler archive downloaded.[/bold green]\n\n"
+            f"The archive [green]{archive_name}[/green] contains the installer and all dependencies. "
+            "Copy or distribute the ZIP as needed; on the target, extract it and run "
+            f"[green]bash ./{installer.name}[/green]."
+        ),
+    }
+    offline_output.parent.mkdir(parents=True, exist_ok=True)
+    offline_output.write_text(
+        json.dumps(manual_metadata, indent=2) + "\n", encoding="utf-8"
+    )
     return 0
 
 

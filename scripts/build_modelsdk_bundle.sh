@@ -300,7 +300,7 @@ for raw_path in sys.argv[1:]:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(m, f, indent=2)
         f.write("\n")
-' "$OUTPUT_DIR/metadata.json"
+' "$OUTPUT_DIR/metadata.json" "$OUTPUT_DIR/metadata-offline.json"
   echo "Applied --prod metadata escaping ('+' -> '%2B')"
 fi
 

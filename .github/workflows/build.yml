@@ -117,8 +117,10 @@ jobs:
         run: |
           set -euo pipefail
           test -f "dist/${{ matrix.arch }}/package/metadata.json"
+          test -f "dist/${{ matrix.arch }}/package/metadata-offline.json"
           test -f "dist/${{ matrix.arch }}/package/model-compiler-${{ matrix.arch }}.zip"
           python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata.json" >/dev/null
+          python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata-offline.json" >/dev/null
           python3 - <<'PY'
           import json
           import zipfile
@@ -127,6 +129,7 @@ jobs:
           arch = "${{ matrix.arch }}"
           package_dir = Path("dist") / arch / "package"
           metadata = json.loads((package_dir / "metadata.json").read_text(encoding="utf-8"))
+          offline_metadata = json.loads((package_dir / "metadata-offline.json").read_text(encoding="utf-8"))
           archive_name = f"model-compiler-{arch}.zip"
           archive = package_dir / archive_name
           with zipfile.ZipFile(archive) as zf:
@@ -139,6 +142,8 @@ jobs:
               raise SystemExit("Package archive contains no wheels")
           if metadata.get("resources") != [archive_name]:
               raise SystemExit("Metadata resources must contain only the package archive")
+          if offline_metadata.get("resources") != [archive_name]:
+              raise SystemExit("Manual-distribution metadata must contain only the package archive")
           script = metadata.get("installation", {}).get("script", "")
           expected = (
               "bundle_dir=$(mktemp -d) && trap 'rm -rf \"$bundle_dir\"' EXIT && "
@@ -147,6 +152,9 @@ jobs:
           )
           if script != expected:
               raise SystemExit(f"Unexpected installation script: {script!r}")
+          offline_script = offline_metadata.get("installation", {}).get("script", "")
+          if f"bash ./install_modelsdk_wheels.sh" not in offline_script:
+              raise SystemExit(f"Unexpected manual-distribution script: {offline_script!r}")
           PY
 
           ls -lah "dist/${{ matrix.arch }}/package"
