@@ -205,12 +205,19 @@ with `.netrc` or your shell environment before you run the scripts.
 
 ## Installing a Built Bundle
 
-After you build the bundle, copy the contents of `dist/` to the target machine
-and run:
+After you build the bundle, copy the architecture-specific ZIP to the target
+Linux machine, extract it, and run the included installer. For example, for an
+ARM64 target:
 
 ```bash
+unzip -q model-compiler-arm64.zip -d model-compiler-arm64
+cd model-compiler-arm64
 bash ./install_modelsdk_wheels.sh
 ```
+
+Use `model-compiler-amd64.zip` for an amd64 target. Alternatively, install
+through `metadata.json` with `sima-cli`, which extracts the same archive into a
+temporary directory and runs this installer automatically.
 
 The installer performs these steps:
 1. Read `source.json`.
@@ -221,10 +228,11 @@ The installer performs these steps:
 6. Install bundled binary packages into that virtual environment.
 7. Install top-level package specs from `python-packages`, including extras such
    as `sima_lmm[sdk]`. It uses manifest-listed wheels as local `--find-links`
-   inputs and falls back to PyPI when needed.
+   inputs with `--no-index`.
 8. Update shell startup files with the Model Compiler virtual environment
    `PATH`.
-9. Remove downloaded bundle payloads after successful installation.
+9. Leave the extracted archive available for reuse; remove it manually if it is
+   no longer needed.
 
 ## Install Location
 
