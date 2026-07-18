@@ -109,74 +109,73 @@ jobs:
           scripts/build_modelsdk_bundle.sh \
             --source-json scripts/source.json \
             --target-arch "${{ matrix.target_arch }}" \
-            --output-dir "dist/${{ matrix.arch }}/online" \
+            --output-dir "dist/${{ matrix.arch }}/package" \
             --bundle-version "${{ steps.version.outputs.version }}" \
-            --prod
-          scripts/build_modelsdk_bundle.sh \
-            --source-json scripts/source.json \
-            --target-arch "${{ matrix.target_arch }}" \
-            --output-dir "dist/${{ matrix.arch }}/offline" \
-            --bundle-version "${{ steps.version.outputs.version }}" \
-            --description "SiMa.ai NEAT Model Compiler - Offline Package" \
-            --offline-package \
             --prod
 
       - name: Validate package
         run: |
           set -euo pipefail
-          test -f "dist/${{ matrix.arch }}/online/metadata.json"
-          test -f "dist/${{ matrix.arch }}/online/manifest.txt"
-          test -f "dist/${{ matrix.arch }}/online/source.json"
-          test -f "dist/${{ matrix.arch }}/online/install_modelsdk_wheels.sh"
-          python3 -m json.tool "dist/${{ matrix.arch }}/online/metadata.json" >/dev/null
-
-          test -f "dist/${{ matrix.arch }}/offline/metadata.json"
-          test -f "dist/${{ matrix.arch }}/offline/model-compiler-offline-${{ matrix.arch }}.zip"
-          python3 -m json.tool "dist/${{ matrix.arch }}/offline/metadata.json" >/dev/null
+          test -f "dist/${{ matrix.arch }}/package/metadata.json"
+          test -f "dist/${{ matrix.arch }}/package/metadata-offline.json"
+          test -f "dist/${{ matrix.arch }}/package/model-compiler-${{ matrix.arch }}.zip"
+          python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata.json" >/dev/null
+          python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata-offline.json" >/dev/null
           python3 - <<'PY'
           import json
-          import sys
           import zipfile
           from pathlib import Path
 
           arch = "${{ matrix.arch }}"
-          offline_dir = Path("dist") / arch / "offline"
-          metadata = json.loads((offline_dir / "metadata.json").read_text(encoding="utf-8"))
-          archive_name = metadata.get("offline", {}).get("archive")
-          if archive_name != f"model-compiler-offline-{arch}.zip":
-              raise SystemExit(f"Unexpected archive in metadata: {archive_name!r}")
-          archive = offline_dir / archive_name
+          package_dir = Path("dist") / arch / "package"
+          metadata = json.loads((package_dir / "metadata.json").read_text(encoding="utf-8"))
+          offline_metadata = json.loads((package_dir / "metadata-offline.json").read_text(encoding="utf-8"))
+          archive_name = f"model-compiler-{arch}.zip"
+          archive = package_dir / archive_name
           with zipfile.ZipFile(archive) as zf:
               names = set(zf.namelist())
           required = {"install_modelsdk_wheels.sh", "source.json", "manifest.txt"}
           missing = sorted(required - names)
           if missing:
-              raise SystemExit(f"Offline archive missing required files: {missing}")
+              raise SystemExit(f"Package archive missing required files: {missing}")
           if not any(name.endswith(".whl") for name in names):
-              raise SystemExit("Offline archive contains no wheels")
+              raise SystemExit("Package archive contains no wheels")
+          if metadata.get("resources") != [archive_name]:
+              raise SystemExit("Metadata resources must contain only the package archive")
+          if offline_metadata.get("resources") != [archive_name]:
+              raise SystemExit("Manual-distribution metadata must contain only the package archive")
+          offline_platforms = offline_metadata.get("platforms", [])
+          offline_host = next(
+              (platform for platform in offline_platforms if platform.get("type") == "host"),
+              {},
+          )
+          if set(offline_host.get("os", [])) != {"linux", "mac", "windows"}:
+              raise SystemExit("Manual-distribution metadata must support Linux, macOS, and Windows hosts")
+          script = metadata.get("installation", {}).get("script", "")
+          expected = (
+              "bundle_dir=$(mktemp -d) && trap 'rm -rf \"$bundle_dir\"' EXIT && "
+              f"unzip -oq {archive_name} -d \"$bundle_dir\" && "
+              "bash \"$bundle_dir\"/install_modelsdk_wheels.sh"
+          )
+          if script != expected:
+              raise SystemExit(f"Unexpected installation script: {script!r}")
+          offline_script = offline_metadata.get("installation", {}).get("script", "")
+          if f"bash ./install_modelsdk_wheels.sh" not in offline_script:
+              raise SystemExit(f"Unexpected manual-distribution script: {offline_script!r}")
           PY
 
-          ls -lah "dist/${{ matrix.arch }}/online"
-          ls -lah "dist/${{ matrix.arch }}/offline"
+          ls -lah "dist/${{ matrix.arch }}/package"
 
       - name: Upload package
         uses: actions/upload-artifact@v7
         with:
           name: model-compiler-${{ matrix.arch }}
-          path: dist/${{ matrix.arch }}/online/*
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Upload offline package
-        uses: actions/upload-artifact@v7
-        with:
-          name: model-compiler-${{ matrix.arch }}-offline
-          path: dist/${{ matrix.arch }}/offline/*
+          path: dist/${{ matrix.arch }}/package/*
           if-no-files-found: error
           retention-days: 3
 
   test-package-install:
-    name: Test ${{ matrix.arch }} ${{ matrix.package_type }} package install
+    name: Test ${{ matrix.arch }} package install
     needs:
       - package-model-compiler
     runs-on: ${{ matrix.runner }}
@@ -187,20 +186,10 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            package_type: online
             artifact_name: model-compiler-amd64
-          - arch: amd64
-            runner: ubuntu-24.04
-            package_type: offline
-            artifact_name: model-compiler-amd64-offline
           - arch: arm64
             runner: ubuntu-24.04-arm
-            package_type: online
             artifact_name: model-compiler-arm64
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            package_type: offline
-            artifact_name: model-compiler-arm64-offline
 
     steps:
       - name: Checkout smoke test
@@ -231,33 +220,12 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: _package
 
-      - name: Prepare offline package
-        if: matrix.package_type == 'offline'
-        run: |
-          set -euo pipefail
-          archive="_package/model-compiler-offline-${{ matrix.arch }}.zip"
-          test -f "$archive"
-          mkdir -p _install
-          unzip -q "$archive" -d _install
-          ls -lah _install
-
-      - name: Prepare online package
-        if: matrix.package_type == 'online'
-        run: |
-          set -euo pipefail
-          mkdir -p _install
-          cp -a _package/. _install/
-          ls -lah _install
-
       - name: Install package
-        working-directory: _install
         run: |
           set -euo pipefail
-          if [[ "${{ matrix.package_type }}" == "offline" ]]; then
-            bash ./install_modelsdk_wheels.sh --offline-package
-          else
-            bash ./install_modelsdk_wheels.sh
-          fi
+          script="$(python3 -c 'import json; print(json.load(open("_package/metadata.json"))["installation"]["script"])')"
+          cd _package
+          bash -c "$script"
 
       - name: Run post-install smoke test
         run: |
@@ -286,7 +254,7 @@ jobs:
           python --version
 
           smoke_tier="basic"
-          if [[ "${{ matrix.arch }}" == "amd64" && "${{ matrix.package_type }}" == "offline" ]]; then
+          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
             smoke_tier="resnet-compile"
           fi
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
@@ -309,7 +277,7 @@ jobs:
       artifact_folder: amd64
       artifact_pattern: model-compiler-amd64
       artifact_glob: "*"
-      min_artifact_count: 4
+      min_artifact_count: 2
       publish_manifest: true
 
   publish-arm64:
@@ -329,66 +297,8 @@ jobs:
       artifact_folder: arm64
       artifact_pattern: model-compiler-arm64
       artifact_glob: "*"
-      min_artifact_count: 4
+      min_artifact_count: 2
       publish_manifest: true
-
-  publish-offline:
-    name: Publish ${{ matrix.arch }} Offline Package to Vulcan
-    needs:
-      - resolve-vulcan-config
-      - package-model-compiler
-      - test-package-install
-    runs-on: ubuntu-latest
-    environment: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-          - arch: arm64
-    env:
-      AWS_REGION: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
-      ARTIFACT_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
-      ROLE_TO_ASSUME: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
-      SSE_KMS_KEY_ID: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
-          role-session-name: vulcan-publish-offline-${{ github.run_id }}
-
-      - name: Verify aws cli is available
-        run: |
-          set -euo pipefail
-          aws --version
-
-      - name: Checkout scripts
-        uses: actions/checkout@v5
-        with:
-          sparse-checkout: scripts/publish_vulcan_offline_package.py
-          sparse-checkout-cone-mode: false
-
-      - name: Download offline package artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: model-compiler-${{ matrix.arch }}-offline
-          path: _vulcan/offline-package
-
-      - name: Publish offline package
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          python3 scripts/publish_vulcan_offline_package.py \
-            --download-path _vulcan/offline-package \
-            --bucket "${ARTIFACT_BUCKET}" \
-            --target-arch "${TARGET_ARCH}" \
-            --sse-kms-key-id "${SSE_KMS_KEY_ID}" \
-            --cloudfront-distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}"
 
   update-amd64-latest:
     name: Update amd64 Vulcan Latest Tag
