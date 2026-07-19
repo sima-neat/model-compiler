@@ -69,7 +69,7 @@ Ask for:
 
 Ask for:
 - Model format and a shareable repro model or minimal repro.
-- Target device.
+- Target device: first-generation MLSoC (`mlsoc`, Gen1) or Modalix (`modalix`, Gen2).
 - Input/output names and shapes.
 - Quantization/calibration settings.
 - Exact command and compiler or AFE logs.

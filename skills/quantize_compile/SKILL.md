@@ -1,12 +1,17 @@
 ---
 name: sima-model-quantize-compile
-description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and target-specific compilation for modalix or davinci.
+description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for first-generation MLSoC (Gen1) or Modalix (Gen2).
 ---
 
 # Quantize and Compile Standard ONNX Models for SiMa
 
 ## Purpose
-Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa (`modalix` or `davinci`).
+Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa (`mlsoc` or `modalix`).
+
+## Target Devices
+
+- `--device mlsoc` selects first-generation MLSoC (Gen1) through `gen1_target`.
+- `--device modalix` selects Modalix (Gen2) through `gen2_target`.
 
 ## Use When
 - You have an ONNX model and need SiMa quantized/compiled artifacts.
@@ -65,7 +70,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
   --input_names input \
   --input_shapes 1,3,224,224 \
   --output_names output \
-  --device davinci \
+  --device mlsoc \
   --build_dir ./build \
   --real_data \
   --dataset_images /abs/path/calib_images \
@@ -76,7 +81,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 ```
 
 ## Key Flags
-- `--device {modalix|davinci}`
+- `--device {modalix|mlsoc}`
 - `--input_names --input_shapes --output_names`
 - `--real_data --dataset_images --num_calib_samples`
 - `--bf16-weights --bf16-activations`
