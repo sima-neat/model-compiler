@@ -78,7 +78,7 @@ from afe.load.importers.general_importer import onnx_source
 from afe.ir.tensor_type import ScalarType
 
 MODEL_PATH = "resnet50.onnx"
-TARGET = gen2_target  # gen2_target = Modalix, gen1_target = MLSoC (Davinci)
+TARGET = gen2_target  # gen2_target = Modalix, gen1_target = MLSoC
 
 # Model information
 input_name, input_shape, input_type = ("input", (1, 3, 224, 224), ScalarType.float32)

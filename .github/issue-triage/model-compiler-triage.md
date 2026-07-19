@@ -82,7 +82,7 @@ Common actionable cases:
 For model conversion, quantization, or compile failures, ask for:
 
 - Model format and source, or a minimal reproducible model if the model cannot be shared.
-- Target device, for example `modalix` or `davinci`.
+- Target device, for example `modalix` or `mlsoc`.
 - Input names, shapes, output names, dtype/calibration settings, and exact command.
 - Relevant compiler, AFE, or quantization logs.
 - Whether the model was audited with `skills/model_surgery/scripts/model_surgery_guard.py`.
