@@ -1,6 +1,6 @@
 ---
 name: sima-model-quantize-compile
-description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for first-generation MLSoC (Gen1) or Modalix (Gen2).
+description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for MLSoC or Modalix.
 ---
 
 # Quantize and Compile Standard ONNX Models for SiMa
@@ -10,8 +10,8 @@ Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compil
 
 ## Target Devices
 
-- `--device mlsoc` selects first-generation MLSoC (Gen1) through `gen1_target`.
-- `--device modalix` selects Modalix (Gen2) through `gen2_target`.
+- `--device mlsoc` selects `gen1_target` for MLSoC.
+- `--device modalix` selects `gen2_target` for Modalix.
 
 ## Use When
 - You have an ONNX model and need SiMa quantized/compiled artifacts.

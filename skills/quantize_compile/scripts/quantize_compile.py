@@ -4,7 +4,7 @@
 """
 SiMa.ai Model Quantization and Compilation Utility
 This script provides a command-line interface to quantize and compile machine learning models
-for SiMa.ai first-generation MLSoC (Gen1) and Modalix (Gen2) hardware.
+for SiMa.ai MLSoC and Modalix hardware.
 
 Key Features:
 - Supports ONNX, TFLite, Keras, and PyTorch formats.
@@ -442,7 +442,7 @@ def main():
         "--device",
         default="modalix",
         choices=["modalix", "mlsoc"],
-        help="Target hardware (mlsoc=first-generation MLSoC/Gen1, modalix=Modalix/Gen2)",
+        help="Target hardware (mlsoc=MLSoC, modalix=Modalix)",
     )
     parser.add_argument("--build_dir", default="./build", help="Target directory for artifacts")
     parser.add_argument("--no-simplify", action="store_false", dest="simplify", help="Disable ONNX simplification")
