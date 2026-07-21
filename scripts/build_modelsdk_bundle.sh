@@ -11,16 +11,15 @@ Usage:
     [--output-dir ./dist] \
     [--source-json ./scripts/source.json] \
     [--target-arch x86_64|aarch64] \
-    [--offline-package] \
     [--prod]
 
 Description:
   End-to-end helper:
     1) Read python/binary package lists from source.json
     2) Clean generated artifacts from output-dir
-    3) Download wheels (pure first, target-arch fallback) and binary artifacts
+    3) Download the full wheel dependency closure and binary artifacts
     4) Copy installer script into output-dir
-    5) Generate metadata.json for sima-cli distribution
+    5) Create a self-contained archive and metadata.json for sima-cli distribution
     6) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
 
 source.json format:
@@ -30,15 +29,10 @@ source.json format:
   "python-packages": [
     { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" }
   ],
-  "aarch64": {
-    "python-packages": [
-      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" }
-    ]
-  },
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "version": "v2.1.3560-develop.409",
       "extension": ".zip"
     }
   ]
@@ -60,7 +54,6 @@ BOARD_VERSION=""
 PYTHON_VERSION=""
 HOST_OS="linux"
 TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
-OFFLINE_PACKAGE="0"
 PROD_MODE="0"
 
 while [[ $# -gt 0 ]]; do
@@ -76,7 +69,6 @@ while [[ $# -gt 0 ]]; do
     --host-os) HOST_OS="${2:-}"; shift 2 ;;
     --python-version) PYTHON_VERSION="${2:-}"; shift 2 ;;
     --target-arch) TARGET_ARCH="${2:-}"; shift 2 ;;
-    --offline-package) OFFLINE_PACKAGE="1"; shift 1 ;;
     --prod) PROD_MODE="1"; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
@@ -241,7 +233,7 @@ find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -o -name '*.tar.gz' \
   -o -name '*.zip' \
   -o -name 'manifest.txt' \
-  -o -name 'metadata.json' \
+  -o -name 'metadata*.json' \
   -o -name 'source.json' \
   -o -name 'install_modelsdk_wheels.sh' \
 \) -delete
@@ -255,9 +247,7 @@ download_args=(
   --python-version "$PYTHON_VERSION" \
   --target-arch "$TARGET_ARCH"
 )
-if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
-  download_args+=(--include-dependencies)
-fi
+download_args+=(--include-dependencies)
 "$SCRIPT_DIR/download_modelsdk_wheels.sh" "${download_args[@]}"
 
 cp "$SCRIPT_DIR/install_modelsdk_wheels.sh" "$OUTPUT_DIR/"
@@ -271,48 +261,46 @@ metadata_args=(
   --release "$RELEASE" \
   --description "$DESCRIPTION" \
   --host-os "$HOST_OS" \
-  --installer-script "install_modelsdk_wheels.sh"
+  --target-arch "$TARGET_ARCH" \
+  --installer-script "install_modelsdk_wheels.sh" \
+  --archive-name "model-compiler-${PACKAGE_ARCH}.zip"
 )
-if [[ "$OFFLINE_PACKAGE" == "1" ]]; then
-  metadata_args+=(
-    --offline-package
-    --offline-archive-name "model-compiler-offline-${PACKAGE_ARCH}.zip"
-  )
-fi
 "$SCRIPT_DIR/generate_metadata.py" "${metadata_args[@]}"
 
 if [[ "$PROD_MODE" == "1" ]]; then
   python3 -c '
 import json, sys
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as f:
-    m = json.load(f)
 
 def esc(s):
     return s.replace("+", "%2B")
 
-resources = m.get("resources", [])
-m["resources"] = [esc(r) if isinstance(r, str) else r for r in resources]
+for raw_path in sys.argv[1:]:
+    path = raw_path
+    with open(path, "r", encoding="utf-8") as f:
+        m = json.load(f)
 
-rc = m.get("resources-checksum", {})
-if isinstance(rc, dict):
-    m["resources-checksum"] = {
-        (esc(k) if isinstance(k, str) else k): v for k, v in rc.items()
-    }
+    resources = m.get("resources", [])
+    m["resources"] = [esc(r) if isinstance(r, str) else r for r in resources]
 
-sel = m.get("selectable-resources", [])
-if isinstance(sel, list):
-    for entry in sel:
-        if isinstance(entry, dict):
-            if isinstance(entry.get("url"), str):
-                entry["url"] = esc(entry["url"])
-            if isinstance(entry.get("resource"), str):
-                entry["resource"] = esc(entry["resource"])
+    rc = m.get("resources-checksum", {})
+    if isinstance(rc, dict):
+        m["resources-checksum"] = {
+            (esc(k) if isinstance(k, str) else k): v for k, v in rc.items()
+        }
 
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(m, f, indent=2)
-    f.write("\n")
-' "$OUTPUT_DIR/metadata.json"
+    sel = m.get("selectable-resources", [])
+    if isinstance(sel, list):
+        for entry in sel:
+            if isinstance(entry, dict):
+                if isinstance(entry.get("url"), str):
+                    entry["url"] = esc(entry["url"])
+                if isinstance(entry.get("resource"), str):
+                    entry["resource"] = esc(entry["resource"])
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(m, f, indent=2)
+        f.write("\n")
+' "$OUTPUT_DIR/metadata.json" "$OUTPUT_DIR/metadata-offline.json"
   echo "Applied --prod metadata escaping ('+' -> '%2B')"
 fi
 

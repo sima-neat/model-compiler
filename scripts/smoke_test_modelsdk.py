@@ -20,7 +20,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TOOL_TIMEOUT = 30
+# Snapshot-backed installations can take longer on first access while EBS loads
+# lazily restored blocks. Keep the ordinary smoke-test default short, but let
+# snapshot validation extend it without changing the test itself.
+DEFAULT_TOOL_TIMEOUT = int(os.environ.get("MODELSDK_SMOKE_TOOL_TIMEOUT_SECONDS", "30"))
 DEFAULT_YOLO_URL = "https://huggingface.co/webml/yolov8n/resolve/main/onnx/yolov8n.onnx"
 DEFAULT_WORK_ROOT = Path.home() / "tmp"
 

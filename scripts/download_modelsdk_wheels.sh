@@ -319,16 +319,16 @@ try:
                 patched_pairs.append((name, remainder.strip() or "<any>", replacement))
                 continue
 
-            eq_match = re.match(r"^(\s*==\s*)([^;\s]+)(.*)$", remainder)
-            if not eq_match:
-                new_lines.append(line)
-                continue
-            eq, version, suffix = eq_match.groups()
             target = override_map.get(normalized)
-            if target and target != version:
-                new_lines.append(f"{prefix}{name}{eq}{target}{suffix}")
+            if target:
+                requirement, separator, marker = remainder.partition(";")
+                extras_match = re.match(r"^\s*(\[[^]]+\])", requirement)
+                extras = extras_match.group(1) if extras_match else ""
+                suffix = f";{marker}" if separator else ""
+                replacement = f"{name}{extras} == {target}"
+                new_lines.append(f"{prefix}{replacement}{suffix}")
                 patched = True
-                patched_pairs.append((name, version, target))
+                patched_pairs.append((name, remainder.strip() or "<any>", replacement))
             else:
                 new_lines.append(line)
         if patched:
@@ -436,6 +436,12 @@ for item in items:
         else:
             archive_type = extension
     if name and version:
+        normalized = name.lower().strip("/")
+        if archive_type == "zip" and normalized.endswith("mla-toolchain") and "mla" in normalized:
+            arch_suffix = {"x86_64": "x86", "aarch64": "aarch64"}.get(target_arch)
+            if not arch_suffix:
+                raise SystemExit(f"unsupported MLA toolchain architecture: {target_arch!r}")
+            version = f"{version}-{arch_suffix}-ubuntu"
         print(f"{name}|{version}|{archive_type}")
 PY
 }
@@ -629,7 +635,7 @@ download_source_packages() {
     return 0
   fi
 
-  echo "Downloading ${#SOURCE_PACKAGE_SPECS[@]} source package(s) for offline source builds..."
+  echo "Downloading ${#SOURCE_PACKAGE_SPECS[@]} source package(s) for bundled source builds..."
   for spec in "${SOURCE_PACKAGE_SPECS[@]}"; do
     PIP_NO_INPUT=1 python3 -m pip download \
       --disable-pip-version-check \
@@ -838,7 +844,7 @@ download_full_dependency_closure() {
   register_temp_dir "$dep_dir"
   dep_log="${dep_dir}/pip-download-dependencies.log"
 
-  echo "Downloading full dependency closure for offline bundle..."
+  echo "Downloading full dependency closure for package bundle..."
   echo "  Resolving from local patched wheels; package extras are preserved with direct references."
   set +e
   PIP_NO_INPUT=1 python3 -m pip download \
@@ -857,7 +863,7 @@ download_full_dependency_closure() {
 
   if [[ $dep_rc -ne 0 ]]; then
     cat "$dep_log" >&2
-    echo "Failed to download full dependency closure for offline bundle." >&2
+    echo "Failed to download full dependency closure for package bundle." >&2
     return 1
   fi
 
