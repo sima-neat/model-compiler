@@ -30,20 +30,16 @@
     "pytorch-lightning": "2.4.0",
     "pyyaml": "6.0.3",
     "scipy": "1.14.1",
-    "mpk-parser": "2.1.3.dev0+develop.127",
-    "neural-compressor": "2.0.0.dev0+develop.9",
-    "sima-accelerator-mode": "2.1.3.dev0+develop.86",
-    "sima-ev-transforms": "2.1.3.dev0+develop.59",
-    "sima-frontend": "2.1.3.dev0+develop.2163",
-    "sima-lmm": "2.1.3.dev0+develop.165",
-    "sima-ml-kernels": "2.1.3.dev0+develop.246",
-    "sima-mlc": "2.1.3.dev0+develop.1039",
-    "sima-mppe": "2.1.0.dev0+develop.95",
-    "sima-tvm": "1.4.0.dev0+develop.87",
-    "sima-utils": "2.1.3.dev0+develop.118",
-    "swml-qat": "1.0.0.dev0+develop.20",
-    "torch": "2.3.1",
-    "torchvision": "0.18.1"
+    "mpk-parser": "2.1.3.dev0+master.38",
+    "neural-compressor": "2.0.0.dev0+master.3",
+    "sima-accelerator-mode": "2.1.3.dev0+master.17",
+    "sima-ev-transforms": "2.1.3.dev0+master.18",
+    "sima-frontend": "2.1.3.dev0+master.390",
+    "sima-ml-kernels": "2.1.3.dev0+master.44",
+    "sima-mlc": "2.1.3.dev0+master.184",
+    "sima-mppe": "2.1.0.dev0+master.25",
+    "sima-tvm": "1.4.0.dev0+master.19",
+    "sima-utils": "2.1.3.dev0+master.37"
   },
   "dependency_replacements": {
     "zmq": "pyzmq>=27.1.0"
@@ -88,15 +84,19 @@
     }
   ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "2.1.3.dev0+develop.2163" },
-    { "name": "swml-qat", "version": "1.0.0.dev0+develop.20" },
-    { "name": "mpk_parser", "version": "2.1.3.dev0+develop.127" },
-    { "name": "sima-mppe", "version": "2.1.0.dev0+develop.95" },
+    { "name": "sima-frontend", "version": "2.1.3.dev0+master.390" },
+    { "name": "mpk_parser", "version": "2.1.3.dev0+master.38" },
+    { "name": "sima-mppe", "version": "2.1.0.dev0+master.25" },
     { "name": "onnxoptimizer", "version": "0.3.13" },
     { "name": "pyyaml", "version": "6.0.3" },
     { "name": "matplotlib", "version": "3.10.9" },
-    { "name": "neural_compressor", "version": "2.0.0.dev0+develop.9" },
-    { "name": "sima_lmm[sdk]", "version": "2.1.3.dev0+develop.165" }
+    { "name": "neural_compressor", "version": "2.0.0.dev0+master.3" },
+    {
+      "name": "sima_lmm[sdk]",
+      "vulcan": {
+        "ref": "develop"
+      }
+    }
   ],
   "binary-packages": [
     {

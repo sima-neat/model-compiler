@@ -94,6 +94,10 @@ def main() -> int:
         help="Archive filename to create for the self-installing package.",
     )
     p.add_argument(
+        "--resolved-packages",
+        help="Optional JSON file containing resolved package provenance.",
+    )
+    p.add_argument(
         "--offline-output",
         help="Path for generated manual-distribution metadata (default: metadata-offline.json beside --output).",
     )
@@ -211,6 +215,18 @@ def main() -> int:
             "post-message": post_message,
         },
     }
+    if args.resolved_packages:
+        resolved_packages_path = Path(args.resolved_packages)
+        if not resolved_packages_path.is_file():
+            raise SystemExit(
+                f"Resolved package provenance not found: {resolved_packages_path}"
+            )
+        resolved_packages = json.loads(
+            resolved_packages_path.read_text(encoding="utf-8")
+        )
+        if not isinstance(resolved_packages, dict):
+            raise SystemExit("Resolved package provenance must be a JSON object")
+        metadata["resolved-packages"] = resolved_packages
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

@@ -935,6 +935,7 @@ download_one_spec() {
   local direct_package=""
   local direct_ref=""
   local direct_url=""
+  local direct_local_path=""
   local direct_name=""
   local direct_path=""
   mkdir -p "$pure_dir" "$x86_dir"
@@ -949,6 +950,10 @@ download_one_spec() {
     direct_ref="${spec#* @ }"
     if [[ "$direct_ref" == http://* || "$direct_ref" == https://* ]]; then
       direct_url="$direct_ref"
+    elif [[ "$direct_ref" == file://* ]]; then
+      direct_local_path="${direct_ref#file://}"
+    elif [[ -f "$direct_ref" ]]; then
+      direct_local_path="$direct_ref"
     elif [[ "$direct_ref" == *.whl && "$direct_ref" != */* ]]; then
       direct_url="${PYPI_ARTIFACTORY_BASE_URL%/}/${direct_package}/${direct_ref}"
     elif [[ "$direct_ref" == *.whl ]]; then
@@ -956,6 +961,18 @@ download_one_spec() {
     fi
   elif [[ "$spec" == http://* || "$spec" == https://* ]]; then
     direct_url="$spec"
+  fi
+
+  if [[ -n "$direct_local_path" ]]; then
+    direct_name="$(basename "$direct_local_path")"
+    if [[ "$direct_name" != *.whl || ! -f "$direct_local_path" ]]; then
+      echo "Direct local package must be an existing .whl file: $direct_ref" >&2
+      return 1
+    fi
+    direct_path="${tmpdir}/${direct_name}"
+    cp "$direct_local_path" "$direct_path"
+    DOWNLOADED_WHEEL="$direct_path"
+    return 0
   fi
 
   if [[ -n "$direct_url" ]]; then
@@ -1060,6 +1077,27 @@ download_one_spec() {
     DOWNLOAD_ERROR_LOG="$pure_log"
   fi
   return 1
+}
+
+download_llima_package() {
+  local wheel_path=""
+  local helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/download_llima_wheel.sh"
+
+  [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]] || return 0
+  [[ -x "$helper" ]] || {
+    echo "LLiMa wheel helper is missing or not executable: $helper" >&2
+    return 1
+  }
+
+  if ! wheel_path="$("$helper" \
+    --output-dir "$OUTPUT_DIR" \
+    --source-json "$SOURCE_JSON" \
+    --target-arch "$TARGET_ARCH")"; then
+    echo "Failed to download the LLiMa compiler wheel." >&2
+    return 1
+  fi
+  [[ -n "$wheel_path" ]] || return 0
+  SPECS+=("sima_lmm[sdk] @ ${wheel_path}")
 }
 
 while [[ $# -gt 0 ]]; do
@@ -1190,6 +1228,10 @@ if [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]]; then
   done < <(read_preload_package_specs "$SOURCE_JSON")
 fi
 
+if ! download_llima_package; then
+  exit 1
+fi
+
 if [[ ${#SPECS[@]} -eq 0 && ${#BINARY_SPECS[@]} -eq 0 ]]; then
   echo "No package specs found. Provide --spec, --sdk-release, or binary-packages in source.json." >&2
   exit 1
@@ -1304,8 +1346,8 @@ fi
 
 if [[ "$INCLUDE_DEPENDENCIES" == "1" ]]; then
   download_preload_packages
-  download_full_dependency_closure
   download_source_packages
+  download_full_dependency_closure
 fi
 
 total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"

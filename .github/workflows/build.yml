@@ -63,8 +63,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test LLiMa wheel resolution
+        run: python3 -m unittest discover -s tests -p "test_*.py" -v
+
       - name: Upgrade pip
         run: python3 -m pip install --upgrade pip
+
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
 
       - name: Show build environment
         run: |
@@ -144,6 +154,18 @@ jobs:
               raise SystemExit("Metadata resources must contain only the package archive")
           if offline_metadata.get("resources") != [archive_name]:
               raise SystemExit("Manual-distribution metadata must contain only the package archive")
+          resolved = metadata.get("resolved-packages", {}).get("sima_lmm", {})
+          if offline_metadata.get("resolved-packages", {}).get("sima_lmm") != resolved:
+              raise SystemExit("Resolved LLiMa provenance differs between metadata variants")
+          required_provenance = {
+              "requested-ref", "resolved-commit", "version", "wheel"
+          }
+          if not required_provenance.issubset(resolved) or not all(
+              resolved[key] for key in required_provenance
+          ):
+              raise SystemExit(f"Incomplete resolved LLiMa provenance: {resolved!r}")
+          if resolved["wheel"] not in names:
+              raise SystemExit("Resolved LLiMa wheel is missing from the package archive")
           offline_platforms = offline_metadata.get("platforms", [])
           offline_host = next(
               (platform for platform in offline_platforms if platform.get("type") == "host"),
