@@ -138,6 +138,8 @@ elif expr == "python_package_specs":
         version = str(item.get("version", "")).strip()
         if name and version:
             print(f"{name}=={version}")
+        elif name and isinstance(item.get("vulcan"), dict):
+            print(name)
 ' "$SOURCE_JSON" "$expr"
 }
 

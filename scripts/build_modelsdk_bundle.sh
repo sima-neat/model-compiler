@@ -214,7 +214,12 @@ for i, item in enumerate(items):
     version = item.get("version")
     url = item.get("url")
     file = item.get("file")
-    if not name or not version:
+    vulcan = item.get("vulcan")
+    if not name:
+        raise SystemExit(f"component entry at index {i} requires name")
+    if isinstance(vulcan, dict):
+        continue
+    if not version:
         raise SystemExit(f"component entry at index {i} requires name and version")
     if isinstance(url, str) and url.strip():
         print(f"{name} @ {url.strip()}")
