@@ -1093,6 +1093,7 @@ download_llima_package() {
     echo "Failed to download the LLiMa compiler wheel." >&2
     return 1
   fi
+  [[ -n "$wheel_path" ]] || return 0
   SPECS+=("sima_lmm[sdk] @ ${wheel_path}")
 }
 

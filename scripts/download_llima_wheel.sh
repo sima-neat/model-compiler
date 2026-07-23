@@ -39,13 +39,12 @@ if [[ -n "$SOURCE_JSON" ]]; then
     echo "Source manifest not found: $SOURCE_JSON" >&2
     exit 1
   fi
-  REF="$(python3 - "$SOURCE_JSON" "$REF" <<'PY'
+  REF="$(python3 - "$SOURCE_JSON" <<'PY'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
-fallback = sys.argv[2]
 doc = json.loads(path.read_text(encoding="utf-8"))
 for item in doc.get("python-packages", []):
     if not isinstance(item, dict) or item.get("name") != "sima_lmm[sdk]":
@@ -54,10 +53,9 @@ for item in doc.get("python-packages", []):
     if isinstance(vulcan, dict) and isinstance(vulcan.get("branch"), str) and vulcan["branch"].strip():
         print(vulcan["branch"].strip())
         break
-else:
-    print(fallback)
 PY
 )"
+  [[ -n "$REF" ]] || exit 0
 fi
 
 if ! command -v "$SIMA_CLI_BIN" >/dev/null 2>&1; then
