@@ -66,6 +66,13 @@ jobs:
       - name: Upgrade pip
         run: python3 -m pip install --upgrade pip
 
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "${HOME}/.sima-cli/.venv/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
+
       - name: Show build environment
         run: |
           set -euo pipefail

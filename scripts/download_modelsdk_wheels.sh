@@ -1089,7 +1089,10 @@ download_llima_package() {
     return 1
   }
 
-  wheel_path="$("$helper" --output-dir "$OUTPUT_DIR" --source-json "$SOURCE_JSON")"
+  if ! wheel_path="$("$helper" --output-dir "$OUTPUT_DIR" --source-json "$SOURCE_JSON")"; then
+    echo "Failed to download the LLiMa compiler wheel." >&2
+    return 1
+  fi
   SPECS+=("sima_lmm[sdk] @ ${wheel_path}")
 }
 
