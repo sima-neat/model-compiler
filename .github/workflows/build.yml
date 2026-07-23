@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
-          echo "${HOME}/.sima-cli/.venv/bin" >> "${GITHUB_PATH}"
+          echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
           "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
 
       - name: Show build environment
