@@ -71,7 +71,10 @@ SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
   --install-dir "$OUTPUT_DIR" \
   "llima/compiler@${REF}" >&2
 
-mapfile -d '' -t wheels < <(
+wheels=()
+while IFS= read -r -d '' wheel; do
+  wheels+=("$wheel")
+done < <(
   find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'sima_lmm-*.whl' -print0
 )
 if [[ "${#wheels[@]}" -ne 1 ]]; then
