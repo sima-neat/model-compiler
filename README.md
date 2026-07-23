@@ -143,6 +143,11 @@ has a release tag such as `v1.0.0`, the generated `metadata.json` uses
 `sdk_version.neat+branch.git-short-hash`. Pass `--bundle-version` to override
 this behavior.
 
+The LLiMa Vulcan entry uses the floating `develop` ref for development builds.
+For a reproducible release bundle, set `ref` to an immutable value such as
+`release-0.4:<commit>`. Generated metadata records the requested ref, resolved
+commit, wheel version, and wheel filename.
+
 The build creates a self-contained archive by default and performs these steps:
 1. Read the package manifest from `source.json`.
 2. Download every wheel in the target architecture's dependency closure.

@@ -1089,7 +1089,10 @@ download_llima_package() {
     return 1
   }
 
-  if ! wheel_path="$("$helper" --output-dir "$OUTPUT_DIR" --source-json "$SOURCE_JSON")"; then
+  if ! wheel_path="$("$helper" \
+    --output-dir "$OUTPUT_DIR" \
+    --source-json "$SOURCE_JSON" \
+    --target-arch "$TARGET_ARCH")"; then
     echo "Failed to download the LLiMa compiler wheel." >&2
     return 1
   fi

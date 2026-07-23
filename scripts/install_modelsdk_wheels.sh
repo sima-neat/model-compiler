@@ -131,15 +131,26 @@ elif expr == "python_package_specs":
         items.extend(source_items)
     if not isinstance(items, list):
         raise SystemExit(0)
-    for item in items:
+    for i, item in enumerate(items):
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "")).strip()
         version = str(item.get("version", "")).strip()
-        if name and version:
-            print(f"{name}=={version}")
-        elif name and isinstance(item.get("vulcan"), dict):
+        if "vulcan" in item:
+            vulcan = item["vulcan"]
+            if name != "sima_lmm[sdk]":
+                raise SystemExit(
+                    f"component entry at index {i} uses unsupported Vulcan package {name!r}; "
+                    "only \"sima_lmm[sdk]\" is supported"
+                )
+            if not isinstance(vulcan, dict):
+                raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+            ref = vulcan.get("ref")
+            if not isinstance(ref, str) or not ref.strip():
+                raise SystemExit(f"component entry at index {i} requires a non-empty vulcan.ref")
             print(name)
+        elif name and version:
+            print(f"{name}=={version}")
 ' "$SOURCE_JSON" "$expr"
 }
 

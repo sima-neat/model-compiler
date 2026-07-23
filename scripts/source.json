@@ -94,7 +94,7 @@
     {
       "name": "sima_lmm[sdk]",
       "vulcan": {
-        "branch": "develop"
+        "ref": "develop"
       }
     }
   ],
