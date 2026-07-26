@@ -26,6 +26,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOOL_TIMEOUT = int(os.environ.get("MODELSDK_SMOKE_TOOL_TIMEOUT_SECONDS", "30"))
 DEFAULT_YOLO_URL = "https://huggingface.co/webml/yolov8n/resolve/main/onnx/yolov8n.onnx"
 DEFAULT_WORK_ROOT = Path.home() / "tmp"
+QWEN3_REPO_ID = "Qwen/Qwen3-0.6B"
+QWEN3_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
+QWEN3_QUANTIZED_OUTPUT_TOLERANCE = 0.20
+QWEN3_COMPILE_CONFIGURATION = """\
+def get_layer_configuration(model_properties, layer):
+    if layer["is_group"] or layer["index"] != 0:
+        return {"compile": False}
+    return {"precision": "A_BF16_W_INT4"}
+"""
 
 REQUIRED_TOOLS = [
     "mla-nm",
@@ -47,6 +56,7 @@ REQUIRED_MODULES = [
     "torchvision",
     "sima_lmm",
     "gguf",
+    "huggingface_hub",
     "llama_cpp",
     "safetensors",
 ]
@@ -383,6 +393,152 @@ def smoke_resnet(
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
+def validate_llima_artifacts(output_dir: Path) -> None:
+    mpk_dir = output_dir / "sima_files" / "mpk"
+    archives = sorted(mpk_dir.glob("*.tar.gz"))
+    if not archives:
+        raise SmokeFailure(f"no compiled MPK archives found in {mpk_dir}")
+
+    for archive in archives:
+        if archive.stat().st_size == 0:
+            raise SmokeFailure(f"compiled MPK is empty: {archive}")
+        with tarfile.open(archive, "r:gz") as mpk:
+            if not any(member.name.endswith(".elf") for member in mpk.getmembers()):
+                raise SmokeFailure(f"compiled MPK contains no MLA ELF: {archive}")
+
+
+def llima_sdk_inputs_from_onnx(onnx_path: Path) -> list[object]:
+    import numpy as np
+    import onnx
+
+    onnx_model = onnx.load(str(onnx_path), load_external_data=False)
+    rng = np.random.default_rng(1)
+    inputs = []
+    for value in onnx_model.graph.input:
+        onnx_shape = tuple(
+            dimension.dim_value for dimension in value.type.tensor_type.shape.dim
+        )
+        if len(onnx_shape) != 4 or any(dimension <= 0 for dimension in onnx_shape):
+            raise SmokeFailure(
+                f"expected static four-dimensional input for {value.name}, got {onnx_shape}"
+            )
+
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(value.type.tensor_type.elem_type)
+        sdk_shape = (onnx_shape[0], onnx_shape[2], onnx_shape[3], onnx_shape[1])
+        if np.issubdtype(dtype, np.floating):
+            inputs.append(rng.uniform(-1.0, 1.0, sdk_shape).astype(dtype))
+        else:
+            inputs.append(np.zeros(sdk_shape, dtype=dtype))
+    return inputs
+
+
+def assert_llima_quantized_outputs_close(reference: list[object], actual: list[object]) -> None:
+    import numpy as np
+
+    if len(reference) != len(actual):
+        raise SmokeFailure(
+            f"LLiMa output count differs: reference={len(reference)}, actual={len(actual)}"
+        )
+
+    for index, (reference_output, actual_output) in enumerate(zip(reference, actual, strict=True)):
+        if reference_output.shape != actual_output.shape:
+            raise SmokeFailure(
+                f"LLiMa output {index} shape differs: "
+                f"reference={reference_output.shape}, actual={actual_output.shape}"
+            )
+        absolute_tolerance = QWEN3_QUANTIZED_OUTPUT_TOLERANCE * float(
+            np.max(np.abs(reference_output))
+        )
+        if not np.allclose(actual_output, reference_output, rtol=0.0, atol=absolute_tolerance):
+            max_difference = float(np.max(np.abs(actual_output - reference_output)))
+            raise SmokeFailure(
+                f"LLiMa quantized output {index} differs from ONNX: "
+                f"max_abs_diff={max_difference}, atol={absolute_tolerance}"
+            )
+
+
+def execute_llima_qwen3_quantized_parts(model_path: Path, output_dir: Path) -> None:
+    from sima_lmm.model import EvalMode, VisionLanguageModel
+    from sima_lmm.model.language_post_model import LanguagePostModel
+    from sima_lmm.model.language_pre_model import LanguagePreModel
+
+    vlm_model = VisionLanguageModel.from_hf_cache(
+        hf_cache_path=model_path,
+        model_name=model_path.name,
+        onnx_path=output_dir / "onnx_files",
+        sima_path=output_dir / "sima_files",
+        max_num_tokens=1024,
+        system_prompt=None,
+    )
+    components = [
+        LanguagePreModel(
+            vlm_model.cfg,
+            f"{vlm_model.model_name}_language_n1_pre_layer0",
+            onnx_path=vlm_model.onnx_path,
+            sima_path=vlm_model.sima_path,
+            hf_model=vlm_model.hf_model,
+            num_tokens=1,
+            layer_idx=0,
+        ),
+        LanguagePostModel(
+            vlm_model.cfg,
+            f"{vlm_model.model_name}_language_n1_post_layer0",
+            onnx_path=vlm_model.onnx_path,
+            sima_path=vlm_model.sima_path,
+            hf_model=vlm_model.hf_model,
+            num_tokens=1,
+            layer_idx=0,
+            final_softcapping=None,
+        ),
+    ]
+
+    for component in components:
+        inputs = llima_sdk_inputs_from_onnx(component.onnx_file_name)
+        log(f"executing LLiMa quantized part with JAX: {component.model_name}")
+        onnx_outputs = component.run_model(EvalMode.ONNX, inputs)
+        quantized_outputs = component.run_model(EvalMode.SDK, inputs)
+        assert_llima_quantized_outputs_close(onnx_outputs, quantized_outputs)
+
+
+def smoke_llima_qwen3(args: argparse.Namespace) -> SmokeCasePayload:
+    from huggingface_hub import snapshot_download
+
+    work_dir = work_dir_from_arg(args.work_dir, "modelsdk-smoke-")
+    run_dir = make_run_dir(work_dir, "llima-qwen3")
+    model_dir = run_dir / "Qwen3-0.6B"
+    output_dir = run_dir / "output"
+    config_path = run_dir / "compile_config.py"
+
+    log(f"downloading {QWEN3_REPO_ID} at revision {QWEN3_REVISION}")
+    model_path = Path(
+        snapshot_download(
+            repo_id=QWEN3_REPO_ID,
+            revision=QWEN3_REVISION,
+            local_dir=str(model_dir),
+        )
+    )
+    config_path.write_text(QWEN3_COMPILE_CONFIGURATION, encoding="utf-8")
+
+    command = [
+        "llima-compile",
+        "-c",
+        str(config_path),
+        "-j",
+        "4",
+        "-o",
+        str(output_dir),
+        str(model_path),
+    ]
+    for stage in ("--onnx", "--quantize", "--compile"):
+        log(f"running LLiMa Qwen3 smoke stage: {stage}")
+        run(command + [stage], timeout=3600)
+
+    validate_llima_artifacts(output_dir)
+    execute_llima_qwen3_quantized_parts(model_path, output_dir)
+    log(f"LLiMa Qwen3 smoke artifacts: {output_dir}")
+    return SmokeCasePayload(artifacts=output_dir)
+
+
 def download_file(url: str, output: Path) -> None:
     ensure_writable_dir(output.parent)
     if output.exists() and output.stat().st_size > 0:
@@ -517,6 +673,7 @@ def parse_args() -> argparse.Namespace:
             "resnet-quantize",
             "resnet-compile",
             "resnet-compile-precisions",
+            "llima-qwen3-compile",
             "yolo",
             "all",
         ],
@@ -557,6 +714,8 @@ def main() -> int:
             smoke_resnet(args, compile_model=False)
         elif args.tier == "resnet-compile":
             smoke_resnet(args, compile_model=True)
+        elif args.tier == "llima-qwen3-compile":
+            smoke_llima_qwen3(args)
         elif args.tier == "yolo":
             smoke_yolo(args)
 

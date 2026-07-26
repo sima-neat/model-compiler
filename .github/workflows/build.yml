@@ -291,6 +291,10 @@ jobs:
           smoke_tier="resnet-compile-precisions"
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
           python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
+
+          export HF_HOME="${RUNNER_TEMP}/huggingface"
+          echo "Running Model Compiler smoke tier: llima-qwen3-compile"
+          python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
           BASH
 
   publish-amd64:
