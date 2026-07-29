@@ -1,0 +1,23 @@
+name: Manual Component Update Test
+
+run-name: Test component updater from feature/daily-component-updates
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report updates without pushing automation/component-updates
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  update-components:
+    uses: sima-neat/model-compiler/.github/workflows/update-components.yml@800e709ada564932da66565e09ee3682df4c0067
+    with:
+      dry_run: ${{ inputs.dry_run }}
+      implementation_ref: 800e709ada564932da66565e09ee3682df4c0067
+    secrets: inherit
