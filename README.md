@@ -97,7 +97,7 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Update Component Versions` workflow checks `scripts/source.json` every
+The `Daily Component Update` workflow checks `scripts/source.json` every
 day at 00:00 UTC. The current version is the update policy: for example,
 `2.1.3.dev0+master.390` can advance only within
 `2.1.3.dev0+master.*`, and `v2.1.3560-develop.409` can advance only within
