@@ -1,20 +1,10 @@
-name: Update Component Versions
+name: Daily Component Update
 
 run-name: Check source.json component families for newer builds
 
 on:
   schedule:
     - cron: "0 0 * * *"
-  workflow_call:
-    inputs:
-      dry_run:
-        description: Report available updates without pushing the automation branch
-        type: boolean
-        default: false
-      implementation_ref:
-        description: Immutable ref containing the updater script and tests
-        type: string
-        default: main
   workflow_dispatch:
     inputs:
       dry_run:
@@ -82,7 +72,7 @@ jobs:
       - name: Checkout updater implementation
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.implementation_ref || github.workflow_sha }}
+          ref: ${{ github.workflow_sha }}
           path: _component-updater
 
       - name: Set up Python
@@ -129,7 +119,7 @@ jobs:
       - name: Checkout updater implementation
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.implementation_ref || github.workflow_sha }}
+          ref: ${{ github.workflow_sha }}
           path: _component-updater
 
       - name: Set up Python
