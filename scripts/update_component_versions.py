@@ -15,7 +15,7 @@ import tempfile
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 DEFAULT_INDEX_URL = (
@@ -368,31 +368,112 @@ def scan(
     output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
-def iter_manifest_version_values(doc: Any) -> Iterable[str]:
-    if isinstance(doc, dict):
-        for value in doc.values():
-            yield from iter_manifest_version_values(value)
-    elif isinstance(doc, list):
-        for value in doc:
-            yield from iter_manifest_version_values(value)
-    elif isinstance(doc, str):
-        yield doc
+def component_version_paths(
+    doc: dict[str, Any],
+    component: Component,
+) -> set[tuple[str | int, ...]]:
+    paths: set[tuple[str | int, ...]] = set()
+    sections = [((), doc)]
+    sections.extend(
+        ((key,), value)
+        for key, value in doc.items()
+        if isinstance(value, dict)
+    )
+    for section_path, section in sections:
+        if component.kind == "python":
+            overrides = section.get("dependency_overrides", {})
+            if isinstance(overrides, dict):
+                for name, version in overrides.items():
+                    if (
+                        isinstance(name, str)
+                        and normalize_package_name(name) == component.name
+                        and version == component.current
+                    ):
+                        paths.add(section_path + ("dependency_overrides", name))
+
+            packages = section.get("python-packages", [])
+            if isinstance(packages, list):
+                for index, item in enumerate(packages):
+                    if (
+                        isinstance(item, dict)
+                        and isinstance(item.get("name"), str)
+                        and normalize_package_name(item["name"]) == component.name
+                        and item.get("version") == component.current
+                    ):
+                        paths.add(
+                            section_path + ("python-packages", index, "version")
+                        )
+        else:
+            packages = section.get("binary-packages", [])
+            if isinstance(packages, list):
+                for index, item in enumerate(packages):
+                    if (
+                        isinstance(item, dict)
+                        and isinstance(item.get("name"), str)
+                        and item["name"].strip().strip("/") == component.name
+                        and item.get("version") == component.current
+                    ):
+                        paths.add(
+                            section_path + ("binary-packages", index, "version")
+                        )
+    return paths
 
 
-def iter_component_version_values(doc: dict[str, Any]) -> Iterable[str]:
-    for section in (doc, *(value for value in doc.values() if isinstance(value, dict))):
-        overrides = section.get("dependency_overrides", {})
-        if isinstance(overrides, dict):
-            for value in overrides.values():
-                if isinstance(value, str):
-                    yield value
-        for key in ("python-packages", "binary-packages"):
-            packages = section.get(key, [])
-            if not isinstance(packages, list):
-                continue
-            for item in packages:
-                if isinstance(item, dict) and isinstance(item.get("version"), str):
-                    yield item["version"]
+def json_string_spans(
+    source_text: str,
+) -> dict[tuple[str | int, ...], tuple[int, int, str]]:
+    decoder = json.JSONDecoder()
+    spans: dict[tuple[str | int, ...], tuple[int, int, str]] = {}
+
+    def skip_whitespace(position: int) -> int:
+        while position < len(source_text) and source_text[position].isspace():
+            position += 1
+        return position
+
+    def parse(position: int, path: tuple[str | int, ...]) -> int:
+        position = skip_whitespace(position)
+        if source_text[position] == "{":
+            position = skip_whitespace(position + 1)
+            if source_text[position] == "}":
+                return position + 1
+            while True:
+                key, position = decoder.raw_decode(source_text, position)
+                if not isinstance(key, str):
+                    raise UpdateError("JSON object key is not a string")
+                position = skip_whitespace(position)
+                if source_text[position] != ":":
+                    raise UpdateError("invalid JSON object separator")
+                position = parse(position + 1, path + (key,))
+                position = skip_whitespace(position)
+                if source_text[position] == "}":
+                    return position + 1
+                if source_text[position] != ",":
+                    raise UpdateError("invalid JSON object delimiter")
+                position = skip_whitespace(position + 1)
+        if source_text[position] == "[":
+            position = skip_whitespace(position + 1)
+            if source_text[position] == "]":
+                return position + 1
+            index = 0
+            while True:
+                position = parse(position, path + (index,))
+                index += 1
+                position = skip_whitespace(position)
+                if source_text[position] == "]":
+                    return position + 1
+                if source_text[position] != ",":
+                    raise UpdateError("invalid JSON array delimiter")
+                position = skip_whitespace(position + 1)
+        start = position
+        value, position = decoder.raw_decode(source_text, position)
+        if isinstance(value, str):
+            spans[path] = (start, position, value)
+        return position
+
+    end = skip_whitespace(parse(0, ()))
+    if end != len(source_text):
+        raise UpdateError("unexpected content after source JSON")
+    return spans
 
 
 def select_updates(
@@ -464,38 +545,38 @@ def apply_updates_preserving_format(
     components: dict[str, Component],
     updates: dict[str, str],
 ) -> str:
-    replacements: dict[str, str] = {}
+    replacements: dict[tuple[str | int, ...], str] = {}
     for component_id, new_version in updates.items():
-        old_version = components[component_id].current
-        previous = replacements.setdefault(old_version, new_version)
-        if previous != new_version:
-            raise UpdateError(
-                f"ambiguous updates for shared version {old_version}: "
-                f"{previous} and {new_version}"
-            )
+        component = components[component_id]
+        paths = component_version_paths(source_doc, component)
+        if not paths:
+            raise UpdateError(f"cannot locate manifest fields for {component_id}")
+        for path in paths:
+            previous = replacements.setdefault(path, new_version)
+            if previous != new_version:
+                raise UpdateError(f"ambiguous updates for manifest path {path}")
 
-    all_values = list(iter_manifest_version_values(source_doc))
-    component_values = list(iter_component_version_values(source_doc))
-    managed_values = {
-        component.current for component in components.values() if component.component_id in updates
-    }
-    for old_version, new_version in replacements.items():
-        if old_version not in managed_values:
-            raise UpdateError(f"refusing unmanaged replacement of {old_version}")
-        old_literal = json.dumps(old_version)
-        occurrences = source_text.count(old_literal)
-        expected = all_values.count(old_version)
-        component_occurrences = component_values.count(old_version)
-        if expected != component_occurrences:
-            raise UpdateError(
-                f"version {old_version} is also used outside managed component fields"
-            )
-        if occurrences != expected or occurrences == 0:
-            raise UpdateError(
-                f"cannot safely replace {old_version}: "
-                f"text occurrences={occurrences}, JSON values={expected}"
-            )
-        source_text = source_text.replace(old_literal, json.dumps(new_version))
+    spans = json_string_spans(source_text)
+    edits: list[tuple[int, int, str]] = []
+    for path, new_version in replacements.items():
+        span = spans.get(path)
+        if span is None:
+            raise UpdateError(f"cannot locate JSON string at manifest path {path}")
+        start, end, old_version = span
+        component_ids = [
+            component_id
+            for component_id in updates
+            if path in component_version_paths(source_doc, components[component_id])
+        ]
+        if not component_ids or all(
+            components[component_id].current != old_version
+            for component_id in component_ids
+        ):
+            raise UpdateError(f"unexpected version at manifest path {path}")
+        edits.append((start, end, json.dumps(new_version)))
+
+    for start, end, replacement in sorted(edits, reverse=True):
+        source_text = source_text[:start] + replacement + source_text[end:]
 
     json.loads(source_text)
     return source_text

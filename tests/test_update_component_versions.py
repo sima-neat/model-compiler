@@ -276,7 +276,7 @@ class ComponentVersionUpdateTests(unittest.TestCase):
                     summary=root / "summary.md",
                 )
 
-    def test_preserving_update_rejects_same_value_in_unmanaged_field(self):
+    def test_preserving_update_leaves_same_value_in_unmanaged_field(self):
         version = "2.1.3.dev0+master.390"
         source = {
             "note": version,
@@ -285,15 +285,48 @@ class ComponentVersionUpdateTests(unittest.TestCase):
             ],
         }
         component = MODULE.collect_components(source, "x86_64")[0]
-        with self.assertRaisesRegex(
-            MODULE.UpdateError, "outside managed component fields"
-        ):
-            MODULE.apply_updates_preserving_format(
-                json.dumps(source),
-                source,
-                {component.component_id: component},
-                {component.component_id: "2.1.3.dev0+master.391"},
-            )
+        updated = MODULE.apply_updates_preserving_format(
+            json.dumps(source),
+            source,
+            {component.component_id: component},
+            {component.component_id: "2.1.3.dev0+master.391"},
+        )
+        self.assertEqual(json.loads(updated)["note"], version)
+        self.assertEqual(
+            json.loads(updated)["python-packages"][0]["version"],
+            "2.1.3.dev0+master.391",
+        )
+
+    def test_preserving_update_does_not_change_other_package_with_same_version(self):
+        version = "2.1.3.dev0+master.44"
+        source_text = """{
+  "python-packages": [
+    { "name": "pkg-a", "version": "2.1.3.dev0+master.44" },
+    { "name": "pkg-b", "version": "2.1.3.dev0+master.44" }
+  ]
+}
+"""
+        source = json.loads(source_text)
+        components = {
+            component.component_id: component
+            for component in MODULE.collect_components(source, "aarch64")
+        }
+        pkg_a_id = f"python:pkg-a:{version}"
+        updated = MODULE.apply_updates_preserving_format(
+            source_text,
+            source,
+            components,
+            {pkg_a_id: "2.1.3.dev0+master.45"},
+        )
+        updated_doc = json.loads(updated)
+        self.assertEqual(
+            updated_doc["python-packages"][0]["version"],
+            "2.1.3.dev0+master.45",
+        )
+        self.assertEqual(
+            updated_doc["python-packages"][1]["version"],
+            version,
+        )
 
     def test_moving_vulcan_ref_is_not_managed(self):
         source = {
