@@ -275,10 +275,7 @@ jobs:
           which python
           python --version
 
-          smoke_tier="basic"
-          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
-            smoke_tier="resnet-compile"
-          fi
+          smoke_tier="resnet-compile-precisions"
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
           python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
 

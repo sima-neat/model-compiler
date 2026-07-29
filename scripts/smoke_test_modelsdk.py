@@ -272,6 +272,7 @@ def run_quantize_compile(
     *,
     input_shape: str,
     compile_model: bool,
+    dtype: str,
 ) -> None:
     helper = REPO_ROOT / "skills" / "quantize_compile" / "scripts" / "quantize_compile.py"
     prepared_path = model_path.with_name(f"{model_path.stem}_prepared.onnx")
@@ -305,6 +306,8 @@ def run_quantize_compile(
         "--build_dir",
         str(build_dir),
     ]
+    if dtype == "bfloat16":
+        cmd.extend(["--bf16-activations", "--bf16-weights"])
     if not compile_model:
         cmd.append("--no-compile")
     run(cmd, cwd=REPO_ROOT, timeout=3600)
@@ -348,27 +351,35 @@ def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
     return metrics
 
 
-def smoke_resnet(args: argparse.Namespace, *, compile_model: bool) -> SmokeCasePayload:
+def smoke_resnet(
+    args: argparse.Namespace,
+    *,
+    compile_model: bool,
+    dtype: str | None = None,
+) -> SmokeCasePayload:
+    dtype = dtype or args.dtype
     work_dir = work_dir_from_arg(args.work_dir, "modelsdk-smoke-")
-    run_dir = make_run_dir(work_dir, "resnet50")
+    run_dir = make_run_dir(work_dir, f"resnet50-{dtype}")
     model_path = Path(args.resnet_model) if args.resnet_model else work_dir / "resnet50.onnx"
-    build_dir = run_dir / ("resnet50_compile" if compile_model else "resnet50_quantize")
+    action = "compile" if compile_model else "quantize"
+    build_dir = run_dir / f"resnet50_{dtype}_{action}"
     if not model_path.exists():
         write_resnet50_onnx(model_path)
     sim_model_path = run_dir / "resnet50.sim.onnx"
     prepare_output_file(sim_model_path)
     run(["onnxsim", str(model_path), str(sim_model_path)], timeout=300)
-    audit_onnx_model(sim_model_path, args.dtype, strict=args.strict_audit)
+    audit_onnx_model(sim_model_path, dtype, strict=args.strict_audit)
     run_quantize_compile(
         sim_model_path,
         build_dir,
         input_shape="1,3,224,224",
         compile_model=compile_model,
+        dtype=dtype,
     )
-    log(f"ResNet50 smoke artifacts: {build_dir}")
+    log(f"ResNet50 {dtype} smoke artifacts: {build_dir}")
     metrics: dict[str, str] = {}
     if compile_model:
-        metrics = measure_compiled_artifacts("resnet50", build_dir)
+        metrics = measure_compiled_artifacts(f"resnet50-{dtype}", build_dir)
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
@@ -422,6 +433,7 @@ def smoke_yolo(args: argparse.Namespace) -> SmokeCasePayload:
         build_dir,
         input_shape="1,3,640,640",
         compile_model=True,
+        dtype=args.dtype,
     )
     log(f"YOLOv8 smoke artifacts: {build_dir}")
     metrics = measure_compiled_artifacts("yolov8", build_dir)
@@ -477,11 +489,37 @@ def smoke_all(args: argparse.Namespace) -> int:
     return 0 if all(result.status == "PASS" for result in results) else 1
 
 
+def smoke_resnet_precisions(args: argparse.Namespace) -> int:
+    work_dir = work_dir_from_arg(args.work_dir, "modelsdk-resnet-precisions-")
+    args.work_dir = str(work_dir)
+    results = [
+        run_case("preflight", smoke_preflight),
+        run_case(
+            "resnet50-int8-compile",
+            lambda: smoke_resnet(args, compile_model=True, dtype="int8"),
+        ),
+        run_case(
+            "resnet50-bfloat16-compile",
+            lambda: smoke_resnet(args, compile_model=True, dtype="bfloat16"),
+        ),
+    ]
+    print_summary(results)
+    return 0 if all(result.status == "PASS" for result in results) else 1
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Smoke-test a Model Compiler extension installation")
     parser.add_argument(
         "--tier",
-        choices=["basic", "resnet-export", "resnet-quantize", "resnet-compile", "yolo", "all"],
+        choices=[
+            "basic",
+            "resnet-export",
+            "resnet-quantize",
+            "resnet-compile",
+            "resnet-compile-precisions",
+            "yolo",
+            "all",
+        ],
         default=os.environ.get("MODELSDK_SMOKE_TIER", "basic"),
         help="Smoke-test depth. Default: %(default)s",
     )
@@ -507,6 +545,8 @@ def main() -> int:
     try:
         if args.tier == "all":
             return smoke_all(args)
+        if args.tier == "resnet-compile-precisions":
+            return smoke_resnet_precisions(args)
 
         smoke_preflight()
 
