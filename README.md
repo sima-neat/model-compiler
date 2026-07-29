@@ -95,6 +95,29 @@ Native source builds triggered during installation, such as
 `MODELSDK_BUILD_PARALLEL_LEVEL` to limit or override build parallelism on
 resource-constrained machines.
 
+### Automated component updates
+
+The `Update Component Versions` workflow checks `scripts/source.json` every
+day at 00:00 UTC. The current version is the update policy: for example,
+`2.1.3.dev0+master.390` can advance only within
+`2.1.3.dev0+master.*`, and `v2.1.3560-develop.409` can advance only within
+`v2.1.3560-develop.*`. Changing a base version or channel remains a manual
+manifest change.
+
+Linux/X64 and macOS/ARM64 private runners independently validate available
+artifacts. The workflow updates only the highest build available for every
+architecture that consumes the component. Changed manifests refresh the
+stable `automation/component-updates` branch from the tested `develop`
+commit. A successful Build run for that exact branch commit creates or
+updates one pull request back to `develop`.
+
+Manual dry runs are available through `workflow_dispatch`. Branch pushes use
+the `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY` secrets so the
+push triggers the Build workflow. GitHub executes scheduled and
+`workflow_run` workflows from the repository default branch, so both
+automation workflow files must be present on `main` before unattended runs
+and automatic PR creation become active.
+
 ## Building a Bundle
 
 Before you build, configure `~/.netrc` with credentials for
