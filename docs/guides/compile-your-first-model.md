@@ -124,6 +124,23 @@ calib_data = convert_data_generator_to_iterable(
     DataGenerator({MODEL_INPUT_NAME: calibration_images}))
 ```
 
+:::note
+Calibration data passed to `DataGenerator` must be in **NHWC** layout
+(`[batch, height, width, channels]`), even when the model's input tensor is
+**NCHW** (`[batch, channels, height, width]`) — as in this example, where the
+ONNX input shape is `(1, 3, 224, 224)`. The example above already produces NHWC
+because `preprocess` returns HWC images. If your preprocessing pipeline
+produces NCHW arrays instead, transpose them before building the calibration
+dataset:
+
+```python
+# Convert NCHW -> NHWC
+calibration_images = np.transpose(calibration_images, (0, 2, 3, 1))
+calib_data = convert_data_generator_to_iterable(
+    DataGenerator({MODEL_INPUT_NAME: calibration_images}))
+```
+:::
+
 Use representative images from the same input distribution as your deployment
 workload.
 
