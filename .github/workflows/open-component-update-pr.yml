@@ -1,6 +1,7 @@
 name: Open Component Update PR
 
 on:
+  workflow_call:
   workflow_run:
     workflows:
       - Build
