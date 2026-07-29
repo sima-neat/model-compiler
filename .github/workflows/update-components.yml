@@ -1,0 +1,24 @@
+name: Daily Component Update
+
+run-name: Daily component update placeholder
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Placeholder input; select the feature branch to run the implementation
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    name: Select the implementation branch
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain how to run the updater
+        run: |
+          echo "This workflow is a placeholder on main."
+          echo "Run it again and select feature/daily-component-updates in the branch dropdown."
