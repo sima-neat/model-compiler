@@ -42,25 +42,13 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
   scan:
-    name: Scan ${{ matrix.arch }} component artifacts
+    name: Scan ARM64 component artifacts
     needs: resolve-source
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            runner:
-              - self-hosted
-              - Linux
-              - X64
-              - issue-triage
-          - arch: aarch64
-            runner:
-              - self-hosted
-              - macOS
-              - ARM64
-              - osx
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+      - osx
 
     steps:
       - name: Checkout develop
@@ -88,14 +76,14 @@ jobs:
           set -euo pipefail
           python3 _component-updater/scripts/update_component_versions.py scan \
             --source-json scripts/source.json \
-            --target-arch "${{ matrix.arch }}" \
-            --output "scan-${{ matrix.arch }}.json"
+            --target-arch aarch64 \
+            --output scan-aarch64.json
 
       - name: Upload scan report
         uses: actions/upload-artifact@v7
         with:
-          name: component-scan-${{ matrix.arch }}
-          path: scan-${{ matrix.arch }}.json
+          name: component-scan-aarch64
+          path: scan-aarch64.json
           if-no-files-found: error
           retention-days: 3
 
@@ -130,9 +118,8 @@ jobs:
       - name: Download architecture scan reports
         uses: actions/download-artifact@v7
         with:
-          pattern: component-scan-*
+          name: component-scan-aarch64
           path: _component-scans
-          merge-multiple: true
 
       - name: Merge compatible versions
         id: merge
@@ -140,7 +127,6 @@ jobs:
           set -euo pipefail
           python3 _component-updater/scripts/update_component_versions.py merge \
             --source-json scripts/source.json \
-            --report _component-scans/scan-x86_64.json \
             --report _component-scans/scan-aarch64.json \
             --output "${RUNNER_TEMP}/source.json" \
             --summary "${RUNNER_TEMP}/component-update-summary.md" \

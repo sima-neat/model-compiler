@@ -104,12 +104,13 @@ day at 00:00 UTC. The current version is the update policy: for example,
 `v2.1.3560-develop.*`. Changing a base version or channel remains a manual
 manifest change.
 
-Linux/X64 and macOS/ARM64 private runners independently validate available
-artifacts. The workflow updates only the highest build available for every
-architecture that consumes the component. Changed manifests refresh the
-stable `automation/component-updates` branch from the tested `develop`
-commit. A successful Build run for that exact branch commit creates or
-updates one pull request back to `develop`.
+The private macOS/ARM64 runner validates available artifacts and acts as the
+authoritative scanner because Artifactory publishes matching component
+versions for ARM64 and amd64. Changed manifests refresh the stable
+`automation/component-updates` branch from the tested `develop` commit. The
+ordinary Build workflow still packages and tests both architectures. A
+successful Build run for that exact branch commit creates or updates one pull
+request back to `develop`.
 
 Manual dry runs are available through `workflow_dispatch`. Branch pushes use
 the `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY` secrets so the

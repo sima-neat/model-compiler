@@ -303,17 +303,29 @@ class ComponentVersionUpdateTests(unittest.TestCase):
         }
         self.assertEqual(MODULE.collect_components(source, "x86_64"), [])
 
-    def test_merge_requires_both_architecture_reports(self):
+    def test_single_architecture_report_is_authoritative(self):
         source = {
             "dependency_overrides": {
                 "sima-utils": "2.1.3.dev0+master.37"
             }
         }
-        with self.assertRaisesRegex(MODULE.UpdateError, "missing scan reports"):
+        component_id = "python:sima-utils:2.1.3.dev0+master.37"
+        self.assertEqual(
             MODULE.select_updates(
                 source,
-                [self.report("x86_64", {})],
-            )
+                [
+                    self.report(
+                        "aarch64",
+                        {
+                            component_id: {
+                                "available": ["2.1.3.dev0+master.38"]
+                            }
+                        },
+                    )
+                ],
+            ),
+            {component_id: "2.1.3.dev0+master.38"},
+        )
 
 
 if __name__ == "__main__":

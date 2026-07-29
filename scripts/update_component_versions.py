@@ -399,20 +399,23 @@ def select_updates(
     source_doc: dict[str, Any],
     reports: list[dict[str, Any]],
 ) -> dict[str, str]:
-    arches = {report.get("target_arch") for report in reports}
-    missing = set(SUPPORTED_ARCHES) - arches
-    if missing:
-        raise UpdateError(f"missing scan reports for: {', '.join(sorted(missing))}")
+    if not reports:
+        raise UpdateError("at least one architecture scan report is required")
+    report_by_arch: dict[str, dict[str, Any]] = {}
+    for report in reports:
+        arch = str(report.get("target_arch"))
+        if arch not in SUPPORTED_ARCHES:
+            raise UpdateError(f"unsupported scan report architecture: {arch!r}")
+        if arch in report_by_arch:
+            raise UpdateError(f"duplicate scan report for architecture: {arch}")
+        report_by_arch[arch] = report
 
-    report_by_arch = {
-        str(report.get("target_arch")): report for report in reports
-    }
     components_by_arch = {
         arch: {
             component.component_id: component
             for component in collect_components(source_doc, arch)
         }
-        for arch in SUPPORTED_ARCHES
+        for arch in report_by_arch
     }
     source_components = {
         component_id: component
