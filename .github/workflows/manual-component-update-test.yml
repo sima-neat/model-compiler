@@ -16,8 +16,8 @@ permissions:
 
 jobs:
   update-components:
-    uses: sima-neat/model-compiler/.github/workflows/update-components.yml@800e709ada564932da66565e09ee3682df4c0067
+    uses: sima-neat/model-compiler/.github/workflows/update-components.yml@7878473a995c595b710b2c59a706f5bca4c61367
     with:
       dry_run: ${{ inputs.dry_run }}
-      implementation_ref: 800e709ada564932da66565e09ee3682df4c0067
+      implementation_ref: 7878473a995c595b710b2c59a706f5bca4c61367
     secrets: inherit
