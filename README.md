@@ -369,6 +369,17 @@ the generated MPK archive when those files are present.
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
 
+On ARM systems, activation enables the JAX compilation path with the NEON CPU
+ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
+
+```bash
+activate-model-compiler --no-jax
+```
+
+This explicitly disables the JAX compilation path for the activation while
+preserving unrelated `XLA_FLAGS`. Deactivation restores the environment values
+that were present before activation.
+
 ## Cleanup Behavior
 
 After a successful install, the installer removes downloaded bundle resources
