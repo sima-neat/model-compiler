@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import importlib.metadata
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -60,6 +62,12 @@ REQUIRED_MODULES = [
     "llama_cpp",
     "safetensors",
 ]
+
+REQUIRED_PACKAGE_VERSIONS = {
+    "jax": "0.5.3",
+    "jaxlib": "0.5.3",
+    "ml-dtypes": "0.4.1",
+}
 
 VERBOSE = False
 
@@ -185,9 +193,32 @@ def require_active_modelsdk() -> None:
 
 def smoke_preflight() -> SmokeCasePayload:
     require_active_modelsdk()
+    smoke_python_environment()
     smoke_tools()
     smoke_python_modules()
     return SmokeCasePayload()
+
+
+def smoke_python_environment() -> None:
+    run([sys.executable, "-m", "pip", "check"], timeout=120)
+    mismatches = []
+    for package, expected in REQUIRED_PACKAGE_VERSIONS.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            mismatches.append(f"{package}: missing (expected {expected})")
+            continue
+        if installed != expected:
+            mismatches.append(f"{package}: {installed} (expected {expected})")
+    if mismatches:
+        raise SmokeFailure("unexpected Python package versions: " + "; ".join(mismatches))
+    log(
+        "verified Python packages: "
+        + ", ".join(
+            f"{package}=={version}"
+            for package, version in REQUIRED_PACKAGE_VERSIONS.items()
+        )
+    )
 
 
 def smoke_tools() -> None:
@@ -323,10 +354,43 @@ def run_quantize_compile(
     run(cmd, cwd=REPO_ROOT, timeout=3600)
 
 
-def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
+def validate_quantization_manifest(build_dir: Path, dtype: str) -> None:
+    manifests = sorted(build_dir.rglob("quantization_manifest.json"))
+    if len(manifests) != 1:
+        raise SmokeFailure(
+            f"expected one quantization manifest under {build_dir}, found {len(manifests)}"
+        )
+    try:
+        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"cannot read quantization manifest: {manifests[0]}") from exc
+
+    expected = {
+        "activation_precision": dtype,
+        "weight_precision": dtype,
+        "device": "modalix",
+    }
+    if manifest != expected:
+        raise SmokeFailure(
+            f"quantization manifest does not match requested {dtype} configuration: "
+            f"expected {expected}, got {manifest}"
+        )
+
+
+def validate_and_measure_compiled_artifacts(
+    label: str, build_dir: Path, dtype: str
+) -> dict[str, str]:
     sima_files = sorted(build_dir.rglob("*.sima"))
     mpk_files = sorted(build_dir.rglob("*_mpk.tar.gz"))
     json_files = sorted(build_dir.rglob("*.json"))
+
+    if not sima_files:
+        raise SmokeFailure(f"no .sima package found under {build_dir}")
+    if not mpk_files:
+        raise SmokeFailure(f"no MPK archive found under {build_dir}")
+    for path in [*sima_files, *mpk_files]:
+        if path.stat().st_size == 0:
+            raise SmokeFailure(f"compiled artifact is empty: {path}")
 
     metrics = {
         "sima_packages": str(len(sima_files)),
@@ -336,8 +400,14 @@ def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
     }
 
     for path in sima_files[:3]:
-        with zipfile.ZipFile(path) as archive:
-            metrics[f"{path.name}:entries"] = str(len(archive.namelist()))
+        try:
+            with zipfile.ZipFile(path) as archive:
+                entries = archive.namelist()
+        except zipfile.BadZipFile as exc:
+            raise SmokeFailure(f"invalid .sima package: {path}") from exc
+        if not entries:
+            raise SmokeFailure(f".sima package contains no entries: {path}")
+        metrics[f"{path.name}:entries"] = str(len(entries))
 
     elf_paths: list[Path] = []
     extract_dir = build_dir / "_metrics_extract"
@@ -348,15 +418,22 @@ def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
             for member in archive.getmembers():
                 if not member.isfile() or not member.name.endswith(".elf"):
                     continue
-                member.name = Path(member.name).name
-                archive.extract(member, extract_dir)
-                elf_paths.append(extract_dir / member.name)
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    raise SmokeFailure(f"cannot read MLA ELF from {archive_path}")
+                elf_path = extract_dir / Path(member.name).name
+                elf_path.write_bytes(extracted.read())
+                elf_paths.append(elf_path)
 
     metrics["mla_elfs"] = str(len(elf_paths))
-    if elf_paths:
-        run(["mla-size", *[str(path) for path in elf_paths]], timeout=120)
-        run(["mla-readelf", "-h", str(elf_paths[0])], timeout=60)
+    if not elf_paths:
+        raise SmokeFailure(f"MPK archives contain no MLA ELF under {build_dir}")
+    if any(path.stat().st_size == 0 for path in elf_paths):
+        raise SmokeFailure(f"MPK archive contains an empty MLA ELF under {build_dir}")
+    run(["mla-size", *[str(path) for path in elf_paths]], timeout=120)
+    run(["mla-readelf", "-h", str(elf_paths[0])], timeout=60)
 
+    validate_quantization_manifest(build_dir, dtype)
     log(f"{label} metrics: " + ", ".join(f"{key}={value}" for key, value in metrics.items()))
     return metrics
 
@@ -389,7 +466,9 @@ def smoke_resnet(
     log(f"ResNet50 {dtype} smoke artifacts: {build_dir}")
     metrics: dict[str, str] = {}
     if compile_model:
-        metrics = measure_compiled_artifacts(f"resnet50-{dtype}", build_dir)
+        metrics = validate_and_measure_compiled_artifacts(
+            f"resnet50-{dtype}", build_dir, dtype
+        )
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
