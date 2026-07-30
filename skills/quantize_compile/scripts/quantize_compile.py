@@ -15,6 +15,7 @@ Key Features:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -281,8 +282,12 @@ class ModelProcessor:
             weight_scheme = bfloat16_scheme()
         else:
             weight_scheme = quantization_scheme(False, True, 8)
-        
 
+        quantization_manifest = {
+            "activation_precision": "bfloat16" if self.args.bf16_activations else "int8",
+            "weight_precision": "bfloat16" if self.args.bf16_weights else "int8",
+            "device": self.args.device,
+        }
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
@@ -387,6 +392,11 @@ class ModelProcessor:
                 log_level=logging.INFO,
                 tessellate_parameters=tess_params if tess_params else None
             )
+            manifest_path = os.path.join(self.output_path, "quantization_manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+                json.dump(quantization_manifest, manifest_file, indent=2, sort_keys=True)
+                manifest_file.write("\n")
+            logger.info(f"Quantization manifest saved to: {manifest_path}")
             logger.info("Compilation complete.")
 
         # Step 4: Verification
