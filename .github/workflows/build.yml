@@ -250,6 +250,8 @@ jobs:
           bash -c "$script"
 
       - name: Run post-install smoke test
+        env:
+          MODELSDK_SMOKE_ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
 
@@ -259,28 +261,37 @@ jobs:
             exit 1
           fi
 
-          source "${model_compiler_dir}/bin/activate"
-          export PATH="${model_compiler_dir}/bin:${PATH}"
+          bash --noprofile --rcfile "${HOME}/.bashrc" -i <<'BASH'
+          set -euo pipefail
 
-          site_packages="$(
-            find "${model_compiler_dir}/lib" -maxdepth 3 -type d -name site-packages 2>/dev/null | head -n 1
-          )"
-          export LD_LIBRARY_PATH="${model_compiler_dir}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-          if [[ -n "${site_packages}" ]]; then
-            export LD_LIBRARY_PATH="${site_packages}:${site_packages}/tvm:${LD_LIBRARY_PATH}"
-            export PYTHONPATH="${site_packages}${PYTHONPATH:+:${PYTHONPATH}}"
-          fi
+          type activate-model-compiler
+          activate-model-compiler
 
           echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
+          echo "XLA_FLAGS=${XLA_FLAGS:-<unset>}"
+          echo "SIMA_MLA_COMPILE_USE_JAX=${SIMA_MLA_COMPILE_USE_JAX:-<unset>}"
           which python
           python --version
 
-          smoke_tier="basic"
-          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
-            smoke_tier="resnet-compile"
-          fi
+          case "${MODELSDK_SMOKE_ARCH}" in
+            arm64)
+              [[ "${XLA_FLAGS:-}" == "--xla_cpu_max_isa=NEON" ]]
+              [[ "${SIMA_MLA_COMPILE_USE_JAX:-}" == "1" ]]
+              ;;
+            amd64)
+              [[ -z "${XLA_FLAGS+x}" ]]
+              [[ -z "${SIMA_MLA_COMPILE_USE_JAX+x}" ]]
+              ;;
+            *)
+              echo "Unsupported smoke-test architecture: ${MODELSDK_SMOKE_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          smoke_tier="resnet-compile-precisions"
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
           python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
+          BASH
 
   publish-amd64:
     name: Publish amd64 Package to Vulcan
