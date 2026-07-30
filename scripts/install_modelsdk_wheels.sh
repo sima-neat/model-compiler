@@ -916,6 +916,31 @@ _model_compiler_prepend_path_if_dir() {
   fi
 }
 
+_model_compiler_xla_flags_with_neon() {
+  local current="\$1"
+  local flag=""
+  local updated=""
+
+  for flag in \$current; do
+    case "\$flag" in
+      --xla_cpu_max_isa=*)
+        continue
+        ;;
+    esac
+    if [ -n "\$updated" ]; then
+      updated="\$updated \$flag"
+    else
+      updated="\$flag"
+    fi
+  done
+
+  if [ -n "\$updated" ]; then
+    printf '%s %s\n' "\$updated" "--xla_cpu_max_isa=NEON"
+  else
+    printf '%s\n' "--xla_cpu_max_isa=NEON"
+  fi
+}
+
 activate-model-compiler() {
   local model_compiler_site_packages=""
   local model_compiler_arch=""
@@ -963,7 +988,7 @@ activate-model-compiler() {
         fi
         _MODEL_COMPILER_ARM_ENV_ACTIVE=1
       fi
-      XLA_FLAGS="--xla_cpu_max_isa=NEON"
+      XLA_FLAGS="\$(_model_compiler_xla_flags_with_neon "\${XLA_FLAGS:-}")"
       SIMA_MLA_COMPILE_USE_JAX=1
       export XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX
       ;;

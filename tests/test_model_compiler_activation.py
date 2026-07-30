@@ -88,19 +88,30 @@ class ModelCompilerActivationTests(unittest.TestCase):
                 self.assertIn("active:--xla_cpu_max_isa=NEON:1", result.stdout)
                 self.assertIn("set::", result.stdout)
 
-    def test_arm64_deactivation_restores_preexisting_environment(self):
+    def test_arm64_preserves_unrelated_xla_flags_and_restores_environment(self):
         result = self.run_shell(
             "aarch64",
-            'export XLA_FLAGS="--existing-flag"; '
+            'export XLA_FLAGS="--xla_force_host_platform_device_count=4 '
+            '--xla_cpu_max_isa=AVX2 --xla_dump_to=/tmp/xla"; '
             'export SIMA_MLA_COMPILE_USE_JAX="user-value"; '
             "activate-model-compiler; "
             "activate-model-compiler; "
+            'printf "active:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"; '
             "deactivate-model-compiler; "
-            'printf "%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"',
+            'printf "restored:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"',
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--existing-flag:user-value", result.stdout)
+        self.assertIn(
+            "active:--xla_force_host_platform_device_count=4 "
+            "--xla_dump_to=/tmp/xla --xla_cpu_max_isa=NEON:1",
+            result.stdout,
+        )
+        self.assertIn(
+            "restored:--xla_force_host_platform_device_count=4 "
+            "--xla_cpu_max_isa=AVX2 --xla_dump_to=/tmp/xla:user-value",
+            result.stdout,
+        )
 
     def test_amd64_activation_does_not_change_environment(self):
         result = self.run_shell(
