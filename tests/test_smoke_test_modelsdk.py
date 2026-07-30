@@ -19,6 +19,20 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SmokeTestModelsdkTests(unittest.TestCase):
+    def test_llima_qwen3_disables_unsupported_onnx_quantization(self):
+        command = MODULE.llima_qwen3_compile_command(
+            Path("/tmp/compile_config.py"),
+            Path("/tmp/output"),
+            Path("/tmp/Qwen3-0.6B"),
+        )
+
+        self.assertIn("--no-quantize_embeddings", command)
+        self.assertIn("--no-quantize_kv_cache", command)
+        self.assertLess(
+            command.index("/tmp/Qwen3-0.6B"),
+            command.index("--no-quantize_embeddings"),
+        )
+
     def test_python_environment_checks_pip_and_pinned_versions(self):
         with (
             mock.patch.object(MODULE, "run") as run,

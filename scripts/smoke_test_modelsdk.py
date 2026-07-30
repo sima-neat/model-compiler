@@ -579,6 +579,23 @@ def execute_llima_qwen3_quantized_parts(model_path: Path, output_dir: Path) -> N
         assert_llima_quantized_outputs_close(onnx_outputs, quantized_outputs)
 
 
+def llima_qwen3_compile_command(
+    config_path: Path, output_dir: Path, model_path: Path
+) -> list[str]:
+    return [
+        "llima-compile",
+        "-c",
+        str(config_path),
+        "-j",
+        "4",
+        "-o",
+        str(output_dir),
+        str(model_path),
+        "--no-quantize_embeddings",
+        "--no-quantize_kv_cache",
+    ]
+
+
 def smoke_llima_qwen3(args: argparse.Namespace) -> SmokeCasePayload:
     from huggingface_hub import snapshot_download
 
@@ -598,16 +615,7 @@ def smoke_llima_qwen3(args: argparse.Namespace) -> SmokeCasePayload:
     )
     config_path.write_text(QWEN3_COMPILE_CONFIGURATION, encoding="utf-8")
 
-    command = [
-        "llima-compile",
-        "-c",
-        str(config_path),
-        "-j",
-        "4",
-        "-o",
-        str(output_dir),
-        str(model_path),
-    ]
+    command = llima_qwen3_compile_command(config_path, output_dir, model_path)
     for stage in ("--onnx", "--quantize", "--compile"):
         log(f"running LLiMa Qwen3 smoke stage: {stage}")
         run(command + [stage], timeout=3600)
