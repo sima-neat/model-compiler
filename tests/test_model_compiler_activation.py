@@ -182,6 +182,37 @@ class ModelCompilerActivationTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_amd64_default_reactivation_restores_environment_after_no_jax(self):
+        result = self.run_shell(
+            "x86_64",
+            'export XLA_FLAGS="--x86-flag --xla_cpu_max_isa=NEON"; '
+            'export SIMA_MLA_COMPILE_USE_JAX="x86-value"; '
+            "activate-model-compiler --no-jax; "
+            "activate-model-compiler; "
+            'printf "restored:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"; '
+            'printf "managed:%s\\n" "${_MODEL_COMPILER_COMPILE_ENV_ACTIVE+x}"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "restored:--x86-flag --xla_cpu_max_isa=NEON:x86-value",
+            result.stdout,
+        )
+        self.assertIn("managed:", result.stdout)
+
+    def test_amd64_default_reactivation_unsets_environment_after_no_jax(self):
+        result = self.run_shell(
+            "x86_64",
+            "unset XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX; "
+            "activate-model-compiler --no-jax; "
+            "activate-model-compiler; "
+            'printf "set:%s:%s\\n" "${XLA_FLAGS+x}" '
+            '"${SIMA_MLA_COMPILE_USE_JAX+x}"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("set::", result.stdout)
+
     def test_unknown_activation_option_fails_without_activating(self):
         result = self.run_shell(
             "aarch64",

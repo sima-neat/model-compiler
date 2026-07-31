@@ -981,6 +981,29 @@ _model_compiler_save_compile_environment() {
   _MODEL_COMPILER_COMPILE_ENV_ACTIVE=1
 }
 
+_model_compiler_restore_compile_environment() {
+  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" != "1" ]; then
+    return 0
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_XLA_FLAGS_SET:-0}" = "1" ]; then
+    XLA_FLAGS="\${_MODEL_COMPILER_OLD_XLA_FLAGS:-}"
+    export XLA_FLAGS
+  else
+    unset XLA_FLAGS
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET:-0}" = "1" ]; then
+    SIMA_MLA_COMPILE_USE_JAX="\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX:-}"
+    export SIMA_MLA_COMPILE_USE_JAX
+  else
+    unset SIMA_MLA_COMPILE_USE_JAX
+  fi
+  unset _MODEL_COMPILER_COMPILE_ENV_ACTIVE
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS_SET
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
+}
+
 activate-model-compiler() {
   local model_compiler_site_packages=""
   local model_compiler_arch=""
@@ -1058,6 +1081,8 @@ activate-model-compiler() {
     XLA_FLAGS="\$(_model_compiler_xla_flags_with_neon "\${XLA_FLAGS:-}")"
     SIMA_MLA_COMPILE_USE_JAX=1
     export XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX
+  else
+    _model_compiler_restore_compile_environment
   fi
 
   hash -r 2>/dev/null || true
@@ -1093,25 +1118,7 @@ deactivate-model-compiler() {
     unset LD_LIBRARY_PATH
   fi
 
-  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" = "1" ]; then
-    if [ "\${_MODEL_COMPILER_OLD_XLA_FLAGS_SET:-0}" = "1" ]; then
-      XLA_FLAGS="\${_MODEL_COMPILER_OLD_XLA_FLAGS:-}"
-      export XLA_FLAGS
-    else
-      unset XLA_FLAGS
-    fi
-    if [ "\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET:-0}" = "1" ]; then
-      SIMA_MLA_COMPILE_USE_JAX="\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX:-}"
-      export SIMA_MLA_COMPILE_USE_JAX
-    else
-      unset SIMA_MLA_COMPILE_USE_JAX
-    fi
-    unset _MODEL_COMPILER_COMPILE_ENV_ACTIVE
-    unset _MODEL_COMPILER_OLD_XLA_FLAGS_SET
-    unset _MODEL_COMPILER_OLD_XLA_FLAGS
-    unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET
-    unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
-  fi
+  _model_compiler_restore_compile_environment
 
   hash -r 2>/dev/null || true
 }
