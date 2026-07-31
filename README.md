@@ -88,7 +88,7 @@ Fields:
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
 - `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
 - `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment; the MLA toolchain derives its `x86` or `aarch64` archive suffix from the build target
-- `aarch64`: optional architecture-specific overrides for fields that genuinely differ on ARM64; omit it when both architectures share the same dependencies
+- `aarch64`: optional architecture-specific overrides for fields that genuinely differ on ARM64; `dependency_overrides` entries are merged over the global map, so list only packages whose ARM64 pins differ
 
 Native source builds triggered during installation, such as
 `llama_cpp_python`, use the build backend's default parallelism. Set
@@ -368,6 +368,17 @@ the generated MPK archive when those files are present.
 
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
+
+On ARM systems, activation enables the JAX compilation path with the NEON CPU
+ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
+
+```bash
+activate-model-compiler --no-jax
+```
+
+This explicitly disables the JAX compilation path for the activation while
+preserving unrelated `XLA_FLAGS`. Deactivation restores the environment values
+that were present before activation.
 
 ## Cleanup Behavior
 

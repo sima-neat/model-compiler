@@ -184,6 +184,30 @@ class ComponentVersionUpdateTests(unittest.TestCase):
             {component_id: "2.1.3.dev0+develop.8"},
         )
 
+    def test_architecture_dependency_overrides_merge_with_global_pins(self):
+        source = {
+            "dependency_overrides": {
+                "sima-utils": "2.1.3.dev0+master.37",
+            },
+            "aarch64": {
+                "dependency_overrides": {
+                    "jax": "0.5.3",
+                }
+            },
+        }
+
+        arm_components = {
+            component.name
+            for component in MODULE.collect_components(source, "aarch64")
+        }
+        x86_components = {
+            component.name
+            for component in MODULE.collect_components(source, "x86_64")
+        }
+
+        self.assertEqual(arm_components, {"sima-utils"})
+        self.assertEqual(x86_components, {"sima-utils"})
+
     def test_merge_updates_duplicate_pins_without_reformatting(self):
         source_text = """{
   "dependency_overrides": {

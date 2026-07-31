@@ -113,6 +113,45 @@ class ModelCompilerActivationTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_arm64_no_jax_removes_neon_and_preserves_unrelated_flags(self):
+        result = self.run_shell(
+            "aarch64",
+            'export XLA_FLAGS="--xla_dump_to=/tmp/xla --xla_cpu_max_isa=NEON"; '
+            'export SIMA_MLA_COMPILE_USE_JAX="user-value"; '
+            "activate-model-compiler --no-jax; "
+            "activate-model-compiler --no-jax; "
+            'printf "active:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"; '
+            "deactivate-model-compiler; "
+            'printf "restored:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Model Compiler activated with JAX disabled.", result.stdout)
+        self.assertIn("active:--xla_dump_to=/tmp/xla:0", result.stdout)
+        self.assertIn(
+            "restored:--xla_dump_to=/tmp/xla "
+            "--xla_cpu_max_isa=NEON:user-value",
+            result.stdout,
+        )
+
+    def test_arm64_can_switch_from_default_activation_to_no_jax(self):
+        result = self.run_shell(
+            "arm64",
+            'unset XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX; '
+            "activate-model-compiler; "
+            "activate-model-compiler --no-jax; "
+            'printf "active:%s:%s:%s\\n" "${XLA_FLAGS+x}" '
+            '"$SIMA_MLA_COMPILE_USE_JAX" '
+            '"${XLA_FLAGS:-}"; '
+            "deactivate-model-compiler; "
+            'printf "set:%s:%s\\n" "${XLA_FLAGS+x}" '
+            '"${SIMA_MLA_COMPILE_USE_JAX+x}"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("active::0:", result.stdout)
+        self.assertIn("set::", result.stdout)
+
     def test_amd64_activation_does_not_change_environment(self):
         result = self.run_shell(
             "x86_64",
@@ -125,14 +164,83 @@ class ModelCompilerActivationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--x86-flag:x86-value", result.stdout)
 
-    def test_jax_dependency_versions_are_pinned_globally(self):
-        source = json.loads(SOURCE_JSON.read_text(encoding="utf-8"))
-        overrides = source["dependency_overrides"]
+    def test_amd64_no_jax_disables_jax_and_restores_environment(self):
+        result = self.run_shell(
+            "x86_64",
+            'export XLA_FLAGS="--x86-flag --xla_cpu_max_isa=NEON"; '
+            'export SIMA_MLA_COMPILE_USE_JAX="x86-value"; '
+            "activate-model-compiler --no-jax; "
+            'printf "active:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"; '
+            "deactivate-model-compiler; "
+            'printf "restored:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"',
+        )
 
-        self.assertEqual(overrides["jax"], "0.5.3")
-        self.assertEqual(overrides["jaxlib"], "0.5.3")
-        self.assertEqual(overrides["ml-dtypes"], "0.4.1")
-        self.assertNotIn("aarch64", source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("active:--x86-flag:0", result.stdout)
+        self.assertIn(
+            "restored:--x86-flag --xla_cpu_max_isa=NEON:x86-value",
+            result.stdout,
+        )
+
+    def test_amd64_default_reactivation_restores_environment_after_no_jax(self):
+        result = self.run_shell(
+            "x86_64",
+            'export XLA_FLAGS="--x86-flag --xla_cpu_max_isa=NEON"; '
+            'export SIMA_MLA_COMPILE_USE_JAX="x86-value"; '
+            "activate-model-compiler --no-jax; "
+            "activate-model-compiler; "
+            'printf "restored:%s:%s\\n" "$XLA_FLAGS" "$SIMA_MLA_COMPILE_USE_JAX"; '
+            'printf "managed:%s\\n" "${_MODEL_COMPILER_COMPILE_ENV_ACTIVE+x}"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "restored:--x86-flag --xla_cpu_max_isa=NEON:x86-value",
+            result.stdout,
+        )
+        self.assertIn("managed:", result.stdout)
+
+    def test_amd64_default_reactivation_unsets_environment_after_no_jax(self):
+        result = self.run_shell(
+            "x86_64",
+            "unset XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX; "
+            "activate-model-compiler --no-jax; "
+            "activate-model-compiler; "
+            'printf "set:%s:%s\\n" "${XLA_FLAGS+x}" '
+            '"${SIMA_MLA_COMPILE_USE_JAX+x}"',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("set::", result.stdout)
+
+    def test_unknown_activation_option_fails_without_activating(self):
+        result = self.run_shell(
+            "aarch64",
+            'unset VIRTUAL_ENV; activate-model-compiler --unknown; '
+            'status=$?; printf "status:%s:venv:%s\\n" "$status" "${VIRTUAL_ENV+x}"; '
+            'exit "$status"',
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unknown option: --unknown", result.stderr)
+        self.assertIn("Usage: activate-model-compiler [--no-jax]", result.stderr)
+        self.assertIn("status:2:venv:", result.stdout)
+
+    def test_jax_dependency_versions_are_pinned_only_for_arm64(self):
+        source = json.loads(SOURCE_JSON.read_text(encoding="utf-8"))
+        global_overrides = source["dependency_overrides"]
+        arm64_overrides = source["aarch64"]["dependency_overrides"]
+
+        self.assertNotIn("jax", global_overrides)
+        self.assertNotIn("jaxlib", global_overrides)
+        self.assertNotIn("ml-dtypes", global_overrides)
+        self.assertEqual(arm64_overrides["jax"], "0.5.3")
+        self.assertEqual(arm64_overrides["jaxlib"], "0.5.3")
+        self.assertEqual(arm64_overrides["ml-dtypes"], "0.4.1")
+        self.assertEqual(
+            set(arm64_overrides),
+            {"jax", "jaxlib", "ml-dtypes"},
+        )
 
 
 if __name__ == "__main__":

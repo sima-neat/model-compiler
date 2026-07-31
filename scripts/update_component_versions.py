@@ -114,7 +114,14 @@ def collect_components(doc: dict[str, Any], target_arch: str) -> list[Component]
     selected = effective_doc(doc, target_arch)
     components: dict[str, Component] = {}
 
-    overrides = selected.get("dependency_overrides", doc.get("dependency_overrides", {}))
+    overrides = doc.get("dependency_overrides", {})
+    if not isinstance(overrides, dict):
+        overrides = {}
+    else:
+        overrides = dict(overrides)
+    arch_overrides = selected.get("dependency_overrides", {})
+    if selected is not doc and isinstance(arch_overrides, dict):
+        overrides.update(arch_overrides)
     if isinstance(overrides, dict):
         for name, version in overrides.items():
             if not isinstance(version, str) or python_family(version) is None:

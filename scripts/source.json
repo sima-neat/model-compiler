@@ -24,9 +24,6 @@
     "numpy": "1.26.4",
     "matplotlib": "3.10.9",
     "grpcio": "1.75.1",
-    "jax": "0.5.3",
-    "jaxlib": "0.5.3",
-    "ml-dtypes": "0.4.1",
     "onnx": "1.17.0",
     "onnxruntime": "1.21.1",
     "protobuf": "4.25.7",
@@ -43,6 +40,13 @@
     "sima-mppe": "2.1.0.dev0+master.25",
     "sima-tvm": "1.4.0.dev0+master.19",
     "sima-utils": "2.1.3.dev0+master.37"
+  },
+  "aarch64": {
+    "dependency_overrides": {
+      "jax": "0.5.3",
+      "jaxlib": "0.5.3",
+      "ml-dtypes": "0.4.1"
+    }
   },
   "dependency_replacements": {
     "zmq": "pyzmq>=27.1.0"
