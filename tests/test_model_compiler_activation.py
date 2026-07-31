@@ -206,8 +206,10 @@ class ModelCompilerActivationTests(unittest.TestCase):
         self.assertEqual(arm64_overrides["jax"], "0.5.3")
         self.assertEqual(arm64_overrides["jaxlib"], "0.5.3")
         self.assertEqual(arm64_overrides["ml-dtypes"], "0.4.1")
-        for name, version in global_overrides.items():
-            self.assertEqual(arm64_overrides[name], version)
+        self.assertEqual(
+            set(arm64_overrides),
+            {"jax", "jaxlib", "ml-dtypes"},
+        )
 
 
 if __name__ == "__main__":

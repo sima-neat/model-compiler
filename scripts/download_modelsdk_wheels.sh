@@ -246,16 +246,17 @@ exclusion_set = set()
 if source_json and source_json.is_file():
     doc = json.loads(source_json.read_text(encoding="utf-8"))
     arch_doc = doc.get(target_arch) if target_arch else None
+    raw = doc.get("dependency_overrides", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    raw = dict(raw)
     if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_overrides"), dict):
-        raw = arch_doc["dependency_overrides"]
-    else:
-        raw = doc.get("dependency_overrides", {})
-    if isinstance(raw, dict):
-        override_map = {
-            str(k).strip().lower().replace("_", "-"): str(v).strip()
-            for k, v in raw.items()
-            if str(k).strip() and str(v).strip()
-        }
+        raw.update(arch_doc["dependency_overrides"])
+    override_map = {
+        str(k).strip().lower().replace("_", "-"): str(v).strip()
+        for k, v in raw.items()
+        if str(k).strip() and str(v).strip()
+    }
     if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_replacements"), dict):
         raw_replacements = arch_doc["dependency_replacements"]
     else:
