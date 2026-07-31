@@ -339,7 +339,7 @@ jobs:
 
   update-amd64-latest:
     name: Update amd64 Vulcan Latest Tag
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
     needs:
       - resolve-vulcan-config
       - publish-amd64
@@ -355,7 +355,7 @@ jobs:
 
   update-arm64-latest:
     name: Update arm64 Vulcan Latest Tag
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
     needs:
       - resolve-vulcan-config
       - publish-arm64
