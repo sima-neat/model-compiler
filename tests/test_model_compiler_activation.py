@@ -195,14 +195,19 @@ class ModelCompilerActivationTests(unittest.TestCase):
         self.assertIn("Usage: activate-model-compiler [--no-jax]", result.stderr)
         self.assertIn("status:2:venv:", result.stdout)
 
-    def test_jax_dependency_versions_are_pinned_globally(self):
+    def test_jax_dependency_versions_are_pinned_only_for_arm64(self):
         source = json.loads(SOURCE_JSON.read_text(encoding="utf-8"))
-        overrides = source["dependency_overrides"]
+        global_overrides = source["dependency_overrides"]
+        arm64_overrides = source["aarch64"]["dependency_overrides"]
 
-        self.assertEqual(overrides["jax"], "0.5.3")
-        self.assertEqual(overrides["jaxlib"], "0.5.3")
-        self.assertEqual(overrides["ml-dtypes"], "0.4.1")
-        self.assertNotIn("aarch64", source)
+        self.assertNotIn("jax", global_overrides)
+        self.assertNotIn("jaxlib", global_overrides)
+        self.assertNotIn("ml-dtypes", global_overrides)
+        self.assertEqual(arm64_overrides["jax"], "0.5.3")
+        self.assertEqual(arm64_overrides["jaxlib"], "0.5.3")
+        self.assertEqual(arm64_overrides["ml-dtypes"], "0.4.1")
+        for name, version in global_overrides.items():
+            self.assertEqual(arm64_overrides[name], version)
 
 
 if __name__ == "__main__":

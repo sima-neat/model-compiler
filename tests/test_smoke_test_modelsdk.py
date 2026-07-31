@@ -35,11 +35,12 @@ class SmokeTestModelsdkTests(unittest.TestCase):
 
     def test_python_environment_checks_pip_and_pinned_versions(self):
         with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "arm64"}),
             mock.patch.object(MODULE, "run") as run,
             mock.patch.object(
                 MODULE.importlib.metadata,
                 "version",
-                side_effect=lambda name: MODULE.REQUIRED_PACKAGE_VERSIONS[name],
+                side_effect=lambda name: MODULE.ARM64_REQUIRED_PACKAGE_VERSIONS[name],
             ),
         ):
             MODULE.smoke_python_environment()
@@ -50,17 +51,31 @@ class SmokeTestModelsdkTests(unittest.TestCase):
 
     def test_python_environment_rejects_wrong_pinned_version(self):
         with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "arm64"}),
             mock.patch.object(MODULE, "run"),
             mock.patch.object(
                 MODULE.importlib.metadata,
                 "version",
                 side_effect=lambda name: "0.0.0"
                 if name == "jax"
-                else MODULE.REQUIRED_PACKAGE_VERSIONS[name],
+                else MODULE.ARM64_REQUIRED_PACKAGE_VERSIONS[name],
             ),
         ):
             with self.assertRaisesRegex(MODULE.SmokeFailure, "jax: 0.0.0"):
                 MODULE.smoke_python_environment()
+
+    def test_amd64_python_environment_does_not_enforce_arm64_pins(self):
+        with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "amd64"}),
+            mock.patch.object(MODULE, "run") as run,
+            mock.patch.object(MODULE.importlib.metadata, "version") as version,
+        ):
+            MODULE.smoke_python_environment()
+
+        run.assert_called_once_with(
+            [MODULE.sys.executable, "-m", "pip", "check"], timeout=120
+        )
+        version.assert_not_called()
 
     def test_compiled_artifacts_require_sima_mpk_elf_and_precision_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
