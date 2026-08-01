@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -19,6 +20,36 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SmokeTestModelsdkTests(unittest.TestCase):
+    def test_yolo_smoke_validates_compiled_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            model_path = work_dir / "yolov8n.onnx"
+            model_path.write_bytes(b"onnx")
+            args = SimpleNamespace(
+                work_dir=str(work_dir),
+                yolo_model=str(model_path),
+                yolo_url="https://example.invalid/yolov8n.onnx",
+                dtype="int8",
+                strict_audit=False,
+                model_to_pipeline_dir=None,
+            )
+            metrics = {"sima_packages": "1", "mpk_archives": "1"}
+
+            with (
+                mock.patch.object(MODULE, "run"),
+                mock.patch.object(MODULE, "audit_onnx_model"),
+                mock.patch.object(MODULE, "run_quantize_compile"),
+                mock.patch.object(
+                    MODULE,
+                    "validate_and_measure_compiled_artifacts",
+                    return_value=metrics,
+                ) as validate,
+            ):
+                payload = MODULE.smoke_yolo(args)
+
+            validate.assert_called_once_with("yolov8", payload.artifacts, "int8")
+            self.assertEqual(payload.metrics, metrics)
+
     def test_llima_qwen3_disables_unsupported_onnx_quantization(self):
         command = MODULE.llima_qwen3_compile_command(
             Path("/tmp/compile_config.py"),
