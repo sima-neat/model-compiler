@@ -111,6 +111,40 @@ def main() -> int:
         constraints = (constraints or "").strip()
         rows.append((name, int8, bf16, fived, opset or UNK, constraints))
 
+    # Constraint copy is checked before anything is emitted — the curated
+    # sentences feed both the list below the table and the table's search index.
+    constrained = [(name, c) for (name, *_rest, c) in rows if c]
+    stale: list[str] = []
+    for name, c in constrained:
+        entry = copy.get(name)
+        if entry is None:
+            stale.append(f"{name}: no customer-facing copy in {COPY.name}")
+        elif entry.get("source", "").strip() != c:
+            stale.append(f"{name}: constraint changed since the copy was written")
+    orphans = sorted(set(copy) - {name for name, _ in constrained})
+    stale += [f"{o}: copy exists but the operator no longer has a constraint" for o in orphans]
+
+    if stale:
+        print(f"{len(stale)} constraint(s) out of sync with {COPY.relative_to(REPO_ROOT)}:")
+        for s in stale:
+            print(f"  - {s}")
+        print("\nUpdate the 'copy' and 'source' fields together, then re-run.")
+        print("Nothing written — the page would otherwise publish stale wording.")
+        return 1
+
+    # Payload for the OperatorTable component in the core docs site. The
+    # constraint text rides along so the table's search box matches on it, even
+    # though the sentences themselves render in the list below the table.
+    payload = json.dumps(
+        [
+            {"name": name, "int8": int8, "bf16": bf16, "fived": fived,
+             "opset": opset, "constraint": copy.get(name, {}).get("copy", "")}
+            for name, int8, bf16, fived, opset, _c in rows
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
     lines: list[str] = [
         "---",
         "title: Model compatibility",
@@ -133,39 +167,21 @@ def main() -> int:
         "",
         "## Supported operators",
         "",
-        "Use the table to check MLA compiler support by operator and precision "
-        "scheme. **INT8** runs on the MLA. **BF16** is available on Modalix "
-        "(developer preview). **5D** marks operators that accept 5D "
-        "(N, D, H, W, C) tensors. **Opset** is the ONNX opset version.",
+        "Search the table to check MLA compiler support by operator and "
+        "precision scheme. **INT8** runs on the MLA. **BF16** is available on "
+        "Modalix (developer preview). **5D** marks operators that accept 5D "
+        "(N, D, H, W, C) tensors. **Opset** is the ONNX opset version. Search "
+        "matches constraint text as well as operator names, and each operator "
+        "links to its reference on onnx.ai.",
         "",
-        "| Operator | INT8 | BF16 | 5D | Opset |",
-        "| --- | :---: | :---: | :---: | :---: |",
+        # Rendered by the OperatorTable component in the core docs site. The
+        # payload is the element's children, and CommonMark keeps an HTML block
+        # open until a blank line — so no blank lines inside these three.
+        "<OperatorTable>",
+        payload,
+        "</OperatorTable>",
+        "",
     ]
-    for name, int8, bf16, fived, opset, _ in rows:
-        lines.append(f"| `{name}` | {int8} | {bf16} | {fived} | {opset} |")
-    lines.append("")
-
-    # Constraints as a wrapping list below the matrix, so the longer entries
-    # don't force the table wider than the page. The engineering wording is
-    # internal, so each entry is published through its curated sentence.
-    constrained = [(name, c) for (name, *_rest, c) in rows if c]
-    stale: list[str] = []
-    for name, c in constrained:
-        entry = copy.get(name)
-        if entry is None:
-            stale.append(f"{name}: no customer-facing copy in {COPY.name}")
-        elif entry.get("source", "").strip() != c:
-            stale.append(f"{name}: constraint changed since the copy was written")
-    orphans = sorted(set(copy) - {name for name, _ in constrained})
-    stale += [f"{o}: copy exists but the operator no longer has a constraint" for o in orphans]
-
-    if stale:
-        print(f"{len(stale)} constraint(s) out of sync with {COPY.relative_to(REPO_ROOT)}:")
-        for s in stale:
-            print(f"  - {s}")
-        print("\nUpdate the 'copy' and 'source' fields together, then re-run.")
-        print("Nothing written — the page would otherwise publish stale wording.")
-        return 1
 
     if constrained:
         lines += [

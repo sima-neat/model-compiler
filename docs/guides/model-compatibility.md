@@ -11,70 +11,11 @@ The SiMa.ai compilation toolchain imports **ONNX** models and prepares operators
 
 ## Supported operators
 
-Use the table to check MLA compiler support by operator and precision scheme. **INT8** runs on the MLA. **BF16** is available on Modalix (developer preview). **5D** marks operators that accept 5D (N, D, H, W, C) tensors. **Opset** is the ONNX opset version.
+Search the table to check MLA compiler support by operator and precision scheme. **INT8** runs on the MLA. **BF16** is available on Modalix (developer preview). **5D** marks operators that accept 5D (N, D, H, W, C) tensors. **Opset** is the ONNX opset version. Search matches constraint text as well as operator names, and each operator links to its reference on onnx.ai.
 
-| Operator | INT8 | BF16 | 5D | Opset |
-| --- | :---: | :---: | :---: | :---: |
-| `Add` | ✅ | ✅ | — | 14 |
-| `ArgMax` | ✅ | ✅ | — | 13 |
-| `AveragePool` | ✅ | ✅ | — | 11 |
-| `BatchNorm` | — | — | — | 15 |
-| `BroadcastTo` | ✅ | ✅ | ✅ | — |
-| `Clip` | ✅ | ✅ | — | 13 |
-| `Concat` | ✅ | ✅ | ✅ | 13 |
-| `Conv` | ✅ | ✅ | ✅ | 11 |
-| `ConvTranspose` | ✅ | ✅ | ✅ | 11 |
-| `CumSum` | — | — | — | 14 |
-| `DepthToSpace` | ✅ | ✅ | — | 13 |
-| `Div` | ✅ | — | — | 14 |
-| `Einsum` | ✅ | ✅ | — | 12 |
-| `Elu` | ✅ | — | — | 6 |
-| `Erf` | ✅ | ✅ | — | 13 |
-| `Exp` | ✅ | — | — | 13 |
-| `Gather` | ❌ | ✅ | — | 13 |
-| `Gelu` | ✅ | — | — | 20 |
-| `GlobalAveragePool` | ✅ | ✅ | — | — |
-| `GlobalMaxPool` | ✅ | ✅ | — | — |
-| `GridSample` | — | ✅ | — | 16 |
-| `HardSigmoid` | ✅ | — | — | 6 |
-| `HardSwish` | ✅ | — | — | 14 |
-| `InstanceNorm` | ✅ | ✅ | ✅ | 6 |
-| `LayerNorm` | ✅ | ✅ | — | 17 |
-| `LeakyRelu` | ✅ | — | — | 16 |
-| `Log` | ✅ | — | — | 13 |
-| `Log10` | ✅ | — | — | — |
-| `Log2` | ✅ | — | — | — |
-| `LRN` | ✅ | — | — | 13 |
-| `MatMul` | ✅ | ✅ | — | 13 |
-| `MaxPool` | ✅ | ✅ | — | 12 |
-| `Mul` | ✅ | ✅ | — | 14 |
-| `Pad` | ✅ | ✅ | — | 13 |
-| `Pow` | ✅ | ✅ | ✅ | 15 |
-| `PRelu` | ✅ | ✅ | — | 16 |
-| `QuickGelu` | ✅ | ✅ | ✅ | — |
-| `Reciprocal` | ✅ | — | — | 13 |
-| `ReduceMax` | ✅ | ✅ | — | 13 |
-| `ReduceMean` | ✅ | — | — | 13 |
-| `ReduceMin` | ❌ | ❌ | — | 13 |
-| `ReduceSum` | ✅ | ✅ | — | 13 |
-| `Relu` | ✅ | ✅ | — | 14 |
-| `Reshape` | ✅ | ✅ | ✅ | 14 |
-| `Resize` | ✅ | ✅ | — | 13 |
-| `RMSNorm` | ✅ | ✅ | — | 23 |
-| `Rsqrt` | ✅ | — | — | — |
-| `Sigmoid` | ✅ | ✅ | — | 13 |
-| `Slice` | ✅ | ✅ | — | 13 |
-| `Softmax` | ✅ | ✅ | — | 13 |
-| `Softplus` | ✅ | — | — | 1 |
-| `SpaceToDepth` | ✅ | ✅ | — | 13 |
-| `Split` | ✅ | ✅ | — | 13 |
-| `Sqrt` | ✅ | — | — | 13 |
-| `Sub` | ✅ | ✅ | — | 14 |
-| `Swish` | ✅ | ✅ | — | 24 |
-| `Take` | ✅ | ✅ | — | — |
-| `Tanh` | ✅ | — | — | 13 |
-| `Transpose` | ✅ | ✅ | — | 13 |
-| `Variance` | ✅ | ✅ | ✅ | — |
+<OperatorTable>
+[{"name":"Add","int8":"✅","bf16":"✅","fived":"—","opset":"14","constraint":"Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."},{"name":"ArgMax","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Reduces along the channel axis only, and returns `int32` rather than the `int64` of the ONNX spec. Cast downstream consumers accordingly."},{"name":"AveragePool","int8":"✅","bf16":"✅","fived":"—","opset":"11","constraint":"Set `count_include_pad=True` and leave `dilations` at 1. Kernel size must be under 128 in each spatial dimension; global pooling has no size limit."},{"name":"BatchNorm","int8":"—","bf16":"—","fived":"—","opset":"15","constraint":"Export in inference mode. Training mode is not supported."},{"name":"BroadcastTo","int8":"✅","bf16":"✅","fived":"✅","opset":"—","constraint":""},{"name":"Clip","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Concat","int8":"✅","bf16":"✅","fived":"✅","opset":"13","constraint":"Concatenation along the batch axis is not supported."},{"name":"Conv","int8":"✅","bf16":"✅","fived":"✅","opset":"11","constraint":"`dilations` must be between 1 and 63, and `strides` between 1 and 31."},{"name":"ConvTranspose","int8":"✅","bf16":"✅","fived":"✅","opset":"11","constraint":"Leave `dilations` at 1. The operator must either be depthwise or use `group=1`. Stride must be 1, 2, 4, 8, or 16, or 1 or 2 when depthwise."},{"name":"CumSum","int8":"—","bf16":"—","fived":"—","opset":"14","constraint":"Sums in the forward direction only, along exactly one axis, and that axis must be a constant. The axis can be at most 257 elements long."},{"name":"DepthToSpace","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Div","int8":"✅","bf16":"—","fived":"—","opset":"14","constraint":"Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."},{"name":"Einsum","int8":"✅","bf16":"✅","fived":"—","opset":"12","constraint":"Takes exactly two input tensors. Every index in the equation must appear in at least two of its terms, and no more than once within any single term. For example, `jk,k->k` is unsupported because `j` appears in only one term, and `jk,kk->j` is unsupported because `k` appears twice in the same term."},{"name":"Elu","int8":"✅","bf16":"—","fived":"—","opset":"6","constraint":""},{"name":"Erf","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Exp","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"Gather","int8":"❌","bf16":"✅","fived":"—","opset":"13","constraint":"`indices` must be a constant, and either a scalar or a 1D tensor."},{"name":"Gelu","int8":"✅","bf16":"—","fived":"—","opset":"20","constraint":"Only the exact formulation is supported. Set `approximate=\"none\"`."},{"name":"GlobalAveragePool","int8":"✅","bf16":"✅","fived":"—","opset":"—","constraint":""},{"name":"GlobalMaxPool","int8":"✅","bf16":"✅","fived":"—","opset":"—","constraint":""},{"name":"GridSample","int8":"—","bf16":"✅","fived":"—","opset":"16","constraint":"Set `mode` to `linear`, and do not use `padding_mode=\"reflection\"`. Sampling is supported on the width axis only."},{"name":"HardSigmoid","int8":"✅","bf16":"—","fived":"—","opset":"6","constraint":""},{"name":"HardSwish","int8":"✅","bf16":"—","fived":"—","opset":"14","constraint":""},{"name":"InstanceNorm","int8":"✅","bf16":"✅","fived":"✅","opset":"6","constraint":"Supported for 4D and 5D tensors only."},{"name":"LayerNorm","int8":"✅","bf16":"✅","fived":"—","opset":"17","constraint":"`stash_type=10` (FLOAT16) is not supported. Leave it at the default."},{"name":"LeakyRelu","int8":"✅","bf16":"—","fived":"—","opset":"16","constraint":""},{"name":"Log","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"Log10","int8":"✅","bf16":"—","fived":"—","opset":"—","constraint":""},{"name":"Log2","int8":"✅","bf16":"—","fived":"—","opset":"—","constraint":""},{"name":"LRN","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"MatMul","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"MaxPool","int8":"✅","bf16":"✅","fived":"—","opset":"12","constraint":"Leave `dilations` at 1, and do not request the optional indices output. Kernel size must be under 128 in each spatial dimension; global pooling has no size limit."},{"name":"Mul","int8":"✅","bf16":"✅","fived":"—","opset":"14","constraint":"Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."},{"name":"Pad","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Only `constant` mode with a pad value of 0 is supported, and at most two dimensions may have a non-zero padding width."},{"name":"Pow","int8":"✅","bf16":"✅","fived":"✅","opset":"15","constraint":"The exponent must be a constant scalar of 0.5, -0.5, 2, or 3."},{"name":"PRelu","int8":"✅","bf16":"✅","fived":"—","opset":"16","constraint":"The alpha slope input must be a 1D tensor."},{"name":"QuickGelu","int8":"✅","bf16":"✅","fived":"✅","opset":"—","constraint":""},{"name":"Reciprocal","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"ReduceMax","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"ReduceMean","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":"When reducing over a single axis, that axis must be spatial. Reducing over every spatial axis has no size limit; otherwise each spatial axis must be under 128 elements."},{"name":"ReduceMin","int8":"❌","bf16":"❌","fived":"—","opset":"13","constraint":"Not currently supported."},{"name":"ReduceSum","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"When reducing over a single axis, that axis must be spatial. Reducing over every spatial axis has no size limit; otherwise each spatial axis must be under 128 elements."},{"name":"Relu","int8":"✅","bf16":"✅","fived":"—","opset":"14","constraint":""},{"name":"Reshape","int8":"✅","bf16":"✅","fived":"✅","opset":"14","constraint":"Leave `allowzero` at 0, and give a non-empty target shape."},{"name":"Resize","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Only `nearest` and `linear` modes are supported, and `coordinate_transformation_mode=\"tf_crop_and_resize\"` is not. With `linear`, any scaling factor works, though in INT8 a factor above 63 may cost accuracy. With `nearest`, the scaling factor must be a power of two, or an even integer applied equally to both dimensions with `coordinate_transformation_mode=\"half_pixel\"` and floor rounding. Only a single input tensor is supported."},{"name":"RMSNorm","int8":"✅","bf16":"✅","fived":"—","opset":"23","constraint":"`stash_type=10` (FLOAT16) is not supported. Leave it at the default."},{"name":"Rsqrt","int8":"✅","bf16":"—","fived":"—","opset":"—","constraint":""},{"name":"Sigmoid","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Slice","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Steps must be positive. Negative strides are not supported."},{"name":"Softmax","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Supported over the channel axis only."},{"name":"Softplus","int8":"✅","bf16":"—","fived":"—","opset":"1","constraint":""},{"name":"SpaceToDepth","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Split","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":""},{"name":"Sqrt","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"Sub","int8":"✅","bf16":"✅","fived":"—","opset":"14","constraint":"Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."},{"name":"Swish","int8":"✅","bf16":"✅","fived":"—","opset":"24","constraint":""},{"name":"Take","int8":"✅","bf16":"✅","fived":"—","opset":"—","constraint":"The index must be a constant, and either a scalar or a 1D tensor."},{"name":"Tanh","int8":"✅","bf16":"—","fived":"—","opset":"13","constraint":""},{"name":"Transpose","int8":"✅","bf16":"✅","fived":"—","opset":"13","constraint":"Permutations that move the batch axis are not supported."},{"name":"Variance","int8":"✅","bf16":"✅","fived":"✅","opset":"—","constraint":"Computed over all spatial dimensions."}]
+</OperatorTable>
 
 ## Constraints
 
