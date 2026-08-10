@@ -79,34 +79,70 @@ Use the table to check MLA compiler support by operator and precision scheme. **
 ## Constraints
 
 - **Add** — Same shape, or exactly one input is a scalar, or both inputs are broadcastable
-- **ArgMax** — keepdim=True, and reduce on channel axis
-- **AveragePool** — Dilation=1, ceil_mode=False, size<128, count_include_pad=True. If global pool, no size limit.
+- **ArgMax**
+  - Output is int32 (HW has no int64)
+  - axis = channel axis only (SW)
+- **AveragePool**
+  - count_include_pad = 1 (HW)
+  - kernel_shape: If global pool, no size limit; otherwise size < 128. (HW. Workaround by SW)
+  - dilations = 1 for newer opset (HW)
 - **BatchNorm** — training_mode = 0 (SW)
 - **Concat** — Not on batch axis
-- **Conv** — Stride is in range [1, 31]. Dilation is in range [1, 63].
-- **ConvTranspose** — Dilations are all equal to 1. Is depthwise or number of groups is 1. Stride in range: [1, 2, 4, 8, 16]. If depthwise, stride must be 1 or 2.
-- **CumSum** — reverse = 0 (SW) Size <= 257 on summation axis. (SW) Must have exactly one summation axis. (SW) Axis must be a constant. (HW)
+- **Conv**
+  - dilation = [1, 63] (HW)
+  - strides = [1, 31] (HW)
+- **ConvTranspose**
+  - dilations == 1 (HW)
+  - group = 1 (HW) or depthwise (SW)
+  - stride =  [1, 2, 4, 8, 16] non-depthwise; [1, 2] depthwise (SW)
+- **CumSum**
+  - reverse = 0 (SW)
+  - Size <= 257 on summation axis. (SW)
+  - Must have exactly one summation axis. (SW)
+  - Axis must be a constant. (HW)
 - **Div** — Same shape, or exactly one input is a scalar, or both inputs are broadcastable
-- **Einsum** — Einsum equation is a batch matmul
+- **Einsum**
+  - Must have two input tensors. (SW)
+  - Supports any equation where each variable is used in at least two tensors and at most once in each tensor.  An example violating the first condition is jk,k->k (j is not used in at least two tensors).  An example violating the second condition is jk,kk->j (k is used twice in one tensor). (SW)
 - **Gather** — Indices must be a constant, and it must be 0D or 1D. (HW)
 - **Gelu** — approximate = "none" (SW)
-- **GridSample** — Mode is 'linear' and padding_mode is not 'reflection'.
+- **GridSample**
+  - Limited kernel for RaftStereo: sampling on W axis only. (SW)
+  - mode = 'linear'
+  - padding_mode != 'reflection'
 - **InstanceNorm** — Only for 4D and 5D tensors. (SW)
-- **LayerNorm** — Over channel axis only
-- **MaxPool** — Dilation=1, ceil_mode=False, size<128. If global pool, no size limit.
+- **LayerNorm** — stash_type = 10 (FLOAT16) not supported. (SW)
+- **MaxPool**
+  - dilations = 1 (HW)
+  - kernel_shape: If global pool, no size limit; otherwise size < 128. (HW)
+  - storage_order: No optional indices tensor output (SW)
 - **Mul** — Same shape, or exactly one input is a scalar, or both inputs are broadcastable
-- **Pad** — Via conversion to average pool. Pad in batch or channel dimension is not supported. Only support 'constant' mode with value 0.
+- **Pad**
+  - mode: only 'constant' mode with value 0. (SW)
+  - At most 2 dimensions may have a nonzero padding width. (SW)
 - **Pow** — Input exponent is scalar constant 0.5, -0.5, 2, or 3. (SW)
-- **PRelu** — Constant alpha on channel axis
-- **ReduceMean** — keepdims=True, and reduce axis is spatial dimension only and size less than 128
+- **PRelu** — 1D alpha. (SW)
+- **ReduceMean**
+  - For 1D reduce, axis is spatial dimension only. (SW)
+  - If all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (HW)
 - **ReduceMin** — Not supported yet. (SW)
-- **ReduceSum** — For 1D reduce, axis is spatial dimension only. (SW) If all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (SW)
-- **Reshape** — allowzero = 0 (SW) Shape cannot be empty. (SW)
-- **Resize** — coordinate_transformation_mode='tf_crop_and_resize' not supported. If method is 'linear' or 'bilinear', coordinate_transformation_mode must be 'half_pixel' …
+- **ReduceSum**
+  - For 1D reduce, axis is spatial dimension only. (SW)
+  - If all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (SW)
+- **Reshape**
+  - allowzero = 0 (SW)
+  - Shape cannot be empty. (SW)
+- **Resize**
+  - mode = [nearest, linear] (HW/SW)
+  - coordinate_transformation_mode= 'tf_crop_and_resize' not supported. (SW)
+  - If method is 'linear', any scaling factor is supported. However, for 8-bit integers any scaling more than 63 may lead to loss in accuracy. (HW)
+  - If the method is 'nearest', then the scaling factor must be a power of two (HW), or the scaling factor must be an even integer (using the same factor in both dimensions) and the coordinate transformation mode must be half_pixel and the rounding mode must be floor. (SW)
+  - Any other method or scaling factor is not supported.
+  - Single input only. (SW)
 - **RMSNorm** — stash_type = 10 (FLOAT16) not supported. (SW)
 - **Slice** — Positive strides. (SW)
 - **Softmax** — Over channel axis
 - **Sub** — Same shape, or exactly one input is a scalar, or both inputs are broadcastable
 - **Take** — Index must be a constant, and it must be 0D or 1D. (SW)
 - **Transpose** — Not involving batch axis
-- **Variance** — Compute over all spatial dimensions
+- **Variance** — Compute over all spatial dimensions. (SW)

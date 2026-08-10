@@ -15,8 +15,9 @@ Merge rules:
   - Support flags (INT8/INT16/BF16/5D): the published table wins. For operators
     that exist only in the model-sdk DB, fall back to its int8/bfloat16 values;
     INT16/5D are reported unknown.
-  - Constraints column: published `constraints`, else model-sdk
-    `sima_hw_sw_constraints`.
+  - Constraints: model-sdk `sima_hw_sw_constraints`, else published
+    `constraints` for the operators it leaves empty. Constraints are authored
+    one rule per line, so each line becomes its own bullet.
   - Notes column: model-sdk `notes`, prefixed with the ONNX opset when known.
   - Support-flag conflicts between the two sources (e.g. one says INT8=Y, the
     other INT8=N) are printed to stdout and embedded as an HTML comment at the
@@ -37,6 +38,11 @@ OUT = REPO_ROOT / "docs" / "guides" / "model-compatibility.md"
 
 YES, NO, UNK = "✅", "❌", "—"
 
+# A constraint line that does not end in one of these is a soft wrap of the next
+# line, not a rule of its own (e.g. Resize: "... is supported. However," / "for
+# 8-bit integers ...").
+TERMINATORS = set(".)]}'\"!?")
+
 
 def norm_flag(value) -> str:
     """Normalize a support value to ✅ / ❌ / — (unknown)."""
@@ -50,17 +56,17 @@ def norm_flag(value) -> str:
     return UNK
 
 
-def brief(text: str, limit: int = 160) -> str:
-    """Trim a constraint to a brief form, cutting at a sentence/word boundary."""
-    text = text.strip()
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    dot = cut.rfind(". ")
-    if dot >= 80:
-        return cut[: dot + 1] + " …"
-    sp = cut.rfind(" ")
-    return (cut[:sp] if sp > 0 else cut).rstrip(",;") + " …"
+def split_rules(text: str) -> list[str]:
+    """Split a constraint into one rule per line, rejoining soft-wrapped lines."""
+    rules: list[str] = []
+    for line in (l.strip() for l in text.replace("‘", "'").replace("’", "'").split("\n")):
+        if not line:
+            continue
+        if rules and rules[-1][-1] not in TERMINATORS:
+            rules[-1] += " " + line
+        else:
+            rules.append(line)
+    return rules
 
 
 def fived_from_spatial(spatial) -> str:
@@ -101,12 +107,13 @@ def main() -> int:
                 if norm_flag(pv) != UNK and norm_flag(mv) != UNK and norm_flag(pv) != norm_flag(mv):
                     conflicts.append(f"{name}: {flag} published={pv!r} model-sdk={mv!r} (kept published)")
 
-        # Constraints — published first, else model-sdk hardware constraints.
+        # Constraints — the operator support database first, else the published
+        # table for the operators it leaves empty.
         constraints = ""
-        if p and p.get("constraints"):
-            constraints = p["constraints"]
-        elif m and m.get("sima_hw_sw_constraints"):
+        if m and m.get("sima_hw_sw_constraints"):
             constraints = m["sima_hw_sw_constraints"]
+        elif p and p.get("constraints"):
+            constraints = p["constraints"]
 
         # ONNX opset — short, numeric only (skip placeholder values like "x").
         opset = ""
@@ -114,7 +121,7 @@ def main() -> int:
             raw = str(m["onnx-opset-version"]).strip()
             opset = raw if raw.isdigit() else ""
 
-        constraints = (constraints or "").replace("\n", " ").strip()
+        constraints = (constraints or "").strip()
         rows.append((name, int8, bf16, fived, opset or UNK, constraints))
 
     lines: list[str] = [
@@ -157,7 +164,12 @@ def main() -> int:
     if constrained:
         lines += ["## Constraints", ""]
         for name, c in constrained:
-            lines.append(f"- **{name}** — {brief(c)}")
+            rules = split_rules(c)
+            if len(rules) == 1:
+                lines.append(f"- **{name}** — {rules[0]}")
+            else:
+                lines.append(f"- **{name}**")
+                lines.extend(f"  - {r}" for r in rules)
         lines.append("")
 
     OUT.write_text("\n".join(lines), encoding="utf-8")
