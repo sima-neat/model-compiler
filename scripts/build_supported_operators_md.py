@@ -16,8 +16,11 @@ Merge rules:
     that exist only in the model-sdk DB, fall back to its int8/bfloat16 values;
     INT16/5D are reported unknown.
   - Constraints: model-sdk `sima_hw_sw_constraints`, else published
-    `constraints` for the operators it leaves empty. Constraints are authored
-    one rule per line, so each line becomes its own bullet.
+    `constraints` for the operators it leaves empty. The engineering wording is
+    not published directly — scripts/data/constraint_copy.json holds the
+    customer-facing sentence for each operator, together with the engineering
+    text it was written from. If that text changes, the copy is stale and this
+    script fails rather than publishing wording that no longer matches.
   - Notes column: model-sdk `notes`, prefixed with the ONNX opset when known.
   - Support-flag conflicts between the two sources (e.g. one says INT8=Y, the
     other INT8=N) are printed to stdout and embedded as an HTML comment at the
@@ -34,14 +37,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUBLISHED = REPO_ROOT / "scripts" / "data" / "onnx_operators.json"
 MODEL_SDK = REPO_ROOT / "skills" / "model_surgery" / "data" / "supported_operators.json"
+COPY = REPO_ROOT / "scripts" / "data" / "constraint_copy.json"
 OUT = REPO_ROOT / "docs" / "guides" / "model-compatibility.md"
 
 YES, NO, UNK = "✅", "❌", "—"
-
-# A constraint line that does not end in one of these is a soft wrap of the next
-# line, not a rule of its own (e.g. Resize: "... is supported. However," / "for
-# 8-bit integers ...").
-TERMINATORS = set(".)]}'\"!?")
 
 
 def norm_flag(value) -> str:
@@ -54,19 +53,6 @@ def norm_flag(value) -> str:
     if s in {"n", "no", "false", "0"}:
         return NO
     return UNK
-
-
-def split_rules(text: str) -> list[str]:
-    """Split a constraint into one rule per line, rejoining soft-wrapped lines."""
-    rules: list[str] = []
-    for line in (l.strip() for l in text.replace("‘", "'").replace("’", "'").split("\n")):
-        if not line:
-            continue
-        if rules and rules[-1][-1] not in TERMINATORS:
-            rules[-1] += " " + line
-        else:
-            rules.append(line)
-    return rules
 
 
 def fived_from_spatial(spatial) -> str:
@@ -83,6 +69,7 @@ def main() -> int:
     published = {row["operator"]: row for row in json.loads(PUBLISHED.read_text())}
     sdk_doc = json.loads(MODEL_SDK.read_text())
     sdk = sdk_doc.get("operators", {})
+    copy = json.loads(COPY.read_text()).get("constraints", {})
 
     names = sorted(set(published) | set(sdk), key=str.lower)
     conflicts: list[str] = []
@@ -158,18 +145,40 @@ def main() -> int:
         lines.append(f"| `{name}` | {int8} | {bf16} | {fived} | {opset} |")
     lines.append("")
 
-    # Constraints as a wrapping list below the matrix, so long hardware notes
-    # don't force the table wider than the page.
+    # Constraints as a wrapping list below the matrix, so the longer entries
+    # don't force the table wider than the page. The engineering wording is
+    # internal, so each entry is published through its curated sentence.
     constrained = [(name, c) for (name, *_rest, c) in rows if c]
+    stale: list[str] = []
+    for name, c in constrained:
+        entry = copy.get(name)
+        if entry is None:
+            stale.append(f"{name}: no customer-facing copy in {COPY.name}")
+        elif entry.get("source", "").strip() != c:
+            stale.append(f"{name}: constraint changed since the copy was written")
+    orphans = sorted(set(copy) - {name for name, _ in constrained})
+    stale += [f"{o}: copy exists but the operator no longer has a constraint" for o in orphans]
+
+    if stale:
+        print(f"{len(stale)} constraint(s) out of sync with {COPY.relative_to(REPO_ROOT)}:")
+        for s in stale:
+            print(f"  - {s}")
+        print("\nUpdate the 'copy' and 'source' fields together, then re-run.")
+        print("Nothing written — the page would otherwise publish stale wording.")
+        return 1
+
     if constrained:
-        lines += ["## Constraints", ""]
+        lines += [
+            "## Constraints",
+            "",
+            "These operators are supported with the limits below. Operators not "
+            "listed here have no additional constraints. Where a constraint "
+            "names an ONNX attribute, set it accordingly when you export the "
+            "model.",
+            "",
+        ]
         for name, c in constrained:
-            rules = split_rules(c)
-            if len(rules) == 1:
-                lines.append(f"- **{name}** — {rules[0]}")
-            else:
-                lines.append(f"- **{name}**")
-                lines.extend(f"  - {r}" for r in rules)
+            lines.append(f"- **{name}** — {copy[name]['copy']}")
         lines.append("")
 
     OUT.write_text("\n".join(lines), encoding="utf-8")

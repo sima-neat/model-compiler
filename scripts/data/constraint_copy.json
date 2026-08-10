@@ -1,0 +1,133 @@
+{
+  "_comment": "Customer-facing wording for the Constraints section of docs/guides/model-compatibility.md. 'source' is the engineering constraint the copy was written from; build_supported_operators_md.py fails if it drifts, so the copy cannot go stale silently. Update both together.",
+  "constraints": {
+    "Add": {
+      "source": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+      "copy": "Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."
+    },
+    "ArgMax": {
+      "source": "Output is int32 (HW has no int64)\naxis = channel axis only (SW)",
+      "copy": "Reduces along the channel axis only, and returns `int32` rather than the `int64` of the ONNX spec. Cast downstream consumers accordingly."
+    },
+    "AveragePool": {
+      "source": "count_include_pad = 1 (HW)\nkernel_shape: If global pool, no size limit; otherwise size < 128. (HW. Workaround by SW)\ndilations = 1 for newer opset (HW)",
+      "copy": "Set `count_include_pad=True` and leave `dilations` at 1. Kernel size must be under 128 in each spatial dimension; global pooling has no size limit."
+    },
+    "BatchNorm": {
+      "source": "training_mode = 0 (SW)",
+      "copy": "Export in inference mode. Training mode is not supported."
+    },
+    "Concat": {
+      "source": "Not on batch axis",
+      "copy": "Concatenation along the batch axis is not supported."
+    },
+    "Conv": {
+      "source": "dilation = [1, 63] (HW)\nstrides = [1, 31] (HW)",
+      "copy": "`dilations` must be between 1 and 63, and `strides` between 1 and 31."
+    },
+    "ConvTranspose": {
+      "source": "dilations == 1 (HW)\ngroup = 1 (HW) or depthwise (SW)\nstride =  [1, 2, 4, 8, 16] non-depthwise; [1, 2] depthwise (SW)",
+      "copy": "Leave `dilations` at 1. The operator must either be depthwise or use `group=1`. Stride must be 1, 2, 4, 8, or 16, or 1 or 2 when depthwise."
+    },
+    "CumSum": {
+      "source": "reverse = 0 (SW)\nSize <= 257 on summation axis. (SW)\nMust have exactly one summation axis. (SW)\nAxis must be a constant. (HW)",
+      "copy": "Sums in the forward direction only, along exactly one axis, and that axis must be a constant. The axis can be at most 257 elements long."
+    },
+    "Div": {
+      "source": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+      "copy": "Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."
+    },
+    "Einsum": {
+      "source": "Must have two input tensors. (SW)\nSupports any equation where each variable is used in at least two tensors and at most once in each tensor.  An example violating the first condition is jk,k->k (j is not used in at least two tensors).  An example violating the second condition is jk,kk->j (k is used twice in one tensor). (SW)",
+      "copy": "Takes exactly two input tensors. Every index in the equation must appear in at least two of its terms, and no more than once within any single term. For example, `jk,k->k` is unsupported because `j` appears in only one term, and `jk,kk->j` is unsupported because `k` appears twice in the same term."
+    },
+    "Gather": {
+      "source": "Indices must be a constant, and it must be 0D or 1D. (HW)",
+      "copy": "`indices` must be a constant, and either a scalar or a 1D tensor."
+    },
+    "Gelu": {
+      "source": "approximate = \"none\" (SW)",
+      "copy": "Only the exact formulation is supported. Set `approximate=\"none\"`."
+    },
+    "GridSample": {
+      "source": "Limited kernel for RaftStereo: sampling on W axis only. (SW)\nmode = 'linear'\npadding_mode != 'reflection'",
+      "copy": "Set `mode` to `linear`, and do not use `padding_mode=\"reflection\"`. Sampling is supported on the width axis only."
+    },
+    "InstanceNorm": {
+      "source": "Only for 4D and 5D tensors. (SW)",
+      "copy": "Supported for 4D and 5D tensors only."
+    },
+    "LayerNorm": {
+      "source": "stash_type = 10 (FLOAT16) not supported. (SW)",
+      "copy": "`stash_type=10` (FLOAT16) is not supported. Leave it at the default."
+    },
+    "MaxPool": {
+      "source": "dilations = 1 (HW)\nkernel_shape: If global pool, no size limit; otherwise size < 128. (HW)\n\nstorage_order: No optional indices tensor output (SW)",
+      "copy": "Leave `dilations` at 1, and do not request the optional indices output. Kernel size must be under 128 in each spatial dimension; global pooling has no size limit."
+    },
+    "Mul": {
+      "source": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+      "copy": "Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."
+    },
+    "Pad": {
+      "source": "mode: only \u2018constant\u2019 mode with value 0. (SW)\nAt most 2 dimensions may have a nonzero padding width. (SW)",
+      "copy": "Only `constant` mode with a pad value of 0 is supported, and at most two dimensions may have a non-zero padding width."
+    },
+    "Pow": {
+      "source": "Input exponent is scalar constant 0.5, -0.5, 2, or 3. (SW)",
+      "copy": "The exponent must be a constant scalar of 0.5, -0.5, 2, or 3."
+    },
+    "PRelu": {
+      "source": "1D alpha. (SW)",
+      "copy": "The alpha slope input must be a 1D tensor."
+    },
+    "ReduceMean": {
+      "source": "For 1D reduce, axis is spatial dimension only. (SW)\nIf all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (HW)",
+      "copy": "When reducing over a single axis, that axis must be spatial. Reducing over every spatial axis has no size limit; otherwise each spatial axis must be under 128 elements."
+    },
+    "ReduceMin": {
+      "source": "Not supported yet. (SW)",
+      "copy": "Not currently supported."
+    },
+    "ReduceSum": {
+      "source": "For 1D reduce, axis is spatial dimension only. (SW)\nIf all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (SW)",
+      "copy": "When reducing over a single axis, that axis must be spatial. Reducing over every spatial axis has no size limit; otherwise each spatial axis must be under 128 elements."
+    },
+    "Reshape": {
+      "source": "allowzero = 0 (SW)\nShape cannot be empty. (SW)",
+      "copy": "Leave `allowzero` at 0, and give a non-empty target shape."
+    },
+    "Resize": {
+      "source": "mode = [nearest, linear] (HW/SW)\ncoordinate_transformation_mode= 'tf_crop_and_resize' not supported. (SW)\nIf method is 'linear', any scaling factor is supported. However,\nfor 8-bit integers any scaling more than 63 may lead to loss in accuracy. (HW)\nIf the method is 'nearest', then the scaling factor must be a power of two (HW), or the scaling factor must be an even integer (using the same factor in both dimensions) and the coordinate transformation mode must be half_pixel and the rounding mode must be floor. (SW)\nAny other method or scaling factor is not supported.\n\nSingle input only. (SW)",
+      "copy": "Only `nearest` and `linear` modes are supported, and `coordinate_transformation_mode=\"tf_crop_and_resize\"` is not. With `linear`, any scaling factor works, though in INT8 a factor above 63 may cost accuracy. With `nearest`, the scaling factor must be a power of two, or an even integer applied equally to both dimensions with `coordinate_transformation_mode=\"half_pixel\"` and floor rounding. Only a single input tensor is supported."
+    },
+    "RMSNorm": {
+      "source": "stash_type = 10 (FLOAT16) not supported. (SW)",
+      "copy": "`stash_type=10` (FLOAT16) is not supported. Leave it at the default."
+    },
+    "Slice": {
+      "source": "Positive strides. (SW)",
+      "copy": "Steps must be positive. Negative strides are not supported."
+    },
+    "Softmax": {
+      "source": "Over channel axis",
+      "copy": "Supported over the channel axis only."
+    },
+    "Sub": {
+      "source": "Same shape, or exactly one input is a scalar, or both inputs are broadcastable",
+      "copy": "Inputs must have the same shape, one input must be a scalar, or the two must be broadcastable."
+    },
+    "Take": {
+      "source": "Index must be a constant, and it must be 0D or 1D. (SW)",
+      "copy": "The index must be a constant, and either a scalar or a 1D tensor."
+    },
+    "Transpose": {
+      "source": "Not involving batch axis",
+      "copy": "Permutations that move the batch axis are not supported."
+    },
+    "Variance": {
+      "source": "Compute over all spatial dimensions. (SW)",
+      "copy": "Computed over all spatial dimensions."
+    }
+  }
+}
