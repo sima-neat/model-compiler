@@ -61,6 +61,10 @@
       "source": "stash_type = 10 (FLOAT16) not supported. (SW)",
       "copy": "`stash_type=10` (FLOAT16) is not supported. Leave it at the default."
     },
+    "LpNormalization": {
+      "source": "Only p = 2 is supported for L2 normalization.",
+      "copy": "Only `p=2`, the L2 norm, is supported. `p=1` is not."
+    },
     "MaxPool": {
       "source": "dilations = 1 (HW)\nkernel_shape: If global pool, no size limit; otherwise size < 128. (HW)\n\nstorage_order: No optional indices tensor output (SW)",
       "copy": "Leave `dilations` at 1, and do not request the optional indices output. Kernel size must be under 128 in each spatial dimension; global pooling has no size limit."
@@ -80,6 +84,10 @@
     "PRelu": {
       "source": "1D alpha. (SW)",
       "copy": "The alpha slope input must be a 1D tensor."
+    },
+    "ReduceL2": {
+      "source": "Expect following DIV to merge to L2 normalization.",
+      "copy": "Supported only as part of an L2 normalization: it must be followed by a `Div`, so the pair can be fused. A standalone `ReduceL2` is not supported."
     },
     "ReduceMean": {
       "source": "For 1D reduce, axis is spatial dimension only. (SW)\nIf all spatial axes, no size limit; otherwise, size in spatial axes less than 128. (HW)",
