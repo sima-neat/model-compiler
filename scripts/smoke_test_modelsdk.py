@@ -695,7 +695,9 @@ def smoke_yolo(args: argparse.Namespace) -> SmokeCasePayload:
         dtype=args.dtype,
     )
     log(f"YOLOv8 smoke artifacts: {build_dir}")
-    metrics = measure_compiled_artifacts("yolov8", build_dir)
+    metrics = validate_and_measure_compiled_artifacts(
+        "yolov8", build_dir, args.dtype
+    )
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
