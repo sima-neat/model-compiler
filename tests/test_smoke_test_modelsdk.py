@@ -64,18 +64,22 @@ class SmokeTestModelsdkTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.SmokeFailure, "jax: 0.0.0"):
                 MODULE.smoke_python_environment()
 
-    def test_amd64_python_environment_does_not_enforce_arm64_pins(self):
+    def test_amd64_python_environment_enforces_only_compatible_ml_dtypes(self):
         with (
             mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "amd64"}),
             mock.patch.object(MODULE, "run") as run,
-            mock.patch.object(MODULE.importlib.metadata, "version") as version,
+            mock.patch.object(
+                MODULE.importlib.metadata,
+                "version",
+                side_effect=lambda name: MODULE.X86_64_REQUIRED_PACKAGE_VERSIONS[name],
+            ) as version,
         ):
             MODULE.smoke_python_environment()
 
         run.assert_called_once_with(
             [MODULE.sys.executable, "-m", "pip", "check"], timeout=120
         )
-        version.assert_not_called()
+        version.assert_called_once_with("ml-dtypes")
 
     def test_compiled_artifacts_require_sima_mpk_elf_and_precision_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -48,6 +48,11 @@
       "ml-dtypes": "0.4.1"
     }
   },
+  "x86_64": {
+    "dependency_overrides": {
+      "ml-dtypes": "0.4.1"
+    }
+  },
   "dependency_replacements": {
     "zmq": "pyzmq>=27.1.0"
   },

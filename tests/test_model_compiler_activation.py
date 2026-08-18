@@ -230,6 +230,7 @@ class ModelCompilerActivationTests(unittest.TestCase):
         source = json.loads(SOURCE_JSON.read_text(encoding="utf-8"))
         global_overrides = source["dependency_overrides"]
         arm64_overrides = source["aarch64"]["dependency_overrides"]
+        amd64_overrides = source["x86_64"]["dependency_overrides"]
 
         self.assertNotIn("jax", global_overrides)
         self.assertNotIn("jaxlib", global_overrides)
@@ -241,6 +242,7 @@ class ModelCompilerActivationTests(unittest.TestCase):
             set(arm64_overrides),
             {"jax", "jaxlib", "ml-dtypes"},
         )
+        self.assertEqual(amd64_overrides, {"ml-dtypes": "0.4.1"})
 
 
 if __name__ == "__main__":

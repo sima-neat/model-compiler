@@ -70,6 +70,10 @@ ARM64_REQUIRED_PACKAGE_VERSIONS = {
     "ml-dtypes": "0.4.1",
 }
 
+X86_64_REQUIRED_PACKAGE_VERSIONS = {
+    "ml-dtypes": "0.4.1",
+}
+
 VERBOSE = False
 
 
@@ -204,6 +208,8 @@ def required_package_versions() -> dict[str, str]:
     target_arch = os.environ.get("MODELSDK_SMOKE_ARCH", platform.machine()).lower()
     if target_arch in {"aarch64", "arm64"}:
         return ARM64_REQUIRED_PACKAGE_VERSIONS
+    if target_arch in {"x86_64", "amd64"}:
+        return X86_64_REQUIRED_PACKAGE_VERSIONS
     return {}
 
 
