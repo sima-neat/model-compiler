@@ -13,6 +13,10 @@ on:
         description: Patch release version without v prefix, for example 2.1.2.
         required: true
         type: string
+      llima_version:
+        description: LLiMa release version without v prefix, for example 0.4.0.
+        required: true
+        type: string
       source_branch:
         description: Source branch for creating a new release branch.
         required: true
@@ -66,19 +70,240 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: write
 
+concurrency:
+  group: model-compiler-release-${{ inputs.release_line }}
+  cancel-in-progress: false
+
 jobs:
+  prepare-release:
+    name: Pin LLiMa on release branch
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - issue-triage
+    outputs:
+      release_branch: ${{ steps.prepare.outputs.release_branch }}
+
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0
+
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
+
+      - name: Prepare pinned release branch
+        id: prepare
+        env:
+          RELEASE_LINE: ${{ inputs.release_line }}
+          MODEL_COMPILER_VERSION: ${{ inputs.tag }}
+          LLIMA_VERSION: ${{ inputs.llima_version }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          BRANCH_EXISTS_BEHAVIOR: ${{ inputs.branch_exists_behavior }}
+          TAG_EXISTS_BEHAVIOR: ${{ inputs.tag_exists_behavior }}
+          RELEASE_NOTES_MODE: ${{ inputs.release_notes_mode }}
+          RELEASE_NOTES_FILE: ${{ inputs.release_notes_file }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "ERROR: $*" >&2
+            exit 1
+          }
+
+          [[ "${RELEASE_LINE}" =~ ^[0-9]+\.[0-9]+$ ]] ||
+            fail "release_line must look like 2.1, got: ${RELEASE_LINE}"
+          [[ "${MODEL_COMPILER_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] ||
+            fail "tag must look like 2.1.2, got: ${MODEL_COMPILER_VERSION}"
+          [[ "${MODEL_COMPILER_VERSION}" == "${RELEASE_LINE}."* ]] ||
+            fail "Model Compiler version ${MODEL_COMPILER_VERSION} does not belong to ${RELEASE_LINE}"
+          [[ "${LLIMA_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+            fail "llima_version must look like 0.4.0, got: ${LLIMA_VERSION}"
+          case "${BRANCH_EXISTS_BEHAVIOR}" in
+            reuse|fail|update_from_source) ;;
+            *) fail "unsupported branch_exists_behavior: ${BRANCH_EXISTS_BEHAVIOR}" ;;
+          esac
+          case "${TAG_EXISTS_BEHAVIOR}" in
+            fail|move) ;;
+            *) fail "unsupported tag_exists_behavior: ${TAG_EXISTS_BEHAVIOR}" ;;
+          esac
+          case "${RELEASE_NOTES_MODE}" in
+            generated|empty|from_file) ;;
+            *) fail "unsupported release_notes_mode: ${RELEASE_NOTES_MODE}" ;;
+          esac
+
+          release_branch="release-${RELEASE_LINE}"
+          tag_name="v${MODEL_COMPILER_VERSION}"
+          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git fetch --prune --tags origin '+refs/tags/*:refs/tags/*'
+          git show-ref --verify --quiet "refs/remotes/origin/${SOURCE_BRANCH}" ||
+            fail "source branch does not exist on origin: ${SOURCE_BRANCH}"
+
+          existing_remote_tag=false
+          if git show-ref --verify --quiet "refs/tags/${tag_name}"; then
+            existing_remote_tag=true
+          fi
+          existing_release=false
+          existing_release_draft=false
+          release_state_file="${RUNNER_TEMP}/model-compiler-release.json"
+          release_status="$(
+            curl --silent --show-error \
+              --output "${release_state_file}" \
+              --write-out '%{http_code}' \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${REPOSITORY}/releases/tags/${tag_name}"
+          )"
+          case "${release_status}" in
+            200)
+              existing_release=true
+              existing_release_draft="$(
+                python3 -c \
+                  'import json, sys; print("true" if json.load(open(sys.argv[1])).get("draft") else "false")' \
+                  "${release_state_file}"
+              )"
+              ;;
+            404) ;;
+            *) fail "GitHub release lookup for ${tag_name} returned HTTP ${release_status}" ;;
+          esac
+          if [[ "${existing_remote_tag}" == "true" ]]; then
+            [[ "${TAG_EXISTS_BEHAVIOR}" == "move" ]] ||
+              fail "tag already exists: ${tag_name}; set tag_exists_behavior=move to retag"
+            if [[ "${existing_release}" == "true" && "${existing_release_draft}" != "true" ]]; then
+              fail "refusing to move ${tag_name}; its GitHub release is already published"
+            fi
+          elif [[ "${existing_release}" == "true" ]]; then
+            fail "GitHub release exists without a matching remote tag: ${tag_name}"
+          fi
+
+          existing_release_sha=""
+          if git show-ref --verify --quiet "refs/remotes/origin/${release_branch}"; then
+            existing_release_sha="$(git rev-parse "origin/${release_branch}")"
+            case "${BRANCH_EXISTS_BEHAVIOR}" in
+              fail)
+                fail "release branch already exists: ${release_branch}"
+                ;;
+              reuse)
+                git switch -C "${release_branch}" "origin/${release_branch}"
+                ;;
+              update_from_source)
+                git switch -C "${release_branch}" "origin/${SOURCE_BRANCH}"
+                ;;
+              *)
+                fail "unsupported branch_exists_behavior: ${BRANCH_EXISTS_BEHAVIOR}"
+                ;;
+            esac
+          else
+            git switch -C "${release_branch}" "origin/${SOURCE_BRANCH}"
+          fi
+          if [[ "${RELEASE_NOTES_MODE}" == "from_file" && ! -f "${RELEASE_NOTES_FILE}" ]]; then
+            fail "release_notes_file does not exist on ${release_branch}: ${RELEASE_NOTES_FILE}"
+          fi
+
+          requested_ref="v${LLIMA_VERSION}"
+          resolve_output="$(
+            SIMA_CLI_CHECK_FOR_UPDATE=0 "${SIMA_CLI_BIN}" neat install \
+              --type wheel \
+              "llima/compiler@${requested_ref}" \
+              --json
+          )"
+          resolved_ref="$(python3 - "${resolve_output}" "${requested_ref}" <<'PY'
+          import json
+          import sys
+
+          text, expected_ref = sys.argv[1:]
+          start = text.find("{")
+          if start < 0:
+              raise SystemExit("sima-cli resolution output did not contain JSON")
+          payload = json.loads(text[start:])
+          ref = str(payload.get("ref", "")).strip()
+          commit = str(payload.get("resolved_spec", "")).strip()
+          if ref != expected_ref:
+              raise SystemExit(
+                  f"resolved LLiMa ref {ref!r} does not match requested ref {expected_ref!r}"
+              )
+          if not ref or not commit:
+              raise SystemExit("sima-cli did not return ref and resolved_spec")
+          print(f"{ref}:{commit}")
+          PY
+          )"
+
+          llima_dir="${RUNNER_TEMP}/llima-release"
+          mkdir -p "${llima_dir}"
+          scripts/download_llima_wheel.sh \
+            --output-dir "${llima_dir}" \
+            --ref "${resolved_ref}" >/dev/null
+          pinned_ref="$(
+            python3 scripts/pin_llima_release.py \
+              --source-json scripts/source.json \
+              --resolved-package-json "${llima_dir}/resolved-llima-package.json" \
+              --llima-version "${LLIMA_VERSION}"
+          )"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/source.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Pin LLiMa ${LLIMA_VERSION} for Model Compiler ${MODEL_COMPILER_VERSION}"
+          fi
+
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "Dry run: would push ${release_branch} at $(git rev-parse HEAD)."
+          elif [[ -n "${existing_release_sha}" && "${BRANCH_EXISTS_BEHAVIOR}" == "update_from_source" ]]; then
+            git push \
+              --force-with-lease="refs/heads/${release_branch}:${existing_release_sha}" \
+              origin "HEAD:refs/heads/${release_branch}"
+          else
+            git push origin "HEAD:refs/heads/${release_branch}"
+          fi
+
+          echo "release_branch=${release_branch}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## Model Compiler release dependency"
+            echo
+            echo "- LLiMa version: \`${LLIMA_VERSION}\`"
+            echo "- Pinned Vulcan ref: \`${pinned_ref}\`"
+            echo "- Release branch: \`${release_branch}\`"
+            echo "- Dry run: \`${DRY_RUN}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   release:
+    needs: prepare-release
+    if: ${{ !inputs.dry_run }}
     uses: sima-neat/.github/.github/workflows/vulcan-release.yml@main
     with:
       release_line: ${{ inputs.release_line }}
       tag: ${{ inputs.tag }}
-      source_branch: ${{ inputs.source_branch }}
-      branch_exists_behavior: ${{ inputs.branch_exists_behavior }}
+      source_branch: ${{ needs.prepare-release.outputs.release_branch }}
+      branch_exists_behavior: reuse
       tag_exists_behavior: ${{ inputs.tag_exists_behavior }}
       release_notes_mode: ${{ inputs.release_notes_mode }}
       release_notes_file: ${{ inputs.release_notes_file }}
       prerelease: ${{ inputs.prerelease }}
       latest: ${{ inputs.latest }}
-      dry_run: ${{ inputs.dry_run }}
+      dry_run: false
+
+  dispatch-release-build:
+    name: Dispatch tagged release build
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch Build workflow for release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+        run: gh workflow run build.yml --repo "${GITHUB_REPOSITORY}" --ref "${TAG_NAME}"

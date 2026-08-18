@@ -145,9 +145,16 @@ elif expr == "python_package_specs":
                 )
             if not isinstance(vulcan, dict):
                 raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+            policy = vulcan.get("policy")
             ref = vulcan.get("ref")
-            if not isinstance(ref, str) or not ref.strip():
-                raise SystemExit(f"component entry at index {i} requires a non-empty vulcan.ref")
+            if not (
+                (policy == "snap" and ref is None)
+                or (policy is None and isinstance(ref, str) and ref.strip())
+            ):
+                raise SystemExit(
+                    f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+                    "or a non-empty vulcan.ref"
+                )
             print(name)
         elif name and version:
             print(f"{name}=={version}")

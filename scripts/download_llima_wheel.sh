@@ -5,6 +5,7 @@ usage() {
   cat <<'EOF'
 Usage:
   download_llima_wheel.sh --output-dir DIR [--source-json PATH --target-arch ARCH]
+  download_llima_wheel.sh --output-dir DIR --ref REF
 
 Download the LLiMa compiler wheel with sima-cli and print its path.
 
@@ -12,6 +13,7 @@ Options:
   --output-dir DIR        Destination directory for the wheel (required)
   --source-json PATH      Read the LLiMa Vulcan ref from this manifest
   --target-arch ARCH      Target architecture used to select manifest overrides
+  --ref REF               Use an explicit LLiMa Vulcan ref instead of a manifest
   -h, --help              Show this help
 EOF
 }
@@ -19,7 +21,8 @@ EOF
 OUTPUT_DIR=""
 SOURCE_JSON=""
 TARGET_ARCH=""
-REF="develop"
+REF=""
+SNAP_POLICY="0"
 SIMA_CLI_BIN="${SIMA_CLI_BIN:-sima-cli}"
 
 while [[ $# -gt 0 ]]; do
@@ -27,6 +30,7 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUTPUT_DIR="${2:-}"; shift 2 ;;
     --source-json) SOURCE_JSON="${2:-}"; shift 2 ;;
     --target-arch) TARGET_ARCH="${2:-}"; shift 2 ;;
+    --ref) REF="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -36,6 +40,44 @@ if [[ -z "$OUTPUT_DIR" ]]; then
   usage >&2
   exit 1
 fi
+
+if [[ -n "$SOURCE_JSON" && -n "$REF" ]]; then
+  echo "--source-json and --ref are mutually exclusive." >&2
+  exit 1
+fi
+
+current_model_compiler_ref() {
+  if [[ -n "${GITHUB_HEAD_REF:-}" ]]; then
+    printf '%s\n' "${GITHUB_HEAD_REF}"
+    return 0
+  fi
+  if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
+    printf '%s\n' "${GITHUB_REF_NAME}"
+    return 0
+  fi
+  if git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse \
+      --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$(dirname "${BASH_SOURCE[0]}")/.." \
+      rev-parse --abbrev-ref HEAD 2>/dev/null
+    return 0
+  fi
+  printf '\n'
+}
+
+is_protected_ref() {
+  case "$1" in
+    develop|main|release-*|release/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_model_compiler_tag_build() {
+  if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+    return 0
+  fi
+  git -C "$(dirname "${BASH_SOURCE[0]}")/.." describe \
+    --tags --exact-match HEAD >/dev/null 2>&1
+}
 
 if [[ -n "$SOURCE_JSON" ]]; then
   if [[ ! -f "$SOURCE_JSON" ]]; then
@@ -50,7 +92,7 @@ if [[ -n "$SOURCE_JSON" ]]; then
       exit 1
       ;;
   esac
-  REF="$(python3 - "$SOURCE_JSON" "$TARGET_ARCH" <<'PY'
+  manifest_ref="$(python3 - "$SOURCE_JSON" "$TARGET_ARCH" <<'PY'
 import json
 import pathlib
 import sys
@@ -70,7 +112,7 @@ if not isinstance(items, list):
         f"source json must contain a \"python-packages\" list for target architecture {target_arch!r}, "
         "a top-level \"python-packages\" list, or a legacy \"components\" list"
     )
-refs = []
+specs = []
 for i, item in enumerate(items):
     if not isinstance(item, dict) or "vulcan" not in item:
         continue
@@ -83,17 +125,48 @@ for i, item in enumerate(items):
         )
     if not isinstance(vulcan, dict):
         raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+    policy = vulcan.get("policy")
     ref = vulcan.get("ref")
-    if not isinstance(ref, str) or not ref.strip():
-        raise SystemExit(f"component entry at index {i} requires a non-empty vulcan.ref")
-    refs.append(ref.strip())
-if len(refs) > 1:
+    if policy == "snap" and ref is None:
+        specs.append("__SNAP__")
+    elif isinstance(ref, str) and ref.strip() and policy is None:
+        specs.append(ref.strip())
+    else:
+        raise SystemExit(
+            f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+            "or a non-empty vulcan.ref"
+        )
+if len(specs) > 1:
     raise SystemExit("source json contains multiple Vulcan-backed LLiMa packages")
-if refs:
-    print(refs[0])
+if specs:
+    print(specs[0])
 PY
-)"
+  )"
+  if [[ "$manifest_ref" == "__SNAP__" ]]; then
+    if is_model_compiler_tag_build; then
+      echo "LLiMa snap policy is not allowed for Model Compiler tag builds; pin an immutable LLiMa ref before tagging." >&2
+      exit 1
+    fi
+    REF="$(current_model_compiler_ref)"
+    if [[ -z "$REF" || "$REF" == "HEAD" ]]; then
+      echo "Could not determine the Model Compiler branch for LLiMa snap policy; using develop." >&2
+      REF="develop"
+    fi
+    SNAP_POLICY="1"
+  else
+    REF="$manifest_ref"
+  fi
   [[ -n "$REF" ]] || exit 0
+fi
+
+if [[ -z "$REF" ]]; then
+  echo "Either --source-json or --ref is required." >&2
+  exit 1
+fi
+
+if is_model_compiler_tag_build && [[ ! "$REF" =~ :[0-9a-fA-F]{7,40}$ ]]; then
+  echo "Model Compiler tag builds require a commit-qualified LLiMa ref; got: ${REF}" >&2
+  exit 1
 fi
 
 if ! command -v "$SIMA_CLI_BIN" >/dev/null 2>&1; then
@@ -102,10 +175,23 @@ if ! command -v "$SIMA_CLI_BIN" >/dev/null 2>&1; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
-  --type wheel \
-  --install-dir "$OUTPUT_DIR" \
-  "llima/compiler@${REF}" >&2
+if ! SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
+    --type wheel \
+    --install-dir "$OUTPUT_DIR" \
+    "llima/compiler@${REF}" >&2; then
+  if [[ "$SNAP_POLICY" != "1" || "$REF" == "develop" ]] || is_protected_ref "$REF"; then
+    echo "Failed to download llima/compiler@${REF}." >&2
+    exit 1
+  fi
+
+  echo "No LLiMa artifact found for feature branch '${REF}'; retrying develop." >&2
+  find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'sima_lmm-*.whl' -delete
+  REF="develop"
+  SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
+    --type wheel \
+    --install-dir "$OUTPUT_DIR" \
+    "llima/compiler@${REF}" >&2
+fi
 
 wheels=()
 while IFS= read -r -d '' wheel; do

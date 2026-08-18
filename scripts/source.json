@@ -106,7 +106,7 @@
     {
       "name": "sima_lmm[sdk]",
       "vulcan": {
-        "ref": "develop"
+        "policy": "snap"
       }
     }
   ],
