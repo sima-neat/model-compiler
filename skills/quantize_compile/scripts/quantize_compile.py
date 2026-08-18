@@ -150,7 +150,12 @@ class ModelProcessor:
         else:
             h, w = target_shape[1], target_shape[2]
 
-        image = Image.open(image_path).convert("RGB").resize((w, h))
+        # Match the deployed CVU image preprocessor. Calibration with Pillow's
+        # default bicubic resize shifts activation ranges from the runtime's
+        # bilinear input distribution.
+        image = Image.open(image_path).convert("RGB").resize(
+            (w, h), resample=Image.Resampling.BILINEAR
+        )
         image_np = np.array(image)
         # Permute to NCHW for normalization logic, then we'll flip back to NHWC if needed
         image_t = torch.tensor(image_np).permute(2, 0, 1).unsqueeze(0)
@@ -217,8 +222,11 @@ class ModelProcessor:
         
         logger.info(f"Loading real calibration data from: {self.args.dataset_images}")
         image_exts = (".jpg", ".jpeg", ".png", ".bmp")
-        image_paths = [os.path.join(self.args.dataset_images, f) for f in os.listdir(self.args.dataset_images) 
-                       if f.lower().endswith(image_exts)][:self.args.num_calib_samples]
+        image_paths = sorted(
+            os.path.join(self.args.dataset_images, f)
+            for f in os.listdir(self.args.dataset_images)
+            if f.lower().endswith(image_exts)
+        )[:self.args.num_calib_samples]
         
         if not image_paths:
             raise FileNotFoundError(f"No valid images found in {self.args.dataset_images}")
