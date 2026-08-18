@@ -95,6 +95,16 @@ jobs:
           ref: ${{ inputs.source_branch }}
           fetch-depth: 0
 
+      - name: Checkout release tooling
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: _release-tools
+          sparse-checkout: |
+            scripts/download_llima_wheel.sh
+            scripts/pin_llima_release.py
+          sparse-checkout-cone-mode: false
+
       - name: Install sima-cli
         run: |
           set -euo pipefail
@@ -244,11 +254,11 @@ jobs:
 
           llima_dir="${RUNNER_TEMP}/llima-release"
           mkdir -p "${llima_dir}"
-          scripts/download_llima_wheel.sh \
+          _release-tools/scripts/download_llima_wheel.sh \
             --output-dir "${llima_dir}" \
             --ref "${resolved_ref}" >/dev/null
           pinned_ref="$(
-            python3 scripts/pin_llima_release.py \
+            python3 _release-tools/scripts/pin_llima_release.py \
               --source-json scripts/source.json \
               --resolved-package-json "${llima_dir}/resolved-llima-package.json" \
               --llima-version "${LLIMA_VERSION}"

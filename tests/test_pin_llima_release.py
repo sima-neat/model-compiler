@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pin_llima_release.py"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 SPEC = importlib.util.spec_from_file_location("pin_llima_release", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -158,6 +159,16 @@ class PinLlimaReleaseTests(unittest.TestCase):
         self.write_provenance()
         with self.assertRaisesRegex(ValueError, "must look like"):
             MODULE.pin_release(self.source, self.provenance, "release-0.4")
+
+    def test_release_workflow_keeps_tools_outside_reused_branch(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("ref: ${{ github.workflow_sha }}", workflow)
+        self.assertIn("path: _release-tools", workflow)
+        self.assertIn(
+            "_release-tools/scripts/download_llima_wheel.sh", workflow
+        )
+        self.assertIn("_release-tools/scripts/pin_llima_release.py", workflow)
 
 
 if __name__ == "__main__":
