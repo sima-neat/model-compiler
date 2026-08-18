@@ -60,6 +60,17 @@ _ONNX_IR_VERSION = 8
 _ONNX_OPSET_VERSION = 17
 DIVIDER = "-" * 60
 
+
+def build_quantization_manifest(*, bf16_activations, bf16_weights, device):
+    """Describe the effective precision selected by the quantization config."""
+    effective_bf16_activations = bf16_activations or bf16_weights
+    return {
+        "activation_precision": "bfloat16" if effective_bf16_activations else "int8",
+        "weight_precision": "bfloat16" if bf16_weights else "int8",
+        "device": device,
+    }
+
+
 class ModelProcessor:
     def __init__(self, args):
         self.args = args
@@ -291,11 +302,11 @@ class ModelProcessor:
         else:
             weight_scheme = quantization_scheme(False, True, 8)
 
-        quantization_manifest = {
-            "activation_precision": "bfloat16" if self.args.bf16_activations else "int8",
-            "weight_precision": "bfloat16" if self.args.bf16_weights else "int8",
-            "device": self.args.device,
-        }
+        quantization_manifest = build_quantization_manifest(
+            bf16_activations=self.args.bf16_activations,
+            bf16_weights=self.args.bf16_weights,
+            device=self.args.device,
+        )
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
