@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - issue-triage
+    - osx
+
+config-variables: null

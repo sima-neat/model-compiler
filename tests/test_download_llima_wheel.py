@@ -21,7 +21,12 @@ class DownloadLlimaWheelTests(unittest.TestCase):
         self.fake_cli.write_text(
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
-            'printf "%s\\n" "$@" > "${FAKE_SIMA_CLI_LOG:?}"\n',
+            'printf "%s\\n" "$@" >> "${FAKE_SIMA_CLI_LOG:?}"\n'
+            'target="${@: -1}"\n'
+            'if [[ "$target" == "${FAKE_SIMA_CLI_FAIL_TARGET:-}" ]]; then exit 1; fi\n'
+            'shopt -s nullglob\n'
+            'wheels=("${FAKE_SIMA_CLI_WHEELS:?}"/*.whl)\n'
+            'if (( ${#wheels[@]} )); then cp "${wheels[@]}" "${@: -2:1}/"; fi\n',
             encoding="utf-8",
         )
         self.fake_cli.chmod(0o755)
@@ -41,14 +46,25 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             )
         return wheel
 
-    def run_helper(self, manifest, *, arch="x86_64", wheel_versions=()):
+    def run_helper(
+        self,
+        manifest,
+        *,
+        arch="x86_64",
+        wheel_versions=(),
+        github_ref_name=None,
+        github_ref_type=None,
+        fail_target=None,
+    ):
         self.call_count += 1
         manifest_path = self.work_dir / f"source-{self.call_count}.json"
         output_dir = self.work_dir / f"output-{self.call_count}"
+        wheels_dir = self.work_dir / f"wheels-{self.call_count}"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         output_dir.mkdir()
+        wheels_dir.mkdir()
         for version in wheel_versions:
-            self.make_wheel(output_dir, version)
+            self.make_wheel(wheels_dir, version)
 
         self.cli_log.unlink(missing_ok=True)
         env = os.environ.copy()
@@ -56,8 +72,18 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             {
                 "SIMA_CLI_BIN": str(self.fake_cli),
                 "FAKE_SIMA_CLI_LOG": str(self.cli_log),
+                "FAKE_SIMA_CLI_WHEELS": str(wheels_dir),
             }
         )
+        for name, value in (
+            ("GITHUB_REF_NAME", github_ref_name),
+            ("GITHUB_REF_TYPE", github_ref_type),
+            ("FAKE_SIMA_CLI_FAIL_TARGET", fail_target),
+        ):
+            if value is None:
+                env.pop(name, None)
+            else:
+                env[name] = value
         result = subprocess.run(
             [
                 str(HELPER),
@@ -78,6 +104,13 @@ class DownloadLlimaWheelTests(unittest.TestCase):
     def assert_cli_target(self, expected):
         args = self.cli_log.read_text(encoding="utf-8").splitlines()
         self.assertEqual(args[-1], expected)
+
+    def cli_targets(self):
+        return [
+            arg
+            for arg in self.cli_log.read_text(encoding="utf-8").splitlines()
+            if arg.startswith("llima/compiler@")
+        ]
 
     def test_architecture_override_is_authoritative(self):
         manifest = {
@@ -153,8 +186,118 @@ class DownloadLlimaWheelTests(unittest.TestCase):
                 result, _ = self.run_helper(manifest)
 
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("requires a non-empty vulcan.ref", result.stderr)
+                self.assertIn("requires either vulcan.policy", result.stderr)
                 self.assertFalse(self.cli_log.exists())
+
+    def test_snap_uses_matching_branch(self):
+        manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"policy": "snap"}}
+            ]
+        }
+
+        result, output_dir = self.run_helper(
+            manifest,
+            wheel_versions=["0.4.0+topic.abcdef123456"],
+            github_ref_name="feature/topic",
+            github_ref_type="branch",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_cli_target("llima/compiler@feature/topic")
+        provenance = json.loads(
+            (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
+        )["sima_lmm"]
+        self.assertEqual(provenance["requested-ref"], "feature/topic")
+
+    def test_snap_feature_branch_falls_back_to_develop(self):
+        manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"policy": "snap"}}
+            ]
+        }
+
+        result, output_dir = self.run_helper(
+            manifest,
+            wheel_versions=["0.4.0+develop.abcdef123456"],
+            github_ref_name="feature/missing",
+            github_ref_type="branch",
+            fail_target="llima/compiler@feature/missing",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.cli_targets(),
+            ["llima/compiler@feature/missing", "llima/compiler@develop"],
+        )
+        provenance = json.loads(
+            (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
+        )["sima_lmm"]
+        self.assertEqual(provenance["requested-ref"], "develop")
+
+    def test_snap_protected_branch_does_not_fallback(self):
+        manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"policy": "snap"}}
+            ]
+        }
+
+        for branch in ("develop", "main", "release-2.1"):
+            with self.subTest(branch=branch):
+                result, _ = self.run_helper(
+                    manifest,
+                    wheel_versions=["0.4.0+develop.abcdef123456"],
+                    github_ref_name=branch,
+                    github_ref_type="branch",
+                    fail_target=f"llima/compiler@{branch}",
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.cli_targets(), [f"llima/compiler@{branch}"])
+
+    def test_tag_build_rejects_snap_and_unqualified_ref(self):
+        snap_manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"policy": "snap"}}
+            ]
+        }
+        result, _ = self.run_helper(
+            snap_manifest,
+            github_ref_name="v2.1.3",
+            github_ref_type="tag",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("snap policy is not allowed", result.stderr)
+
+        floating_manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"ref": "v0.4.0"}}
+            ]
+        }
+        result, _ = self.run_helper(
+            floating_manifest,
+            github_ref_name="v2.1.3",
+            github_ref_type="tag",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("commit-qualified", result.stderr)
+
+        pinned_manifest = {
+            "python-packages": [
+                {
+                    "name": "sima_lmm[sdk]",
+                    "vulcan": {"ref": "v0.4.0:deadbeef1234"},
+                }
+            ]
+        }
+        result, _ = self.run_helper(
+            pinned_manifest,
+            wheel_versions=["0.4.0"],
+            github_ref_name="v2.1.3",
+            github_ref_type="tag",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_cli_target("llima/compiler@v0.4.0:deadbeef1234")
 
     def test_unsupported_vulcan_package_fails(self):
         manifest = {
