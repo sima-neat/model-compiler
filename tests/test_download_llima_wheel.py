@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,8 @@ class DownloadLlimaWheelTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.work_dir = Path(self.temp_dir.name)
         self.call_count = 0
+        self.helper = self.work_dir / HELPER.name
+        shutil.copy2(HELPER, self.helper)
         self.cli_log = self.work_dir / "sima-cli.log"
         self.fake_cli = self.work_dir / "sima-cli"
         self.fake_cli.write_text(
@@ -86,7 +89,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
                 env[name] = value
         result = subprocess.run(
             [
-                str(HELPER),
+                str(self.helper),
                 "--output-dir",
                 str(output_dir),
                 "--source-json",
