@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import importlib.metadata
 import importlib.util
+import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -20,9 +23,21 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TOOL_TIMEOUT = 30
+# Snapshot-backed installations can take longer on first access while EBS loads
+# lazily restored blocks. Keep the ordinary smoke-test default short, but let
+# snapshot validation extend it without changing the test itself.
+DEFAULT_TOOL_TIMEOUT = int(os.environ.get("MODELSDK_SMOKE_TOOL_TIMEOUT_SECONDS", "30"))
 DEFAULT_YOLO_URL = "https://huggingface.co/webml/yolov8n/resolve/main/onnx/yolov8n.onnx"
 DEFAULT_WORK_ROOT = Path.home() / "tmp"
+QWEN3_REPO_ID = "Qwen/Qwen3-0.6B"
+QWEN3_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
+QWEN3_QUANTIZED_OUTPUT_TOLERANCE = 0.20
+QWEN3_COMPILE_CONFIGURATION = """\
+def get_layer_configuration(model_properties, layer):
+    if layer["is_group"] or layer["index"] != 0:
+        return {"compile": False}
+    return {"precision": "A_BF16_W_INT4"}
+"""
 
 REQUIRED_TOOLS = [
     "mla-nm",
@@ -44,9 +59,20 @@ REQUIRED_MODULES = [
     "torchvision",
     "sima_lmm",
     "gguf",
+    "huggingface_hub",
     "llama_cpp",
     "safetensors",
 ]
+
+ARM64_REQUIRED_PACKAGE_VERSIONS = {
+    "jax": "0.5.3",
+    "jaxlib": "0.5.3",
+    "ml-dtypes": "0.4.1",
+}
+
+X86_64_REQUIRED_PACKAGE_VERSIONS = {
+    "ml-dtypes": "0.4.1",
+}
 
 VERBOSE = False
 
@@ -172,9 +198,43 @@ def require_active_modelsdk() -> None:
 
 def smoke_preflight() -> SmokeCasePayload:
     require_active_modelsdk()
+    smoke_python_environment()
     smoke_tools()
     smoke_python_modules()
     return SmokeCasePayload()
+
+
+def required_package_versions() -> dict[str, str]:
+    target_arch = os.environ.get("MODELSDK_SMOKE_ARCH", platform.machine()).lower()
+    if target_arch in {"aarch64", "arm64"}:
+        return ARM64_REQUIRED_PACKAGE_VERSIONS
+    if target_arch in {"x86_64", "amd64"}:
+        return X86_64_REQUIRED_PACKAGE_VERSIONS
+    return {}
+
+
+def smoke_python_environment() -> None:
+    run([sys.executable, "-m", "pip", "check"], timeout=120)
+    required_versions = required_package_versions()
+    mismatches = []
+    for package, expected in required_versions.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            mismatches.append(f"{package}: missing (expected {expected})")
+            continue
+        if installed != expected:
+            mismatches.append(f"{package}: {installed} (expected {expected})")
+    if mismatches:
+        raise SmokeFailure("unexpected Python package versions: " + "; ".join(mismatches))
+    if required_versions:
+        log(
+            "verified Python packages: "
+            + ", ".join(
+                f"{package}=={version}"
+                for package, version in required_versions.items()
+            )
+        )
 
 
 def smoke_tools() -> None:
@@ -269,6 +329,7 @@ def run_quantize_compile(
     *,
     input_shape: str,
     compile_model: bool,
+    dtype: str,
 ) -> None:
     helper = REPO_ROOT / "skills" / "quantize_compile" / "scripts" / "quantize_compile.py"
     prepared_path = model_path.with_name(f"{model_path.stem}_prepared.onnx")
@@ -302,15 +363,50 @@ def run_quantize_compile(
         "--build_dir",
         str(build_dir),
     ]
+    if dtype == "bfloat16":
+        cmd.extend(["--bf16-activations", "--bf16-weights"])
     if not compile_model:
         cmd.append("--no-compile")
     run(cmd, cwd=REPO_ROOT, timeout=3600)
 
 
-def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
+def validate_quantization_manifest(build_dir: Path, dtype: str) -> None:
+    manifests = sorted(build_dir.rglob("quantization_manifest.json"))
+    if len(manifests) != 1:
+        raise SmokeFailure(
+            f"expected one quantization manifest under {build_dir}, found {len(manifests)}"
+        )
+    try:
+        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"cannot read quantization manifest: {manifests[0]}") from exc
+
+    expected = {
+        "activation_precision": dtype,
+        "weight_precision": dtype,
+        "device": "modalix",
+    }
+    if manifest != expected:
+        raise SmokeFailure(
+            f"quantization manifest does not match requested {dtype} configuration: "
+            f"expected {expected}, got {manifest}"
+        )
+
+
+def validate_and_measure_compiled_artifacts(
+    label: str, build_dir: Path, dtype: str
+) -> dict[str, str]:
     sima_files = sorted(build_dir.rglob("*.sima"))
     mpk_files = sorted(build_dir.rglob("*_mpk.tar.gz"))
     json_files = sorted(build_dir.rglob("*.json"))
+
+    if not sima_files:
+        raise SmokeFailure(f"no .sima package found under {build_dir}")
+    if not mpk_files:
+        raise SmokeFailure(f"no MPK archive found under {build_dir}")
+    for path in [*sima_files, *mpk_files]:
+        if path.stat().st_size == 0:
+            raise SmokeFailure(f"compiled artifact is empty: {path}")
 
     metrics = {
         "sima_packages": str(len(sima_files)),
@@ -320,8 +416,14 @@ def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
     }
 
     for path in sima_files[:3]:
-        with zipfile.ZipFile(path) as archive:
-            metrics[f"{path.name}:entries"] = str(len(archive.namelist()))
+        try:
+            with zipfile.ZipFile(path) as archive:
+                entries = archive.namelist()
+        except zipfile.BadZipFile as exc:
+            raise SmokeFailure(f"invalid .sima package: {path}") from exc
+        if not entries:
+            raise SmokeFailure(f".sima package contains no entries: {path}")
+        metrics[f"{path.name}:entries"] = str(len(entries))
 
     elf_paths: list[Path] = []
     extract_dir = build_dir / "_metrics_extract"
@@ -332,41 +434,212 @@ def measure_compiled_artifacts(label: str, build_dir: Path) -> dict[str, str]:
             for member in archive.getmembers():
                 if not member.isfile() or not member.name.endswith(".elf"):
                     continue
-                member.name = Path(member.name).name
-                archive.extract(member, extract_dir)
-                elf_paths.append(extract_dir / member.name)
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    raise SmokeFailure(f"cannot read MLA ELF from {archive_path}")
+                elf_path = extract_dir / Path(member.name).name
+                elf_path.write_bytes(extracted.read())
+                elf_paths.append(elf_path)
 
     metrics["mla_elfs"] = str(len(elf_paths))
-    if elf_paths:
-        run(["mla-size", *[str(path) for path in elf_paths]], timeout=120)
-        run(["mla-readelf", "-h", str(elf_paths[0])], timeout=60)
+    if not elf_paths:
+        raise SmokeFailure(f"MPK archives contain no MLA ELF under {build_dir}")
+    if any(path.stat().st_size == 0 for path in elf_paths):
+        raise SmokeFailure(f"MPK archive contains an empty MLA ELF under {build_dir}")
+    run(["mla-size", *[str(path) for path in elf_paths]], timeout=120)
+    run(["mla-readelf", "-h", str(elf_paths[0])], timeout=60)
 
+    validate_quantization_manifest(build_dir, dtype)
     log(f"{label} metrics: " + ", ".join(f"{key}={value}" for key, value in metrics.items()))
     return metrics
 
 
-def smoke_resnet(args: argparse.Namespace, *, compile_model: bool) -> SmokeCasePayload:
+def smoke_resnet(
+    args: argparse.Namespace,
+    *,
+    compile_model: bool,
+    dtype: str | None = None,
+) -> SmokeCasePayload:
+    dtype = dtype or args.dtype
     work_dir = work_dir_from_arg(args.work_dir, "modelsdk-smoke-")
-    run_dir = make_run_dir(work_dir, "resnet50")
+    run_dir = make_run_dir(work_dir, f"resnet50-{dtype}")
     model_path = Path(args.resnet_model) if args.resnet_model else work_dir / "resnet50.onnx"
-    build_dir = run_dir / ("resnet50_compile" if compile_model else "resnet50_quantize")
+    action = "compile" if compile_model else "quantize"
+    build_dir = run_dir / f"resnet50_{dtype}_{action}"
     if not model_path.exists():
         write_resnet50_onnx(model_path)
     sim_model_path = run_dir / "resnet50.sim.onnx"
     prepare_output_file(sim_model_path)
     run(["onnxsim", str(model_path), str(sim_model_path)], timeout=300)
-    audit_onnx_model(sim_model_path, args.dtype, strict=args.strict_audit)
+    audit_onnx_model(sim_model_path, dtype, strict=args.strict_audit)
     run_quantize_compile(
         sim_model_path,
         build_dir,
         input_shape="1,3,224,224",
         compile_model=compile_model,
+        dtype=dtype,
     )
-    log(f"ResNet50 smoke artifacts: {build_dir}")
+    log(f"ResNet50 {dtype} smoke artifacts: {build_dir}")
     metrics: dict[str, str] = {}
     if compile_model:
-        metrics = measure_compiled_artifacts("resnet50", build_dir)
+        metrics = validate_and_measure_compiled_artifacts(
+            f"resnet50-{dtype}", build_dir, dtype
+        )
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
+
+
+def validate_llima_artifacts(output_dir: Path) -> None:
+    mpk_dir = output_dir / "sima_files" / "mpk"
+    archives = sorted(mpk_dir.glob("*.tar.gz"))
+    if not archives:
+        raise SmokeFailure(f"no compiled MPK archives found in {mpk_dir}")
+
+    for archive in archives:
+        if archive.stat().st_size == 0:
+            raise SmokeFailure(f"compiled MPK is empty: {archive}")
+        with tarfile.open(archive, "r:gz") as mpk:
+            if not any(member.name.endswith(".elf") for member in mpk.getmembers()):
+                raise SmokeFailure(f"compiled MPK contains no MLA ELF: {archive}")
+
+
+def llima_sdk_inputs_from_onnx(onnx_path: Path) -> list[object]:
+    import numpy as np
+    import onnx
+
+    onnx_model = onnx.load(str(onnx_path), load_external_data=False)
+    rng = np.random.default_rng(1)
+    inputs = []
+    for value in onnx_model.graph.input:
+        onnx_shape = tuple(
+            dimension.dim_value for dimension in value.type.tensor_type.shape.dim
+        )
+        if len(onnx_shape) != 4 or any(dimension <= 0 for dimension in onnx_shape):
+            raise SmokeFailure(
+                f"expected static four-dimensional input for {value.name}, got {onnx_shape}"
+            )
+
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(value.type.tensor_type.elem_type)
+        sdk_shape = (onnx_shape[0], onnx_shape[2], onnx_shape[3], onnx_shape[1])
+        if np.issubdtype(dtype, np.floating):
+            inputs.append(rng.uniform(-1.0, 1.0, sdk_shape).astype(dtype))
+        else:
+            inputs.append(np.zeros(sdk_shape, dtype=dtype))
+    return inputs
+
+
+def assert_llima_quantized_outputs_close(reference: list[object], actual: list[object]) -> None:
+    import numpy as np
+
+    if len(reference) != len(actual):
+        raise SmokeFailure(
+            f"LLiMa output count differs: reference={len(reference)}, actual={len(actual)}"
+        )
+
+    for index, (reference_output, actual_output) in enumerate(zip(reference, actual, strict=True)):
+        if reference_output.shape != actual_output.shape:
+            raise SmokeFailure(
+                f"LLiMa output {index} shape differs: "
+                f"reference={reference_output.shape}, actual={actual_output.shape}"
+            )
+        absolute_tolerance = QWEN3_QUANTIZED_OUTPUT_TOLERANCE * float(
+            np.max(np.abs(reference_output))
+        )
+        if not np.allclose(actual_output, reference_output, rtol=0.0, atol=absolute_tolerance):
+            max_difference = float(np.max(np.abs(actual_output - reference_output)))
+            raise SmokeFailure(
+                f"LLiMa quantized output {index} differs from ONNX: "
+                f"max_abs_diff={max_difference}, atol={absolute_tolerance}"
+            )
+
+
+def execute_llima_qwen3_quantized_parts(model_path: Path, output_dir: Path) -> None:
+    from sima_lmm.model import EvalMode, VisionLanguageModel
+    from sima_lmm.model.language_post_model import LanguagePostModel
+    from sima_lmm.model.language_pre_model import LanguagePreModel
+
+    vlm_model = VisionLanguageModel.from_hf_cache(
+        hf_cache_path=model_path,
+        model_name=model_path.name,
+        onnx_path=output_dir / "onnx_files",
+        sima_path=output_dir / "sima_files",
+        max_num_tokens=1024,
+        system_prompt=None,
+    )
+    components = [
+        LanguagePreModel(
+            vlm_model.cfg,
+            f"{vlm_model.model_name}_language_n1_pre_layer0",
+            onnx_path=vlm_model.onnx_path,
+            sima_path=vlm_model.sima_path,
+            hf_model=vlm_model.hf_model,
+            num_tokens=1,
+            layer_idx=0,
+        ),
+        LanguagePostModel(
+            vlm_model.cfg,
+            f"{vlm_model.model_name}_language_n1_post_layer0",
+            onnx_path=vlm_model.onnx_path,
+            sima_path=vlm_model.sima_path,
+            hf_model=vlm_model.hf_model,
+            num_tokens=1,
+            layer_idx=0,
+            final_softcapping=None,
+        ),
+    ]
+
+    for component in components:
+        inputs = llima_sdk_inputs_from_onnx(component.onnx_file_name)
+        log(f"executing LLiMa quantized part with JAX: {component.model_name}")
+        onnx_outputs = component.run_model(EvalMode.ONNX, inputs)
+        quantized_outputs = component.run_model(EvalMode.SDK, inputs)
+        assert_llima_quantized_outputs_close(onnx_outputs, quantized_outputs)
+
+
+def llima_qwen3_compile_command(
+    config_path: Path, output_dir: Path, model_path: Path
+) -> list[str]:
+    return [
+        "llima-compile",
+        "-c",
+        str(config_path),
+        "-j",
+        "4",
+        "-o",
+        str(output_dir),
+        str(model_path),
+        "--no-quantize_embeddings",
+        "--no-quantize_kv_cache",
+    ]
+
+
+def smoke_llima_qwen3(args: argparse.Namespace) -> SmokeCasePayload:
+    from huggingface_hub import snapshot_download
+
+    work_dir = work_dir_from_arg(args.work_dir, "modelsdk-smoke-")
+    run_dir = make_run_dir(work_dir, "llima-qwen3")
+    model_dir = run_dir / "Qwen3-0.6B"
+    output_dir = run_dir / "output"
+    config_path = run_dir / "compile_config.py"
+
+    log(f"downloading {QWEN3_REPO_ID} at revision {QWEN3_REVISION}")
+    model_path = Path(
+        snapshot_download(
+            repo_id=QWEN3_REPO_ID,
+            revision=QWEN3_REVISION,
+            local_dir=str(model_dir),
+        )
+    )
+    config_path.write_text(QWEN3_COMPILE_CONFIGURATION, encoding="utf-8")
+
+    command = llima_qwen3_compile_command(config_path, output_dir, model_path)
+    for stage in ("--onnx", "--quantize", "--compile"):
+        log(f"running LLiMa Qwen3 smoke stage: {stage}")
+        run(command + [stage], timeout=3600)
+
+    validate_llima_artifacts(output_dir)
+    execute_llima_qwen3_quantized_parts(model_path, output_dir)
+    log(f"LLiMa Qwen3 smoke artifacts: {output_dir}")
+    return SmokeCasePayload(artifacts=output_dir)
 
 
 def download_file(url: str, output: Path) -> None:
@@ -419,9 +692,12 @@ def smoke_yolo(args: argparse.Namespace) -> SmokeCasePayload:
         build_dir,
         input_shape="1,3,640,640",
         compile_model=True,
+        dtype=args.dtype,
     )
     log(f"YOLOv8 smoke artifacts: {build_dir}")
-    metrics = measure_compiled_artifacts("yolov8", build_dir)
+    metrics = validate_and_measure_compiled_artifacts(
+        "yolov8", build_dir, args.dtype
+    )
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
@@ -474,11 +750,38 @@ def smoke_all(args: argparse.Namespace) -> int:
     return 0 if all(result.status == "PASS" for result in results) else 1
 
 
+def smoke_resnet_precisions(args: argparse.Namespace) -> int:
+    work_dir = work_dir_from_arg(args.work_dir, "modelsdk-resnet-precisions-")
+    args.work_dir = str(work_dir)
+    results = [
+        run_case("preflight", smoke_preflight),
+        run_case(
+            "resnet50-int8-compile",
+            lambda: smoke_resnet(args, compile_model=True, dtype="int8"),
+        ),
+        run_case(
+            "resnet50-bfloat16-compile",
+            lambda: smoke_resnet(args, compile_model=True, dtype="bfloat16"),
+        ),
+    ]
+    print_summary(results)
+    return 0 if all(result.status == "PASS" for result in results) else 1
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Smoke-test a Model Compiler extension installation")
     parser.add_argument(
         "--tier",
-        choices=["basic", "resnet-export", "resnet-quantize", "resnet-compile", "yolo", "all"],
+        choices=[
+            "basic",
+            "resnet-export",
+            "resnet-quantize",
+            "resnet-compile",
+            "resnet-compile-precisions",
+            "llima-qwen3-compile",
+            "yolo",
+            "all",
+        ],
         default=os.environ.get("MODELSDK_SMOKE_TIER", "basic"),
         help="Smoke-test depth. Default: %(default)s",
     )
@@ -504,6 +807,8 @@ def main() -> int:
     try:
         if args.tier == "all":
             return smoke_all(args)
+        if args.tier == "resnet-compile-precisions":
+            return smoke_resnet_precisions(args)
 
         smoke_preflight()
 
@@ -514,6 +819,8 @@ def main() -> int:
             smoke_resnet(args, compile_model=False)
         elif args.tier == "resnet-compile":
             smoke_resnet(args, compile_model=True)
+        elif args.tier == "llima-qwen3-compile":
+            smoke_llima_qwen3(args)
         elif args.tier == "yolo":
             smoke_yolo(args)
 

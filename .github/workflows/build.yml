@@ -1,0 +1,370 @@
+name: Build
+
+run-name: Build Model Compiler packages from ${{ github.ref_name }}
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  resolve-vulcan-config:
+    name: Resolve Vulcan Config
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'production' }}
+
+  package-model-compiler:
+    name: Package Model Compiler (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            target_arch: x86_64
+            runner:
+              - self-hosted
+              - Linux
+              - X64
+              - issue-triage
+          - arch: arm64
+            target_arch: aarch64
+            runner:
+              - self-hosted
+              - macOS
+              - ARM64
+              - osx
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test LLiMa wheel resolution
+        run: python3 -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Upgrade pip
+        run: python3 -m pip install --upgrade pip
+
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
+
+      - name: Show build environment
+        run: |
+          set -euo pipefail
+          uname -a
+          python3 --version
+          python3 -m pip --version
+
+      - name: Resolve bundle version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sdk_version="$(
+            python3 - <<'PY'
+          import json
+          with open("scripts/source.json", "r", encoding="utf-8") as f:
+              print(str(json.load(f).get("sdk_version", "")).strip())
+          PY
+          )"
+          if [[ -z "${sdk_version}" ]]; then
+            echo "scripts/source.json is missing sdk_version." >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            branch="$(printf '%s' "${branch}" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+|-+$//g')"
+            short_sha="$(printf '%.12s' "${GITHUB_SHA}")"
+            version="${sdk_version}.neat+${branch}.${short_sha}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved bundle version: ${version}"
+
+      - name: Build package
+        run: |
+          set -euo pipefail
+          scripts/build_modelsdk_bundle.sh \
+            --source-json scripts/source.json \
+            --target-arch "${{ matrix.target_arch }}" \
+            --output-dir "dist/${{ matrix.arch }}/package" \
+            --bundle-version "${{ steps.version.outputs.version }}" \
+            --prod
+
+      - name: Validate package
+        run: |
+          set -euo pipefail
+          test -f "dist/${{ matrix.arch }}/package/metadata.json"
+          test -f "dist/${{ matrix.arch }}/package/metadata-offline.json"
+          test -f "dist/${{ matrix.arch }}/package/model-compiler-${{ matrix.arch }}.zip"
+          python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata.json" >/dev/null
+          python3 -m json.tool "dist/${{ matrix.arch }}/package/metadata-offline.json" >/dev/null
+          python3 - <<'PY'
+          import json
+          import zipfile
+          from pathlib import Path
+
+          arch = "${{ matrix.arch }}"
+          package_dir = Path("dist") / arch / "package"
+          metadata = json.loads((package_dir / "metadata.json").read_text(encoding="utf-8"))
+          offline_metadata = json.loads((package_dir / "metadata-offline.json").read_text(encoding="utf-8"))
+          archive_name = f"model-compiler-{arch}.zip"
+          archive = package_dir / archive_name
+          with zipfile.ZipFile(archive) as zf:
+              names = set(zf.namelist())
+          required = {"install_modelsdk_wheels.sh", "source.json", "manifest.txt"}
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f"Package archive missing required files: {missing}")
+          if not any(name.endswith(".whl") for name in names):
+              raise SystemExit("Package archive contains no wheels")
+          if metadata.get("resources") != [archive_name]:
+              raise SystemExit("Metadata resources must contain only the package archive")
+          if offline_metadata.get("resources") != [archive_name]:
+              raise SystemExit("Manual-distribution metadata must contain only the package archive")
+          resolved = metadata.get("resolved-packages", {}).get("sima_lmm", {})
+          if offline_metadata.get("resolved-packages", {}).get("sima_lmm") != resolved:
+              raise SystemExit("Resolved LLiMa provenance differs between metadata variants")
+          required_provenance = {
+              "requested-ref", "resolved-commit", "version", "wheel"
+          }
+          if not required_provenance.issubset(resolved) or not all(
+              resolved[key] for key in required_provenance
+          ):
+              raise SystemExit(f"Incomplete resolved LLiMa provenance: {resolved!r}")
+          if resolved["wheel"] not in names:
+              raise SystemExit("Resolved LLiMa wheel is missing from the package archive")
+          offline_platforms = offline_metadata.get("platforms", [])
+          offline_host = next(
+              (platform for platform in offline_platforms if platform.get("type") == "host"),
+              {},
+          )
+          if set(offline_host.get("os", [])) != {"linux", "mac", "windows"}:
+              raise SystemExit("Manual-distribution metadata must support Linux, macOS, and Windows hosts")
+          script = metadata.get("installation", {}).get("script", "")
+          expected = (
+              "bundle_dir=$(mktemp -d) && trap 'rm -rf \"$bundle_dir\"' EXIT && "
+              f"unzip -oq {archive_name} -d \"$bundle_dir\" && "
+              "bash \"$bundle_dir\"/install_modelsdk_wheels.sh"
+          )
+          if script != expected:
+              raise SystemExit(f"Unexpected installation script: {script!r}")
+          offline_script = offline_metadata.get("installation", {}).get("script", "")
+          if f"bash ./install_modelsdk_wheels.sh" not in offline_script:
+              raise SystemExit(f"Unexpected manual-distribution script: {offline_script!r}")
+          PY
+
+          ls -lah "dist/${{ matrix.arch }}/package"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-${{ matrix.arch }}
+          path: dist/${{ matrix.arch }}/package/*
+          if-no-files-found: error
+          retention-days: 3
+
+  test-package-install:
+    name: Test ${{ matrix.arch }} package install
+    needs:
+      - package-model-compiler
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            artifact_name: model-compiler-amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact_name: model-compiler-arm64
+
+    steps:
+      - name: Checkout smoke test
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            scripts/smoke_test_modelsdk.py
+            skills/model_surgery
+            skills/quantize_compile
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Show test environment
+        run: |
+          set -euo pipefail
+          uname -a
+          python3 --version
+          python3 -m pip --version
+          df -h
+
+      - name: Download generated package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: _package
+
+      - name: Install package
+        run: |
+          set -euo pipefail
+          script="$(python3 -c 'import json; print(json.load(open("_package/metadata.json"))["installation"]["script"])')"
+          cd _package
+          bash -c "$script"
+
+      - name: Run post-install smoke test
+        env:
+          MODELSDK_SMOKE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          model_compiler_dir="${HOME}/sdk-extensions/model-compiler"
+          if [[ ! -f "${model_compiler_dir}/bin/activate" ]]; then
+            echo "Model Compiler venv was not installed at ${model_compiler_dir}" >&2
+            exit 1
+          fi
+
+          bash --noprofile --rcfile "${HOME}/.bashrc" -i <<'BASH'
+          set -euo pipefail
+
+          type activate-model-compiler
+          activate-model-compiler
+
+          echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
+          echo "XLA_FLAGS=${XLA_FLAGS:-<unset>}"
+          echo "SIMA_MLA_COMPILE_USE_JAX=${SIMA_MLA_COMPILE_USE_JAX:-<unset>}"
+          which python
+          python --version
+
+          case "${MODELSDK_SMOKE_ARCH}" in
+            arm64)
+              [[ "${XLA_FLAGS:-}" == "--xla_cpu_max_isa=NEON" ]]
+              [[ "${SIMA_MLA_COMPILE_USE_JAX:-}" == "1" ]]
+              ;;
+            amd64)
+              [[ -z "${XLA_FLAGS+x}" ]]
+              [[ -z "${SIMA_MLA_COMPILE_USE_JAX+x}" ]]
+              ;;
+            *)
+              echo "Unsupported smoke-test architecture: ${MODELSDK_SMOKE_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          smoke_tier="resnet-compile-precisions"
+          echo "Running Model Compiler smoke tier: ${smoke_tier}"
+          python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
+
+          export HF_HOME="${RUNNER_TEMP}/huggingface"
+          echo "Running Model Compiler smoke tier: llima-qwen3-compile"
+          python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
+          BASH
+
+  publish-amd64:
+    name: Publish amd64 Package to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-model-compiler
+      - test-package-install
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: amd64
+      artifact_pattern: model-compiler-amd64
+      artifact_glob: "*"
+      min_artifact_count: 2
+      publish_manifest: true
+
+  publish-arm64:
+    name: Publish arm64 Package to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-model-compiler
+      - test-package-install
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: arm64
+      artifact_pattern: model-compiler-arm64
+      artifact_glob: "*"
+      min_artifact_count: 2
+      publish_manifest: true
+
+  update-amd64-latest:
+    name: Update amd64 Vulcan Latest Tag
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
+    needs:
+      - resolve-vulcan-config
+      - publish-amd64
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      artifact_folder: amd64
+      validate_manifest: true
+
+  update-arm64-latest:
+    name: Update arm64 Vulcan Latest Tag
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
+    needs:
+      - resolve-vulcan-config
+      - publish-arm64
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      artifact_folder: arm64
+      validate_manifest: true

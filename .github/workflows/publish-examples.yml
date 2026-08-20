@@ -1,0 +1,98 @@
+name: Publish Examples
+
+run-name: Publish Model Compiler examples from ${{ github.ref_name }}
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  resolve-vulcan-config:
+    name: Resolve Vulcan Config
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'production' }}
+
+  package-examples:
+    name: Package Examples
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "${HOME}/.sima-cli/.venv/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" packages build --help >/dev/null
+
+      - name: Build examples package
+        run: |
+          set -euo pipefail
+          scripts/build_examples.sh --output-dir dist/examples
+          ls -la dist/examples
+
+      - name: Upload examples package
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-examples
+          path: dist/examples/*
+          if-no-files-found: error
+          retention-days: 3
+
+  publish-examples:
+    name: Publish Examples to Vulcan
+    needs:
+      - resolve-vulcan-config
+      - package-examples
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-vulcan-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: examples
+      artifact_pattern: model-compiler-examples
+      artifact_glob: "*"
+      min_artifact_count: 2
+      publish_manifest: true
+
+  update-latest:
+    name: Update Vulcan Latest Tag
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    needs:
+      - resolve-vulcan-config
+      - publish-examples
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-vulcan-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+      artifact_folder: examples
+      validate_manifest: true

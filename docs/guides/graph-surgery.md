@@ -5,8 +5,29 @@ sidebar_position: 3
 
 # Graph surgery
 
-Graph surgery modifies an ONNX graph so the Model Compiler can compile and
-deploy the model on a SiMa device.
+Most models can be compiled directly when their operators and tensor shapes are
+supported by the Model Compiler. Before changing a model, check the
+[Model compatibility](./model-compatibility.md) list and try the standard
+compile flow first.
+
+Graph surgery is an advanced step for models that need targeted graph changes
+before they compile cleanly or before they run efficiently on a SiMa device. You
+can make those changes in the original Python model code and export the model
+again, or you can edit the exported ONNX graph directly.
+
+The SDK ships a prebuilt `sima-model-surgery` skill for Codex and Claude. Ask
+the agent to inspect your model and it can check compatibility, propose and
+apply the needed graph edits, validate the result, and prepare the model for
+another compile attempt. The skill is especially useful for YOLO models, where
+graph surgery can improve compiler compatibility and optimize model outputs for
+the SiMa runtime.
+
+For example, ask:
+
+```text
+Use the sima-model-surgery skill to inspect my YOLO model, optimize unsupported
+graph sections, and validate the modified model.
+```
 
 ## Understand graph surgery
 
@@ -17,13 +38,24 @@ deployment.
 Common reasons include:
 
 - Customize a pre-trained model.
-- Adapt a model for a target device.
-- Replace or reshape graph operations that block efficient compilation.
+- Replace an operator that is not supported by the Model Compiler.
+- Reshape or rewrite graph operations that block efficient compilation.
+- Optimize a model graph so more of the model runs on the MLA.
+- Adapt a model for a target device or deployment constraint.
 
-## Use SiMa tools for graph surgery
+## Choose where to make the change
 
 The Model Compiler is updated regularly with support for additional operators.
-Some models still need graph surgery before all layers can run on the MLA.
+Some models still need graph surgery before all layers can run on the MLA or
+before the model reaches the performance target.
+
+When possible, make the change in the source model code, such as the PyTorch or
+TensorFlow module that produced the exported model. Source-level rewrites are
+usually easier to review, test, and maintain.
+
+When source-level changes are not practical, edit the exported ONNX graph
+directly. The rest of this page focuses on ONNX graph structure because ONNX is
+the interchange format consumed by the Model Compiler.
 
 For example, you might reshape non-4D tensors to 4D or replace unsupported
 operators with supported alternatives.
@@ -35,7 +67,7 @@ module before you modify a graph:
 from sima_utils.onnx import onnx_helpers as oh
 ```
 
-For the full helper API, see the API reference.
+For Model Compiler APIs, see the [AFE API reference](/reference/model-sdk-api/).
 
 ## Analyze MLA coverage
 

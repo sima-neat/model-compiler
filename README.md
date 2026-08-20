@@ -74,41 +74,10 @@ Example:
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "version": "v2.1.3560-develop.409",
       "extension": ".zip"
     }
-  ],
-  "aarch64": {
-    "system_dependencies": {
-      "ubuntu": [
-        "build-essential",
-        "curl",
-        "libllvm18",
-        "libopenblas0-pthread"
-      ]
-    },
-    "dependency_overrides": {},
-    "python-packages": [
-      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
-      {
-        "name": "spconv",
-        "version": "2.3.8",
-        "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl"
-      },
-      {
-        "name": "cumm",
-        "version": "0.7.13",
-        "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl"
-      }
-    ],
-    "binary-packages": [
-      {
-        "name": "mla/toolchain/mla-toolchain",
-        "version": "v2.1.3523-neat.4-ubuntu",
-        "extension": ".zip"
-      }
-    ]
-  }
+  ]
 }
 ```
 
@@ -118,13 +87,37 @@ Fields:
 - `system_dependencies.ubuntu`: apt packages installed on the target host before Python and virtual environment setup
 - `dependency_overrides`: exact versions to rewrite into downloaded wheel metadata when needed
 - `python-packages`: top-level Python packages to include in the bundle; entries may include `file` to download a wheel from `sima-pypi/<package-name>/`, or `url` for a full direct wheel URL, when the wheel is not exposed by the configured Python index
-- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment
-- `aarch64`: optional architecture-specific overrides for the same fields; when present, ARM64 builds and installs use this package set instead of the top-level package set
+- `binary-packages`: non-wheel artifacts fetched from Artifactory and installed into the Model Compiler virtual environment; the MLA toolchain derives its `x86` or `aarch64` archive suffix from the build target
+- `aarch64`: optional architecture-specific overrides for fields that genuinely differ on ARM64; `dependency_overrides` entries are merged over the global map, so list only packages whose ARM64 pins differ
 
 Native source builds triggered during installation, such as
 `llama_cpp_python`, use the build backend's default parallelism. Set
 `MODELSDK_BUILD_PARALLEL_LEVEL` to limit or override build parallelism on
 resource-constrained machines.
+
+### Automated component updates
+
+The `Daily Component Update` workflow checks `scripts/source.json` every
+day at 00:00 UTC. The current version is the update policy: for example,
+`2.1.3.dev0+master.390` can advance only within
+`2.1.3.dev0+master.*`, and `v2.1.3560-develop.409` can advance only within
+`v2.1.3560-develop.*`. Changing a base version or channel remains a manual
+manifest change.
+
+The private macOS/ARM64 runner validates available artifacts and acts as the
+authoritative scanner because Artifactory publishes matching component
+versions for ARM64 and amd64. Changed manifests refresh the stable
+`automation/component-updates` branch from the tested `develop` commit. The
+ordinary Build workflow still packages and tests both architectures. A
+successful Build run for that exact branch commit creates or updates one pull
+request back to `develop`.
+
+Manual dry runs are available through `workflow_dispatch`. Branch pushes use
+the `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY` secrets so the
+push triggers the Build workflow. GitHub executes scheduled and
+`workflow_run` workflows from the repository default branch, so both
+automation workflow files must be present on `main` before unattended runs
+and automatic PR creation become active.
 
 ## Building a Bundle
 
@@ -174,22 +167,39 @@ has a release tag such as `v1.0.0`, the generated `metadata.json` uses
 `sdk_version.neat+branch.git-short-hash`. Pass `--bundle-version` to override
 this behavior.
 
-The build performs these steps:
+The LLiMa Vulcan entry uses `policy: snap` for development builds. It resolves
+the latest artifact from the matching Model Compiler branch. A feature branch
+without a matching LLiMa artifact falls back to `develop`; `develop`, `main`,
+and release branches fail instead of crossing channels.
+
+The Release workflow requires the intended LLiMa version and replaces snap
+policy on the Model Compiler release branch with a commit-qualified ref such as
+`v0.4.0:<commit>` before creating the Model Compiler tag. Tag builds reject
+snap policy and non-commit-qualified refs. Generated metadata records the
+requested ref, resolved commit, wheel version, and wheel filename.
+
+The build creates a self-contained archive by default and performs these steps:
 1. Read the package manifest from `source.json`.
-2. Download one wheel for each requested Python package.
-3. Download direct internal wheel dependencies referenced by those wheels.
-4. Download binary package archives such as the MLA toolchain.
-5. Copy the installer and source manifest into the output directory.
-6. Generate `manifest.txt` with the bundled wheel filenames.
-7. Generate `metadata.json`.
+2. Download every wheel in the target architecture's dependency closure.
+3. Download binary package archives such as the MLA toolchain.
+4. Copy the installer and source manifest into the output directory.
+5. Generate `manifest.txt` with the bundled wheel filenames.
+6. Generate the ZIP archive plus `metadata.json` and `metadata-offline.json`.
+
+The release workflow builds the full dependency closure into one archive.
+`metadata.json` downloads that archive, extracts it into a temporary directory,
+runs the installer locally, and removes the extracted directory afterward.
+`metadata-offline.json` references the same archive but provides manual
+distribution instructions for transferring the ZIP to another environment and
+running its included installer there. It is available from Linux, macOS, and
+Windows hosts so the archive can be downloaded before transfer; the installer
+inside the archive remains Linux-only.
 
 Output files in `dist/` typically include:
-- `*.whl`
-- `*.zip`
-- `manifest.txt`
-- `install_modelsdk_wheels.sh`
-- `source.json`
+
+- `model-compiler-<arch>.zip`
 - `metadata.json`
+- `metadata-offline.json`
 
 ## Testing a Local Bundle
 
@@ -230,12 +240,19 @@ with `.netrc` or your shell environment before you run the scripts.
 
 ## Installing a Built Bundle
 
-After you build the bundle, copy the contents of `dist/` to the target machine
-and run:
+After you build the bundle, copy the architecture-specific ZIP to the target
+Linux machine, extract it, and run the included installer. For example, for an
+ARM64 target:
 
 ```bash
+unzip -q model-compiler-arm64.zip -d model-compiler-arm64
+cd model-compiler-arm64
 bash ./install_modelsdk_wheels.sh
 ```
+
+Use `model-compiler-amd64.zip` for an amd64 target. Alternatively, install
+through `metadata.json` with `sima-cli`, which extracts the same archive into a
+temporary directory and runs this installer automatically.
 
 The installer performs these steps:
 1. Read `source.json`.
@@ -246,10 +263,11 @@ The installer performs these steps:
 6. Install bundled binary packages into that virtual environment.
 7. Install top-level package specs from `python-packages`, including extras such
    as `sima_lmm[sdk]`. It uses manifest-listed wheels as local `--find-links`
-   inputs and falls back to PyPI when needed.
+   inputs with `--no-index`.
 8. Update shell startup files with the Model Compiler virtual environment
    `PATH`.
-9. Remove downloaded bundle payloads after successful installation.
+9. Leave the extracted archive available for reuse; remove it manually if it is
+   no longer needed.
 
 ## Install Location
 
@@ -357,6 +375,17 @@ the generated MPK archive when those files are present.
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
 
+On ARM systems, activation enables the JAX compilation path with the NEON CPU
+ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
+
+```bash
+activate-model-compiler --no-jax
+```
+
+This explicitly disables the JAX compilation path for the activation while
+preserving unrelated `XLA_FLAGS`. Deactivation restores the environment values
+that were present before activation.
+
 ## Cleanup Behavior
 
 After a successful install, the installer removes downloaded bundle resources
@@ -382,17 +411,11 @@ It keeps installer and metadata files such as:
 - If a wheel is missing from Artifactory, provide `--extra-index-url` so the
   build can fall back to public PyPI for Python packages.
 
-## Regenerating Metadata Only
+## Regenerating a Package
 
-If you already have a populated bundle directory, regenerate only
-`metadata.json`:
-
-```bash
-python3 ./scripts/generate_metadata.py \
-  --artifacts-dir ./dist \
-  --output ./dist/metadata.json \
-  --version 2.0.0.neat+local
-```
+The archive contains the installer and every dependency, so regenerate it and
+its matching metadata together with `build_modelsdk_bundle.sh` rather than
+editing metadata independently.
 
 ## Status
 

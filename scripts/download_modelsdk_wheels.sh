@@ -13,7 +13,8 @@ Usage:
     [--spec 'name==version']... \
     [--spec 'name @ wheel-file.whl']... \
     [--python-version 312] \
-    [--target-arch x86_64|aarch64]
+    [--target-arch x86_64|aarch64] \
+    [--include-dependencies]
 
 Description:
   Downloads Python wheels from the configured Python index and optional
@@ -39,11 +40,16 @@ OUTPUT_DIR=""
 SOURCE_JSON=""
 PYTHON_VERSION="312"
 TARGET_ARCH="${MODELSDK_TARGET_ARCH:-}"
+INCLUDE_DEPENDENCIES="0"
 declare -a CLI_SPECS=()
 declare -a SUMMARY_REQUESTED=()
 declare -a SUMMARY_RESOLVED=()
 declare -a SUMMARY_WHEEL=()
 declare -a BINARY_ARTIFACTS=()
+declare -a PRELOAD_PACKAGE_SPECS=()
+declare -a PRELOAD_CLOSURE_TARGETS=()
+declare -a SOURCE_PACKAGE_SPECS=()
+declare -a SOURCE_PACKAGE_DEP_SPECS=()
 declare -a PIP_INDEX_ARGS=()
 declare -a TEMP_DIRS=()
 declare -a X86_PLATFORM_ARGS=(
@@ -235,20 +241,45 @@ wheel = pathlib.Path(sys.argv[1])
 source_json = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
 target_arch = sys.argv[3] if len(sys.argv) > 3 else ""
 override_map = {}
+replacement_map = {}
+exclusion_set = set()
 if source_json and source_json.is_file():
     doc = json.loads(source_json.read_text(encoding="utf-8"))
     arch_doc = doc.get(target_arch) if target_arch else None
+    raw = doc.get("dependency_overrides", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    raw = dict(raw)
     if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_overrides"), dict):
-        raw = arch_doc["dependency_overrides"]
+        raw.update(arch_doc["dependency_overrides"])
+    override_map = {
+        str(k).strip().lower().replace("_", "-"): str(v).strip()
+        for k, v in raw.items()
+        if str(k).strip() and str(v).strip()
+    }
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_replacements"), dict):
+        raw_replacements = arch_doc["dependency_replacements"]
     else:
-        raw = doc.get("dependency_overrides", {})
-    if isinstance(raw, dict):
-        override_map = {
+        raw_replacements = doc.get("dependency_replacements", {})
+    if isinstance(raw_replacements, dict):
+        replacement_map = {
             str(k).strip().lower().replace("_", "-"): str(v).strip()
-            for k, v in raw.items()
+            for k, v in raw_replacements.items()
             if str(k).strip() and str(v).strip()
         }
+    if isinstance(arch_doc, dict) and isinstance(arch_doc.get("dependency_exclusions"), list):
+        raw_exclusions = arch_doc["dependency_exclusions"]
+    else:
+        raw_exclusions = doc.get("dependency_exclusions", [])
+    if isinstance(raw_exclusions, list):
+        exclusion_set = {
+            str(v).strip().lower().replace("_", "-")
+            for v in raw_exclusions
+            if str(v).strip()
+        }
 if not override_map:
+    override_map = {}
+if not override_map and not replacement_map and not exclusion_set:
     raise SystemExit(0)
 
 tmp = tempfile.NamedTemporaryFile(prefix="patched-", suffix=".whl", dir=str(wheel.parent), delete=False)
@@ -266,20 +297,39 @@ try:
             raise SystemExit(0)
 
         metadata_text = contents[metadata_name].decode("utf-8", "replace")
-        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(\s*==\s*)([^;\s]+)(.*)$")
+        req_re = re.compile(r"^(Requires-Dist:\s*)([A-Za-z0-9_.-]+)(.*)$")
         new_lines = []
         for line in metadata_text.splitlines():
             match = req_re.match(line)
             if not match:
                 new_lines.append(line)
                 continue
-            prefix, name, eq, version, suffix = match.groups()
+            prefix, name, remainder = match.groups()
             normalized = name.strip().lower().replace("_", "-")
-            target = override_map.get(normalized)
-            if target and target != version:
-                new_lines.append(f"{prefix}{name}{eq}{target}{suffix}")
+            if normalized in exclusion_set:
                 patched = True
-                patched_pairs.append((name, version, target))
+                patched_pairs.append((name, remainder.strip() or "<any>", "<removed>"))
+                continue
+            replacement = replacement_map.get(normalized)
+            if replacement:
+                marker = ""
+                if ";" in remainder:
+                    marker = ";" + remainder.split(";", 1)[1]
+                new_lines.append(f"{prefix}{replacement}{marker}")
+                patched = True
+                patched_pairs.append((name, remainder.strip() or "<any>", replacement))
+                continue
+
+            target = override_map.get(normalized)
+            if target:
+                requirement, separator, marker = remainder.partition(";")
+                extras_match = re.match(r"^\s*(\[[^]]+\])", requirement)
+                extras = extras_match.group(1) if extras_match else ""
+                suffix = f";{marker}" if separator else ""
+                replacement = f"{name}{extras} == {target}"
+                new_lines.append(f"{prefix}{replacement}{suffix}")
+                patched = True
+                patched_pairs.append((name, remainder.strip() or "<any>", replacement))
             else:
                 new_lines.append(line)
         if patched:
@@ -387,7 +437,77 @@ for item in items:
         else:
             archive_type = extension
     if name and version:
+        normalized = name.lower().strip("/")
+        if archive_type == "zip" and normalized.endswith("mla-toolchain") and "mla" in normalized:
+            arch_suffix = {"x86_64": "x86", "aarch64": "aarch64"}.get(target_arch)
+            if not arch_suffix:
+                raise SystemExit(f"unsupported MLA toolchain architecture: {target_arch!r}")
+            version = f"{version}-{arch_suffix}-ubuntu"
         print(f"{name}|{version}|{archive_type}")
+PY
+}
+
+read_source_package_specs() {
+  local source_json="$1"
+  [[ -n "$source_json" && -f "$source_json" ]] || return 0
+  python3 - "$source_json" "$TARGET_ARCH" <<'PY'
+import json
+import pathlib
+import sys
+
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+target_arch = sys.argv[2] if len(sys.argv) > 2 else ""
+arch_doc = doc.get(target_arch) if target_arch else None
+if isinstance(arch_doc, dict) and isinstance(arch_doc.get("source-packages"), list):
+    items = arch_doc["source-packages"]
+else:
+    items = doc.get("source-packages", [])
+if not isinstance(items, list):
+    raise SystemExit(0)
+seen_deps = set()
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    name = str(item.get("name", "")).strip()
+    version = str(item.get("version", "")).strip()
+    if name and version:
+        print(f"package|{name}=={version}")
+    for key in ("build-dependencies", "dependencies"):
+        deps = item.get(key, [])
+        if not isinstance(deps, list):
+            continue
+        for dep in deps:
+            dep = str(dep).strip()
+            if dep and dep not in seen_deps:
+                seen_deps.add(dep)
+                print(f"dependency|{dep}")
+PY
+}
+
+read_preload_package_specs() {
+  local source_json="$1"
+  [[ -n "$source_json" && -f "$source_json" ]] || return 0
+  python3 - "$source_json" "$TARGET_ARCH" <<'PY'
+import json
+import pathlib
+import sys
+
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+target_arch = sys.argv[2] if len(sys.argv) > 2 else ""
+arch_doc = doc.get(target_arch) if target_arch else None
+if isinstance(arch_doc, dict) and isinstance(arch_doc.get("preload-packages"), list):
+    items = arch_doc["preload-packages"]
+else:
+    items = doc.get("preload-packages", [])
+if not isinstance(items, list):
+    raise SystemExit(0)
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    name = str(item.get("name", "")).strip()
+    version = str(item.get("version", "")).strip()
+    if name and version:
+        print(f"{name}=={version}")
 PY
 }
 
@@ -506,6 +626,104 @@ download_binary_package() {
   return 0
 }
 
+download_source_packages() {
+  local spec=""
+  local dep=""
+  local dep_dir=""
+  local dep_log=""
+
+  if [[ ${#SOURCE_PACKAGE_SPECS[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "Downloading ${#SOURCE_PACKAGE_SPECS[@]} source package(s) for bundled source builds..."
+  for spec in "${SOURCE_PACKAGE_SPECS[@]}"; do
+    PIP_NO_INPUT=1 python3 -m pip download \
+      --disable-pip-version-check \
+      --no-deps \
+      --no-binary=:all: \
+      "${PIP_INDEX_ARGS[@]}" \
+      --dest "$OUTPUT_DIR" \
+      "$spec"
+  done
+
+  if [[ ${#SOURCE_PACKAGE_DEP_SPECS[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  dep_dir="$(mktemp -d)"
+  register_temp_dir "$dep_dir"
+  dep_log="${dep_dir}/source-package-dependencies.log"
+  echo "Downloading source package build/runtime dependency wheels..."
+  set +e
+  PIP_NO_INPUT=1 python3 -m pip download \
+    --disable-pip-version-check \
+    --only-binary=:all: \
+    "${PIP_INDEX_ARGS[@]}" \
+    --find-links "$OUTPUT_DIR" \
+    --dest "$OUTPUT_DIR" \
+    "${TARGET_PLATFORM_ARGS[@]}" \
+    --implementation cp \
+    --abi "cp${PYTHON_VERSION}" \
+    --python-version "$PYTHON_VERSION" \
+    "${SOURCE_PACKAGE_DEP_SPECS[@]}" >"$dep_log" 2>&1
+  dep_rc=$?
+  set -e
+  if [[ $dep_rc -ne 0 ]]; then
+    cat "$dep_log" >&2
+    echo "Failed to download source package dependency wheels." >&2
+    return 1
+  fi
+  sed 's/^/  /' "$dep_log"
+  return 0
+}
+
+download_preload_packages() {
+  local spec=""
+  local tmpdir=""
+  local wheel_name=""
+  local package_spec=""
+  local wheel_path=""
+
+  if [[ ${#PRELOAD_PACKAGE_SPECS[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "Preloading ${#PRELOAD_PACKAGE_SPECS[@]} resolver helper wheel(s)..."
+  for spec in "${PRELOAD_PACKAGE_SPECS[@]}"; do
+    tmpdir="$(mktemp -d)"
+    register_temp_dir "$tmpdir"
+    echo "  Preloading wheel for: $spec"
+    if ! download_one_spec "$spec" "$tmpdir"; then
+      if [[ -n "${DOWNLOAD_ERROR_LOG:-}" && -f "${DOWNLOAD_ERROR_LOG:-}" ]]; then
+        cat "$DOWNLOAD_ERROR_LOG" >&2
+      fi
+      rm -rf "$tmpdir"
+      echo "Failed to preload package: $spec" >&2
+      return 1
+    fi
+
+    wheel_name="$(basename "$DOWNLOADED_WHEEL")"
+    patch_wheel_metadata_requirements "$DOWNLOADED_WHEEL" "$SOURCE_JSON"
+    mv -f "$DOWNLOADED_WHEEL" "$OUTPUT_DIR/"
+    wheel_path="$OUTPUT_DIR/$wheel_name"
+
+    if [[ "$spec" == *"=="* ]]; then
+      package_spec="${spec%%==*}"
+    else
+      package_spec=""
+    fi
+    package_spec="${package_spec#"${package_spec%%[![:space:]]*}"}"
+    package_spec="${package_spec%"${package_spec##*[![:space:]]}"}"
+    if [[ "$package_spec" == *"["*"]"* ]]; then
+      PRELOAD_CLOSURE_TARGETS+=("${package_spec} @ $(file_uri "$wheel_path")")
+    else
+      PRELOAD_CLOSURE_TARGETS+=("$wheel_path")
+    fi
+    rm -rf "$tmpdir"
+  done
+}
+
 download_direct_internal_deps_for_wheel() {
   local wheel_file="$1"
   local dest_dir="$2"
@@ -540,6 +758,117 @@ download_direct_internal_deps_for_wheel() {
     rm -rf "$dep_tmp"
   done
 
+  return 0
+}
+
+file_uri() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve().as_uri())
+PY
+}
+
+closure_target_for_summary_entry() {
+  local spec="$1"
+  local wheel_name="$2"
+  local package_spec=""
+  local wheel_path="${OUTPUT_DIR}/${wheel_name}"
+
+  if [[ ! -f "$wheel_path" ]]; then
+    echo "Top-level wheel missing for dependency closure: $wheel_path" >&2
+    return 1
+  fi
+
+  if [[ "$spec" == *" @ "* ]]; then
+    package_spec="${spec%% @ *}"
+  elif [[ "$spec" == *"=="* ]]; then
+    package_spec="${spec%%==*}"
+  else
+    package_spec=""
+  fi
+
+  package_spec="${package_spec#"${package_spec%%[![:space:]]*}"}"
+  package_spec="${package_spec%"${package_spec##*[![:space:]]}"}"
+
+  if [[ "$package_spec" == *"["*"]"* ]]; then
+    printf '%s @ %s\n' "$package_spec" "$(file_uri "$wheel_path")"
+  else
+    printf '%s\n' "$wheel_path"
+  fi
+}
+
+download_full_dependency_closure() {
+  local dep_dir=""
+  local dep_log=""
+  local spec=""
+  local wheel=""
+  local wheel_path=""
+  local i=0
+  local -a closure_targets=()
+  local -a summary_target_wheels=()
+  local -a wheels=()
+
+  while [[ $i -lt ${#SUMMARY_RESOLVED[@]} ]]; do
+    spec="${SUMMARY_RESOLVED[$i]}"
+    wheel="${SUMMARY_WHEEL[$i]}"
+    if [[ -n "$spec" && -n "$wheel" ]]; then
+      closure_targets+=("$(closure_target_for_summary_entry "$spec" "$wheel")")
+      summary_target_wheels+=("$wheel")
+    fi
+    i=$((i + 1))
+  done
+
+  while IFS= read -r wheel_path; do
+    [[ -n "$wheel_path" ]] || continue
+    wheel="$(basename "$wheel_path")"
+    if [[ " ${summary_target_wheels[*]} " == *" ${wheel} "* ]]; then
+      continue
+    fi
+    wheels+=("$wheel_path")
+  done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | sort)
+
+  if [[ ${#wheels[@]} -gt 0 ]]; then
+    closure_targets+=("${wheels[@]}")
+  fi
+  if [[ ${#PRELOAD_CLOSURE_TARGETS[@]} -gt 0 ]]; then
+    closure_targets+=("${PRELOAD_CLOSURE_TARGETS[@]}")
+  fi
+
+  if [[ ${#closure_targets[@]} -eq 0 ]]; then
+    echo "No package specs or wheels found for dependency closure." >&2
+    return 1
+  fi
+
+  dep_dir="$(mktemp -d)"
+  register_temp_dir "$dep_dir"
+  dep_log="${dep_dir}/pip-download-dependencies.log"
+
+  echo "Downloading full dependency closure for package bundle..."
+  echo "  Resolving from local patched wheels; package extras are preserved with direct references."
+  set +e
+  PIP_NO_INPUT=1 python3 -m pip download \
+    --disable-pip-version-check \
+    --only-binary=:all: \
+    "${PIP_INDEX_ARGS[@]}" \
+    --find-links "$OUTPUT_DIR" \
+    --dest "$OUTPUT_DIR" \
+    "${TARGET_PLATFORM_ARGS[@]}" \
+    --implementation cp \
+    --abi "cp${PYTHON_VERSION}" \
+    --python-version "$PYTHON_VERSION" \
+    "${closure_targets[@]}" >"$dep_log" 2>&1
+  dep_rc=$?
+  set -e
+
+  if [[ $dep_rc -ne 0 ]]; then
+    cat "$dep_log" >&2
+    echo "Failed to download full dependency closure for package bundle." >&2
+    return 1
+  fi
+
+  sed 's/^/  /' "$dep_log"
   return 0
 }
 
@@ -607,6 +936,7 @@ download_one_spec() {
   local direct_package=""
   local direct_ref=""
   local direct_url=""
+  local direct_local_path=""
   local direct_name=""
   local direct_path=""
   mkdir -p "$pure_dir" "$x86_dir"
@@ -621,6 +951,10 @@ download_one_spec() {
     direct_ref="${spec#* @ }"
     if [[ "$direct_ref" == http://* || "$direct_ref" == https://* ]]; then
       direct_url="$direct_ref"
+    elif [[ "$direct_ref" == file://* ]]; then
+      direct_local_path="${direct_ref#file://}"
+    elif [[ -f "$direct_ref" ]]; then
+      direct_local_path="$direct_ref"
     elif [[ "$direct_ref" == *.whl && "$direct_ref" != */* ]]; then
       direct_url="${PYPI_ARTIFACTORY_BASE_URL%/}/${direct_package}/${direct_ref}"
     elif [[ "$direct_ref" == *.whl ]]; then
@@ -628,6 +962,18 @@ download_one_spec() {
     fi
   elif [[ "$spec" == http://* || "$spec" == https://* ]]; then
     direct_url="$spec"
+  fi
+
+  if [[ -n "$direct_local_path" ]]; then
+    direct_name="$(basename "$direct_local_path")"
+    if [[ "$direct_name" != *.whl || ! -f "$direct_local_path" ]]; then
+      echo "Direct local package must be an existing .whl file: $direct_ref" >&2
+      return 1
+    fi
+    direct_path="${tmpdir}/${direct_name}"
+    cp "$direct_local_path" "$direct_path"
+    DOWNLOADED_WHEEL="$direct_path"
+    return 0
   fi
 
   if [[ -n "$direct_url" ]]; then
@@ -734,6 +1080,27 @@ download_one_spec() {
   return 1
 }
 
+download_llima_package() {
+  local wheel_path=""
+  local helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/download_llima_wheel.sh"
+
+  [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]] || return 0
+  [[ -x "$helper" ]] || {
+    echo "LLiMa wheel helper is missing or not executable: $helper" >&2
+    return 1
+  }
+
+  if ! wheel_path="$("$helper" \
+    --output-dir "$OUTPUT_DIR" \
+    --source-json "$SOURCE_JSON" \
+    --target-arch "$TARGET_ARCH")"; then
+    echo "Failed to download the LLiMa compiler wheel." >&2
+    return 1
+  fi
+  [[ -n "$wheel_path" ]] || return 0
+  SPECS+=("sima_lmm[sdk] @ ${wheel_path}")
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sdk-release)
@@ -767,6 +1134,10 @@ while [[ $# -gt 0 ]]; do
     --target-arch)
       TARGET_ARCH="${2:-}"
       shift 2
+      ;;
+    --include-dependencies)
+      INCLUDE_DEPENDENCIES="1"
+      shift
       ;;
     -h|--help)
       usage
@@ -846,6 +1217,20 @@ if [[ -n "$SOURCE_JSON" && -f "$SOURCE_JSON" ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && BINARY_SPECS+=("$line")
   done < <(read_binary_package_specs "$SOURCE_JSON")
+  while IFS='|' read -r kind value; do
+    [[ -n "$kind" && -n "$value" ]] || continue
+    case "$kind" in
+      package) SOURCE_PACKAGE_SPECS+=("$value") ;;
+      dependency) SOURCE_PACKAGE_DEP_SPECS+=("$value") ;;
+    esac
+  done < <(read_source_package_specs "$SOURCE_JSON")
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && PRELOAD_PACKAGE_SPECS+=("$line")
+  done < <(read_preload_package_specs "$SOURCE_JSON")
+fi
+
+if ! download_llima_package; then
+  exit 1
 fi
 
 if [[ ${#SPECS[@]} -eq 0 && ${#BINARY_SPECS[@]} -eq 0 ]]; then
@@ -958,6 +1343,12 @@ if [[ ${#SUMMARY_WHEEL[@]} -gt 0 ]]; then
     fi
   done
   rm -rf "$dep_tmp"
+fi
+
+if [[ "$INCLUDE_DEPENDENCIES" == "1" ]]; then
+  download_preload_packages
+  download_source_packages
+  download_full_dependency_closure
 fi
 
 total_wheels="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')"

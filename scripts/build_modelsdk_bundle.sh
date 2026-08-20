@@ -17,9 +17,9 @@ Description:
   End-to-end helper:
     1) Read python/binary package lists from source.json
     2) Clean generated artifacts from output-dir
-    3) Download wheels (pure first, target-arch fallback) and binary artifacts
+    3) Download the full wheel dependency closure and binary artifacts
     4) Copy installer script into output-dir
-    5) Generate metadata.json for sima-cli distribution
+    5) Create a self-contained archive and metadata.json for sima-cli distribution
     6) Optional --prod escapes '+' as '%2B' in metadata resources for S3 URLs
 
 source.json format:
@@ -29,15 +29,10 @@ source.json format:
   "python-packages": [
     { "name": "sima-frontend", "version": "2.0.0.dev0+master.371" }
   ],
-  "aarch64": {
-    "python-packages": [
-      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" }
-    ]
-  },
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v2.1.3158-Edgematic-release-2.0.0.2-ubuntu",
+      "version": "v2.1.3560-develop.409",
       "extension": ".zip"
     }
   ]
@@ -112,6 +107,11 @@ if [[ -z "$TARGET_ARCH" ]]; then
   exit 1
 fi
 echo "Using target architecture: $TARGET_ARCH"
+case "$TARGET_ARCH" in
+  x86_64) PACKAGE_ARCH="amd64" ;;
+  aarch64) PACKAGE_ARCH="arm64" ;;
+  *) PACKAGE_ARCH="$TARGET_ARCH" ;;
+esac
 
 SDK_VERSION="$(
   python3 -c '
@@ -214,7 +214,29 @@ for i, item in enumerate(items):
     version = item.get("version")
     url = item.get("url")
     file = item.get("file")
-    if not name or not version:
+    if not name:
+        raise SystemExit(f"component entry at index {i} requires name")
+    if "vulcan" in item:
+        vulcan = item["vulcan"]
+        if name != "sima_lmm[sdk]":
+            raise SystemExit(
+                f"component entry at index {i} uses unsupported Vulcan package {name!r}; "
+                "only \"sima_lmm[sdk]\" is supported"
+            )
+        if not isinstance(vulcan, dict):
+            raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+        policy = vulcan.get("policy")
+        ref = vulcan.get("ref")
+        if not (
+            (policy == "snap" and ref is None)
+            or (policy is None and isinstance(ref, str) and ref.strip())
+        ):
+            raise SystemExit(
+                f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+                "or a non-empty vulcan.ref"
+            )
+        continue
+    if not version:
         raise SystemExit(f"component entry at index {i} requires name and version")
     if isinstance(url, str) and url.strip():
         print(f"{name} @ {url.strip()}")
@@ -230,14 +252,16 @@ mkdir -p "$OUTPUT_DIR"
 echo "Cleaning generated bundle artifacts from: $OUTPUT_DIR"
 find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -name '*.whl' \
+  -o -name '*.tar.gz' \
   -o -name '*.zip' \
   -o -name 'manifest.txt' \
-  -o -name 'metadata.json' \
+  -o -name 'metadata*.json' \
+  -o -name 'resolved-llima-package.json' \
   -o -name 'source.json' \
   -o -name 'install_modelsdk_wheels.sh' \
 \) -delete
 
-"$SCRIPT_DIR/download_modelsdk_wheels.sh" \
+download_args=(
   --sdk-release "$spec_file" \
   --index-url "$INDEX_URL" \
   --extra-index-url "$EXTRA_INDEX_URL" \
@@ -245,11 +269,14 @@ find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   --source-json "$SOURCE_JSON" \
   --python-version "$PYTHON_VERSION" \
   --target-arch "$TARGET_ARCH"
+)
+download_args+=(--include-dependencies)
+"$SCRIPT_DIR/download_modelsdk_wheels.sh" "${download_args[@]}"
 
 cp "$SCRIPT_DIR/install_modelsdk_wheels.sh" "$OUTPUT_DIR/"
 cp "$SOURCE_JSON" "$OUTPUT_DIR/source.json"
 
-"$SCRIPT_DIR/generate_metadata.py" \
+metadata_args=(
   --artifacts-dir "$OUTPUT_DIR" \
   --output "$OUTPUT_DIR/metadata.json" \
   --name "$NAME" \
@@ -257,40 +284,51 @@ cp "$SOURCE_JSON" "$OUTPUT_DIR/source.json"
   --release "$RELEASE" \
   --description "$DESCRIPTION" \
   --host-os "$HOST_OS" \
-  --installer-script "install_modelsdk_wheels.sh"
+  --target-arch "$TARGET_ARCH" \
+  --installer-script "install_modelsdk_wheels.sh" \
+  --archive-name "model-compiler-${PACKAGE_ARCH}.zip"
+)
+resolved_packages="$OUTPUT_DIR/resolved-llima-package.json"
+if [[ -f "$resolved_packages" ]]; then
+  metadata_args+=(--resolved-packages "$resolved_packages")
+fi
+"$SCRIPT_DIR/generate_metadata.py" "${metadata_args[@]}"
+rm -f "$resolved_packages"
 
 if [[ "$PROD_MODE" == "1" ]]; then
   python3 -c '
 import json, sys
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as f:
-    m = json.load(f)
 
 def esc(s):
     return s.replace("+", "%2B")
 
-resources = m.get("resources", [])
-m["resources"] = [esc(r) if isinstance(r, str) else r for r in resources]
+for raw_path in sys.argv[1:]:
+    path = raw_path
+    with open(path, "r", encoding="utf-8") as f:
+        m = json.load(f)
 
-rc = m.get("resources-checksum", {})
-if isinstance(rc, dict):
-    m["resources-checksum"] = {
-        (esc(k) if isinstance(k, str) else k): v for k, v in rc.items()
-    }
+    resources = m.get("resources", [])
+    m["resources"] = [esc(r) if isinstance(r, str) else r for r in resources]
 
-sel = m.get("selectable-resources", [])
-if isinstance(sel, list):
-    for entry in sel:
-        if isinstance(entry, dict):
-            if isinstance(entry.get("url"), str):
-                entry["url"] = esc(entry["url"])
-            if isinstance(entry.get("resource"), str):
-                entry["resource"] = esc(entry["resource"])
+    rc = m.get("resources-checksum", {})
+    if isinstance(rc, dict):
+        m["resources-checksum"] = {
+            (esc(k) if isinstance(k, str) else k): v for k, v in rc.items()
+        }
 
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(m, f, indent=2)
-    f.write("\n")
-' "$OUTPUT_DIR/metadata.json"
+    sel = m.get("selectable-resources", [])
+    if isinstance(sel, list):
+        for entry in sel:
+            if isinstance(entry, dict):
+                if isinstance(entry.get("url"), str):
+                    entry["url"] = esc(entry["url"])
+                if isinstance(entry.get("resource"), str):
+                    entry["resource"] = esc(entry["resource"])
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(m, f, indent=2)
+        f.write("\n")
+' "$OUTPUT_DIR/metadata.json" "$OUTPUT_DIR/metadata-offline.json"
   echo "Applied --prod metadata escaping ('+' -> '%2B')"
 fi
 

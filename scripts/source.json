@@ -1,5 +1,5 @@
 {
-  "sdk_version": "2.1.2",
+  "sdk_version": "2.1.3",
   "python_version": "3.12.3",
   "system_dependencies": {
     "ubuntu": [
@@ -23,101 +23,98 @@
   "dependency_overrides": {
     "numpy": "1.26.4",
     "matplotlib": "3.10.9",
+    "grpcio": "1.75.1",
     "onnx": "1.17.0",
     "onnxruntime": "1.21.1",
     "protobuf": "4.25.7",
     "pytorch-lightning": "2.4.0",
     "pyyaml": "6.0.3",
     "scipy": "1.14.1",
-    "sima-frontend": "2.1.0.dev0+master.388",
-    "sima-ml-kernels": "2.1.0.dev0+master.42",
-    "torch": "2.3.1",
-    "torchvision": "0.18.1"
+    "mpk-parser": "2.1.3.dev0+master.38",
+    "neural-compressor": "2.0.0.dev0+master.3",
+    "sima-accelerator-mode": "2.1.3.dev0+master.17",
+    "sima-ev-transforms": "2.1.3.dev0+master.18",
+    "sima-frontend": "2.1.3.dev0+master.392",
+    "sima-ml-kernels": "2.1.3.dev0+master.45",
+    "sima-mlc": "2.1.3.dev0+master.187",
+    "sima-mppe": "2.1.0.dev0+master.25",
+    "sima-tvm": "1.4.0.dev0+master.19",
+    "sima-utils": "2.1.3.dev0+master.37"
   },
+  "aarch64": {
+    "dependency_overrides": {
+      "jax": "0.5.3",
+      "jaxlib": "0.5.3",
+      "ml-dtypes": "0.4.1"
+    }
+  },
+  "x86_64": {
+    "dependency_overrides": {
+      "ml-dtypes": "0.4.1"
+    }
+  },
+  "dependency_replacements": {
+    "zmq": "pyzmq>=27.1.0"
+  },
+  "dependency_exclusions": [
+    "grpcio-tools",
+    "llama-cpp-python",
+    "sqlitedict",
+    "word2number"
+  ],
+  "preload-packages": [
+    {
+      "name": "ninja",
+      "version": "1.13.0"
+    },
+    {
+      "name": "lm_eval[hf]",
+      "version": "0.4.12"
+    }
+  ],
+  "source-packages": [
+    {
+      "name": "llama_cpp_python",
+      "version": "0.3.16",
+      "build-dependencies": [
+        "scikit-build-core[pyproject]>=0.9.2"
+      ],
+      "dependencies": [
+        "typing-extensions>=4.5.0",
+        "numpy==1.26.4",
+        "diskcache>=5.6.1",
+        "jinja2>=2.11.3"
+      ]
+    },
+    {
+      "name": "sqlitedict",
+      "version": "2.1.0"
+    },
+    {
+      "name": "word2number",
+      "version": "1.1"
+    }
+  ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "2.1.0.dev0+master.388" },
-    { "name": "swml-qat", "version": "1.0.0.dev0+master.5" },
-    { "name": "mpk_parser", "version": "2.1.0.dev0+master.37" },
-    { "name": "sima-mppe", "version": "2.1.0.dev0+master.24" },
+    { "name": "sima-frontend", "version": "2.1.3.dev0+master.392" },
+    { "name": "mpk_parser", "version": "2.1.3.dev0+master.38" },
+    { "name": "sima-mppe", "version": "2.1.0.dev0+master.25" },
     { "name": "onnxoptimizer", "version": "0.3.13" },
     { "name": "pyyaml", "version": "6.0.3" },
     { "name": "matplotlib", "version": "3.10.9" },
-    { "name": "neural_compressor", "version": "2.0.0.dev0+master.2" },
-    { "name": "sima_lmm[sdk]", "version": "2.1.0.dev0+master.13" }
+    { "name": "neural_compressor", "version": "2.0.0.dev0+master.3" },
+    {
+      "name": "sima_lmm[sdk]",
+      "vulcan": {
+        "policy": "snap"
+      }
+    }
   ],
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v2.1.3159-master.8-ubuntu",
+      "version": "v2.1.3560-develop.409",
       "extension": ".zip"
     }
-  ],
-  "aarch64": {
-    "system_dependencies": {
-      "ubuntu": [
-        "build-essential",
-        "cmake",
-        "curl",
-        "libbz2-dev",
-        "libffi-dev",
-        "libgl1",
-        "libllvm18",
-        "liblzma-dev",
-        "libopenblas0-pthread",
-        "libreadline-dev",
-        "libsqlite3-dev",
-        "libssl-dev",
-        "tk-dev",
-        "xz-utils",
-        "zlib1g-dev"
-      ]
-    },
-    "dependency_overrides": {
-      "numpy": "1.26.4",
-      "matplotlib": "3.10.9",
-      "onnx": "1.17.0",
-      "onnxruntime": "1.21.1",
-      "protobuf": "4.25.7",
-      "pytorch-lightning": "2.4.0",
-      "pyyaml": "6.0.3",
-      "scipy": "1.14.1",
-      "torch": "2.3.1",
-      "torchvision": "0.18.1",
-      "neural-compressor": "2.0.0.dev0+neat.2",
-      "mpk-parser": "2.1.0.dev0+neat.5",
-      "sima-accelerator-mode": "2.1.0.dev0+neat.17",
-      "sima-ev-transforms": "2.1.0.dev0+neat.10",
-      "sima-frontend": "2.1.0.dev0+neat.2",
-      "sima-lmm": "2.1.0.dev0+neat.4",
-      "sima-ml-kernels": "2.1.0.dev0+neat.7",
-      "sima-mlc": "2.1.0.dev0+neat.5",
-      "sima-mppe": "2.1.0.dev0+neat.5",
-      "sima-tvm": "1.4.0.dev0+neat.13",
-      "sima-utils": "2.1.0.dev0+neat.5",
-      "swml-qat": "1.0.0.dev0+neat.3"
-    },
-    "python-packages": [
-      { "name": "sima_frontend", "version": "2.1.0.dev0+neat.2" },
-      { "name": "sima_accelerator_mode", "version": "2.1.0.dev0+neat.17" },
-      { "name": "sima_ev_transforms", "version": "2.1.0.dev0+neat.10" },
-      { "name": "sima_mppe", "version": "2.1.0.dev0+neat.5" },
-      { "name": "sima_ml_kernels", "version": "2.1.0.dev0+neat.7" },
-      { "name": "sima_mlc", "version": "2.1.0.dev0+neat.5" },
-      { "name": "sima_tvm", "version": "1.4.0.dev0+neat.13" },
-      { "name": "sima_utils", "version": "2.1.0.dev0+neat.5" },
-      { "name": "neural_compressor", "version": "2.0.0.dev0+neat.2" },
-      { "name": "sima_lmm[sdk]", "version": "2.1.0.dev0+neat.4" },
-      { "name": "swml_qat", "version": "1.0.0.dev0+neat.3" },
-      { "name": "mpk_parser", "version": "2.1.0.dev0+neat.5" },
-      { "name": "spconv", "version": "2.3.8", "file": "spconv-2.3.8-cp312-cp312-linux_aarch64.whl" },
-      { "name": "cumm", "version": "0.7.13", "file": "cumm-0.7.13-cp312-cp312-linux_aarch64.whl" }
-    ],
-    "binary-packages": [
-      {
-        "name": "mla/toolchain/mla-toolchain",
-        "version": "v2.1.3523-neat.4-ubuntu",
-        "extension": ".zip"
-      }
-    ]
-  }
+  ]
 }

@@ -3,6 +3,30 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+usage() {
+  cat <<'EOF'
+Usage:
+  install_modelsdk_wheels.sh
+
+Options:
+  -h, --help         Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 resolve_bundle_dir() {
   if [[ -f "$SCRIPT_DIR/manifest.txt" ]]; then
     echo "$SCRIPT_DIR"
@@ -18,7 +42,6 @@ resolve_bundle_dir() {
 BUNDLE_DIR="$(resolve_bundle_dir)"
 SOURCE_JSON="$BUNDLE_DIR/source.json"
 WHEEL_MANIFEST="$BUNDLE_DIR/manifest.txt"
-EXTRA_INDEX_URL="${EXTRA_INDEX_URL:-https://pypi.org/simple}"
 WHEEL_LINK_DIR=""
 MANIFEST_WHEELS=()
 MANIFEST_WHEEL_NAMES=()
@@ -91,17 +114,49 @@ elif expr == "binary_package_archives":
                 archive_type = extension
         if name and version:
             base = name.rsplit("/", 1)[-1]
+            normalized = name.lower()
+            if archive_type == "zip" and base == "mla-toolchain" and "mla" in normalized:
+                arch_suffix = {"x86_64": "x86", "aarch64": "aarch64"}.get(target_arch)
+                if not arch_suffix:
+                    raise SystemExit(f"Unsupported MLA toolchain architecture: {target_arch!r}")
+                version = f"{version}-{arch_suffix}-ubuntu"
             print(f"{base}-{version}.{archive_type}")
 elif expr == "python_package_specs":
-    items = arch_or_top_level("python-packages", doc.get("components", []))
+    items = []
+    primary = arch_or_top_level("python-packages", doc.get("components", []))
+    source_items = arch_or_top_level("source-packages", [])
+    if isinstance(primary, list):
+        items.extend(primary)
+    if isinstance(source_items, list):
+        items.extend(source_items)
     if not isinstance(items, list):
         raise SystemExit(0)
-    for item in items:
+    for i, item in enumerate(items):
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "")).strip()
         version = str(item.get("version", "")).strip()
-        if name and version:
+        if "vulcan" in item:
+            vulcan = item["vulcan"]
+            if name != "sima_lmm[sdk]":
+                raise SystemExit(
+                    f"component entry at index {i} uses unsupported Vulcan package {name!r}; "
+                    "only \"sima_lmm[sdk]\" is supported"
+                )
+            if not isinstance(vulcan, dict):
+                raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+            policy = vulcan.get("policy")
+            ref = vulcan.get("ref")
+            if not (
+                (policy == "snap" and ref is None)
+                or (policy is None and isinstance(ref, str) and ref.strip())
+            ):
+                raise SystemExit(
+                    f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+                    "or a non-empty vulcan.ref"
+                )
+            print(name)
+        elif name and version:
             print(f"{name}=={version}")
 ' "$SOURCE_JSON" "$expr"
 }
@@ -480,8 +535,8 @@ load_manifest_wheels() {
     entry="${entry//$'\r'/}"
     [[ -n "$entry" ]] || continue
 
-    if [[ "$entry" == */* || "$entry" == "."* || "$entry" != *.whl ]]; then
-      echo "Invalid wheel manifest entry: $entry" >&2
+    if [[ "$entry" == */* || "$entry" == "."* || ( "$entry" != *.whl && "$entry" != *.tar.gz && "$entry" != *.zip ) ]]; then
+      echo "Invalid package manifest entry: $entry" >&2
       return 1
     fi
 
@@ -868,8 +923,119 @@ _model_compiler_prepend_path_if_dir() {
   fi
 }
 
+_model_compiler_xla_flags_with_neon() {
+  local current="\$1"
+  local flag=""
+  local updated=""
+
+  for flag in \$current; do
+    case "\$flag" in
+      --xla_cpu_max_isa=*)
+        continue
+        ;;
+    esac
+    if [ -n "\$updated" ]; then
+      updated="\$updated \$flag"
+    else
+      updated="\$flag"
+    fi
+  done
+
+  if [ -n "\$updated" ]; then
+    printf '%s %s\n' "\$updated" "--xla_cpu_max_isa=NEON"
+  else
+    printf '%s\n' "--xla_cpu_max_isa=NEON"
+  fi
+}
+
+_model_compiler_xla_flags_without_neon() {
+  local current="\$1"
+  local flag=""
+  local updated=""
+
+  for flag in \$current; do
+    if [ "\$flag" = "--xla_cpu_max_isa=NEON" ]; then
+      continue
+    fi
+    if [ -n "\$updated" ]; then
+      updated="\$updated \$flag"
+    else
+      updated="\$flag"
+    fi
+  done
+
+  printf '%s\n' "\$updated"
+}
+
+_model_compiler_save_compile_environment() {
+  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ "\${XLA_FLAGS+x}" = "x" ]; then
+    _MODEL_COMPILER_OLD_XLA_FLAGS_SET=1
+    _MODEL_COMPILER_OLD_XLA_FLAGS="\$XLA_FLAGS"
+  else
+    _MODEL_COMPILER_OLD_XLA_FLAGS_SET=0
+    unset _MODEL_COMPILER_OLD_XLA_FLAGS
+  fi
+  if [ "\${SIMA_MLA_COMPILE_USE_JAX+x}" = "x" ]; then
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET=1
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX="\$SIMA_MLA_COMPILE_USE_JAX"
+  else
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET=0
+    unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
+  fi
+  _MODEL_COMPILER_COMPILE_ENV_ACTIVE=1
+}
+
+_model_compiler_restore_compile_environment() {
+  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" != "1" ]; then
+    return 0
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_XLA_FLAGS_SET:-0}" = "1" ]; then
+    XLA_FLAGS="\${_MODEL_COMPILER_OLD_XLA_FLAGS:-}"
+    export XLA_FLAGS
+  else
+    unset XLA_FLAGS
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET:-0}" = "1" ]; then
+    SIMA_MLA_COMPILE_USE_JAX="\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX:-}"
+    export SIMA_MLA_COMPILE_USE_JAX
+  else
+    unset SIMA_MLA_COMPILE_USE_JAX
+  fi
+  unset _MODEL_COMPILER_COMPILE_ENV_ACTIVE
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS_SET
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
+}
+
 activate-model-compiler() {
   local model_compiler_site_packages=""
+  local model_compiler_arch=""
+  local model_compiler_no_jax=0
+  local model_compiler_arg=""
+  local model_compiler_manage_compile_env=0
+
+  for model_compiler_arg in "\$@"; do
+    case "\$model_compiler_arg" in
+      --no-jax)
+        model_compiler_no_jax=1
+        ;;
+      -h|--help)
+        echo "Usage: activate-model-compiler [--no-jax]"
+        echo "  --no-jax  Disable the JAX compilation path for this activation."
+        return 0
+        ;;
+      *)
+        echo "Unknown option: \$model_compiler_arg" >&2
+        echo "Usage: activate-model-compiler [--no-jax]" >&2
+        return 2
+        ;;
+    esac
+  done
+
   if [ ! -f "$model_compiler_dir/bin/activate" ]; then
     echo "Model Compiler virtual environment not found: $model_compiler_dir" >&2
     return 1
@@ -893,6 +1059,38 @@ activate-model-compiler() {
     export PYTHONPATH
   fi
   export LD_LIBRARY_PATH
+
+  model_compiler_arch="\$(uname -m)"
+  case "\$model_compiler_arch" in
+    aarch64|arm64)
+      model_compiler_manage_compile_env=1
+      ;;
+  esac
+
+  if [ "\$model_compiler_no_jax" = "1" ]; then
+    model_compiler_manage_compile_env=1
+  fi
+  if [ "\$model_compiler_manage_compile_env" = "1" ]; then
+    _model_compiler_save_compile_environment
+  fi
+
+  if [ "\$model_compiler_no_jax" = "1" ]; then
+    XLA_FLAGS="\$(_model_compiler_xla_flags_without_neon "\${XLA_FLAGS:-}")"
+    if [ -n "\$XLA_FLAGS" ]; then
+      export XLA_FLAGS
+    else
+      unset XLA_FLAGS
+    fi
+    SIMA_MLA_COMPILE_USE_JAX=0
+    export SIMA_MLA_COMPILE_USE_JAX
+    echo "Model Compiler activated with JAX disabled."
+  elif [ "\$model_compiler_manage_compile_env" = "1" ]; then
+    XLA_FLAGS="\$(_model_compiler_xla_flags_with_neon "\${XLA_FLAGS:-}")"
+    SIMA_MLA_COMPILE_USE_JAX=1
+    export XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX
+  else
+    _model_compiler_restore_compile_environment
+  fi
 
   hash -r 2>/dev/null || true
 }
@@ -926,6 +1124,8 @@ deactivate-model-compiler() {
   else
     unset LD_LIBRARY_PATH
   fi
+
+  _model_compiler_restore_compile_environment
 
   hash -r 2>/dev/null || true
 }
@@ -1001,7 +1201,7 @@ if ! load_manifest_wheels "$WHEEL_MANIFEST"; then
 fi
 wheels=("${MANIFEST_WHEELS[@]}")
 if [[ ${#wheels[@]} -eq 0 ]]; then
-  echo "No wheel files listed in $WHEEL_MANIFEST" >&2
+  echo "No package files listed in $WHEEL_MANIFEST" >&2
   exit 1
 fi
 
@@ -1023,6 +1223,7 @@ fi
 
 bad_wheels=()
 for wheel in "${wheels[@]}"; do
+  [[ "$wheel" == *.whl ]] || continue
   if ! wheel_arch_compatible "$wheel" "$HOST_ARCH"; then
     bad_wheels+=("$(basename "$wheel")")
   fi
@@ -1078,9 +1279,8 @@ pip_args=(
 )
 prepare_manifest_find_links
 pip_args+=(--find-links "$WHEEL_LINK_DIR")
-if [[ -n "$EXTRA_INDEX_URL" ]]; then
-  pip_args+=(--extra-index-url "$EXTRA_INDEX_URL")
-fi
+echo "Installing from bundled artifacts with --no-index."
+pip_args+=(--no-index)
 
 if [[ ${#package_specs[@]} -gt 0 ]]; then
   echo "Installing ${#package_specs[@]} package spec(s) from source.json into $VENV_DIR (extras supported)"

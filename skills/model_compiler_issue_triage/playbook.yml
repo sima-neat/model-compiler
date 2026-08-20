@@ -1,0 +1,12 @@
+id: sima-model-compiler-issue-triage
+name: Model Compiler Issue Triage
+version: 0.1.0
+agents: [codex, claude]
+description: Triage workflow for model-compiler install, packaging, dependency, CI, model surgery, and quantize/compile issues.
+compatibility:
+  env_types: [host, sdk]
+  env_subtypes: [linux, palette]
+  min_cli_version: 2.1.2
+runtime:
+  requires:
+    - python3

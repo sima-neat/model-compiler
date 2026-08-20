@@ -4,7 +4,7 @@
 """
 SiMa.ai Model Quantization and Compilation Utility
 This script provides a command-line interface to quantize and compile machine learning models
-for SiMa.ai hardware (Davinci and Modalix).
+for SiMa.ai MLSoC and Modalix hardware.
 
 Key Features:
 - Supports ONNX, TFLite, Keras, and PyTorch formats.
@@ -15,6 +15,7 @@ Key Features:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -58,6 +59,17 @@ logger = PrintLogger()
 _ONNX_IR_VERSION = 8
 _ONNX_OPSET_VERSION = 17
 DIVIDER = "-" * 60
+
+
+def build_quantization_manifest(*, bf16_activations, bf16_weights, device):
+    """Describe the effective precision selected by the quantization config."""
+    effective_bf16_activations = bf16_activations or bf16_weights
+    return {
+        "activation_precision": "bfloat16" if effective_bf16_activations else "int8",
+        "weight_precision": "bfloat16" if bf16_weights else "int8",
+        "device": device,
+    }
+
 
 class ModelProcessor:
     def __init__(self, args):
@@ -150,7 +162,12 @@ class ModelProcessor:
         else:
             h, w = target_shape[1], target_shape[2]
 
-        image = Image.open(image_path).convert("RGB").resize((w, h))
+        # Match the deployed CVU image preprocessor. Calibration with Pillow's
+        # default bicubic resize shifts activation ranges from the runtime's
+        # bilinear input distribution.
+        image = Image.open(image_path).convert("RGB").resize(
+            (w, h), resample=Image.Resampling.BILINEAR
+        )
         image_np = np.array(image)
         # Permute to NCHW for normalization logic, then we'll flip back to NHWC if needed
         image_t = torch.tensor(image_np).permute(2, 0, 1).unsqueeze(0)
@@ -217,8 +234,11 @@ class ModelProcessor:
         
         logger.info(f"Loading real calibration data from: {self.args.dataset_images}")
         image_exts = (".jpg", ".jpeg", ".png", ".bmp")
-        image_paths = [os.path.join(self.args.dataset_images, f) for f in os.listdir(self.args.dataset_images) 
-                       if f.lower().endswith(image_exts)][:self.args.num_calib_samples]
+        image_paths = sorted(
+            os.path.join(self.args.dataset_images, f)
+            for f in os.listdir(self.args.dataset_images)
+            if f.lower().endswith(image_exts)
+        )[:self.args.num_calib_samples]
         
         if not image_paths:
             raise FileNotFoundError(f"No valid images found in {self.args.dataset_images}")
@@ -281,8 +301,12 @@ class ModelProcessor:
             weight_scheme = bfloat16_scheme()
         else:
             weight_scheme = quantization_scheme(False, True, 8)
-        
 
+        quantization_manifest = build_quantization_manifest(
+            bf16_activations=self.args.bf16_activations,
+            bf16_weights=self.args.bf16_weights,
+            device=self.args.device,
+        )
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
@@ -387,6 +411,11 @@ class ModelProcessor:
                 log_level=logging.INFO,
                 tessellate_parameters=tess_params if tess_params else None
             )
+            manifest_path = os.path.join(self.output_path, "quantization_manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+                json.dump(quantization_manifest, manifest_file, indent=2, sort_keys=True)
+                manifest_file.write("\n")
+            logger.info(f"Quantization manifest saved to: {manifest_path}")
             logger.info("Compilation complete.")
 
         # Step 4: Verification
@@ -438,7 +467,12 @@ def main():
     parser.add_argument("--output_names", nargs="+", required=False, help="Output node names (optional, auto-detected if omitted)")
     
     # Workflow Flags
-    parser.add_argument("--device", default="modalix", choices=["modalix", "davinci"], help="Target hardware")
+    parser.add_argument(
+        "--device",
+        default="modalix",
+        choices=["modalix", "mlsoc"],
+        help="Target hardware (mlsoc=MLSoC, modalix=Modalix)",
+    )
     parser.add_argument("--build_dir", default="./build", help="Target directory for artifacts")
     parser.add_argument("--no-simplify", action="store_false", dest="simplify", help="Disable ONNX simplification")
     parser.add_argument("--no-compile", action="store_false", dest="compile", help="Skip the compilation step")
