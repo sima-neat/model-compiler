@@ -63,8 +63,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test LLiMa wheel resolution
+        run: python3 -m unittest discover -s tests -p "test_*.py" -v
+
       - name: Upgrade pip
         run: python3 -m pip install --upgrade pip
+
+      - name: Install sima-cli
+        run: |
+          set -euo pipefail
+          curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
+          echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
+          "${HOME}/.sima-cli/.venv/bin/sima-cli" --version
 
       - name: Show build environment
         run: |
@@ -144,6 +154,18 @@ jobs:
               raise SystemExit("Metadata resources must contain only the package archive")
           if offline_metadata.get("resources") != [archive_name]:
               raise SystemExit("Manual-distribution metadata must contain only the package archive")
+          resolved = metadata.get("resolved-packages", {}).get("sima_lmm", {})
+          if offline_metadata.get("resolved-packages", {}).get("sima_lmm") != resolved:
+              raise SystemExit("Resolved LLiMa provenance differs between metadata variants")
+          required_provenance = {
+              "requested-ref", "resolved-commit", "version", "wheel"
+          }
+          if not required_provenance.issubset(resolved) or not all(
+              resolved[key] for key in required_provenance
+          ):
+              raise SystemExit(f"Incomplete resolved LLiMa provenance: {resolved!r}")
+          if resolved["wheel"] not in names:
+              raise SystemExit("Resolved LLiMa wheel is missing from the package archive")
           offline_platforms = offline_metadata.get("platforms", [])
           offline_host = next(
               (platform for platform in offline_platforms if platform.get("type") == "host"),
@@ -228,6 +250,8 @@ jobs:
           bash -c "$script"
 
       - name: Run post-install smoke test
+        env:
+          MODELSDK_SMOKE_ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
 
@@ -237,28 +261,41 @@ jobs:
             exit 1
           fi
 
-          source "${model_compiler_dir}/bin/activate"
-          export PATH="${model_compiler_dir}/bin:${PATH}"
+          bash --noprofile --rcfile "${HOME}/.bashrc" -i <<'BASH'
+          set -euo pipefail
 
-          site_packages="$(
-            find "${model_compiler_dir}/lib" -maxdepth 3 -type d -name site-packages 2>/dev/null | head -n 1
-          )"
-          export LD_LIBRARY_PATH="${model_compiler_dir}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-          if [[ -n "${site_packages}" ]]; then
-            export LD_LIBRARY_PATH="${site_packages}:${site_packages}/tvm:${LD_LIBRARY_PATH}"
-            export PYTHONPATH="${site_packages}${PYTHONPATH:+:${PYTHONPATH}}"
-          fi
+          type activate-model-compiler
+          activate-model-compiler
 
           echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
+          echo "XLA_FLAGS=${XLA_FLAGS:-<unset>}"
+          echo "SIMA_MLA_COMPILE_USE_JAX=${SIMA_MLA_COMPILE_USE_JAX:-<unset>}"
           which python
           python --version
 
-          smoke_tier="basic"
-          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
-            smoke_tier="resnet-compile"
-          fi
+          case "${MODELSDK_SMOKE_ARCH}" in
+            arm64)
+              [[ "${XLA_FLAGS:-}" == "--xla_cpu_max_isa=NEON" ]]
+              [[ "${SIMA_MLA_COMPILE_USE_JAX:-}" == "1" ]]
+              ;;
+            amd64)
+              [[ -z "${XLA_FLAGS+x}" ]]
+              [[ -z "${SIMA_MLA_COMPILE_USE_JAX+x}" ]]
+              ;;
+            *)
+              echo "Unsupported smoke-test architecture: ${MODELSDK_SMOKE_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          smoke_tier="resnet-compile-precisions"
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
           python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
+
+          export HF_HOME="${RUNNER_TEMP}/huggingface"
+          echo "Running Model Compiler smoke tier: llima-qwen3-compile"
+          python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
+          BASH
 
   publish-amd64:
     name: Publish amd64 Package to Vulcan
@@ -302,7 +339,7 @@ jobs:
 
   update-amd64-latest:
     name: Update amd64 Vulcan Latest Tag
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
     needs:
       - resolve-vulcan-config
       - publish-amd64
@@ -318,7 +355,7 @@ jobs:
 
   update-arm64-latest:
     name: Update arm64 Vulcan Latest Tag
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    if: ${{ github.ref_type == 'branch' || github.ref_type == 'tag' }}
     needs:
       - resolve-vulcan-config
       - publish-arm64

@@ -15,6 +15,7 @@ Key Features:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -58,6 +59,17 @@ logger = PrintLogger()
 _ONNX_IR_VERSION = 8
 _ONNX_OPSET_VERSION = 17
 DIVIDER = "-" * 60
+
+
+def build_quantization_manifest(*, bf16_activations, bf16_weights, device):
+    """Describe the effective precision selected by the quantization config."""
+    effective_bf16_activations = bf16_activations or bf16_weights
+    return {
+        "activation_precision": "bfloat16" if effective_bf16_activations else "int8",
+        "weight_precision": "bfloat16" if bf16_weights else "int8",
+        "device": device,
+    }
+
 
 class ModelProcessor:
     def __init__(self, args):
@@ -289,8 +301,12 @@ class ModelProcessor:
             weight_scheme = bfloat16_scheme()
         else:
             weight_scheme = quantization_scheme(False, True, 8)
-        
 
+        quantization_manifest = build_quantization_manifest(
+            bf16_activations=self.args.bf16_activations,
+            bf16_weights=self.args.bf16_weights,
+            device=self.args.device,
+        )
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
@@ -395,6 +411,11 @@ class ModelProcessor:
                 log_level=logging.INFO,
                 tessellate_parameters=tess_params if tess_params else None
             )
+            manifest_path = os.path.join(self.output_path, "quantization_manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+                json.dump(quantization_manifest, manifest_file, indent=2, sort_keys=True)
+                manifest_file.write("\n")
+            logger.info(f"Quantization manifest saved to: {manifest_path}")
             logger.info("Compilation complete.")
 
         # Step 4: Verification

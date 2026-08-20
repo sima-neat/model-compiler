@@ -214,7 +214,29 @@ for i, item in enumerate(items):
     version = item.get("version")
     url = item.get("url")
     file = item.get("file")
-    if not name or not version:
+    if not name:
+        raise SystemExit(f"component entry at index {i} requires name")
+    if "vulcan" in item:
+        vulcan = item["vulcan"]
+        if name != "sima_lmm[sdk]":
+            raise SystemExit(
+                f"component entry at index {i} uses unsupported Vulcan package {name!r}; "
+                "only \"sima_lmm[sdk]\" is supported"
+            )
+        if not isinstance(vulcan, dict):
+            raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+        policy = vulcan.get("policy")
+        ref = vulcan.get("ref")
+        if not (
+            (policy == "snap" and ref is None)
+            or (policy is None and isinstance(ref, str) and ref.strip())
+        ):
+            raise SystemExit(
+                f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+                "or a non-empty vulcan.ref"
+            )
+        continue
+    if not version:
         raise SystemExit(f"component entry at index {i} requires name and version")
     if isinstance(url, str) and url.strip():
         print(f"{name} @ {url.strip()}")
@@ -234,6 +256,7 @@ find "$OUTPUT_DIR" -maxdepth 1 -type f \( \
   -o -name '*.zip' \
   -o -name 'manifest.txt' \
   -o -name 'metadata*.json' \
+  -o -name 'resolved-llima-package.json' \
   -o -name 'source.json' \
   -o -name 'install_modelsdk_wheels.sh' \
 \) -delete
@@ -265,7 +288,12 @@ metadata_args=(
   --installer-script "install_modelsdk_wheels.sh" \
   --archive-name "model-compiler-${PACKAGE_ARCH}.zip"
 )
+resolved_packages="$OUTPUT_DIR/resolved-llima-package.json"
+if [[ -f "$resolved_packages" ]]; then
+  metadata_args+=(--resolved-packages "$resolved_packages")
+fi
 "$SCRIPT_DIR/generate_metadata.py" "${metadata_args[@]}"
+rm -f "$resolved_packages"
 
 if [[ "$PROD_MODE" == "1" ]]; then
   python3 -c '

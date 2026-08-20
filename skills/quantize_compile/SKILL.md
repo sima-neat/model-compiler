@@ -89,6 +89,18 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 - `--verify`, `--analyse-error`
 - `--no-compile` for quantize-only runs
 
+## Memory Errors
+
+If model compilation runs out of host memory, reports an out-of-memory error,
+or is killed under memory pressure, first reduce MLA simulator parallelism:
+
+```bash
+export SIMA_MLA_SIM_PARALLEL=<lower-thread-count>
+```
+
+Then rerun the same compilation command. Lower values reduce peak memory but
+may increase compilation time; do not prescribe `1` by default.
+
 ## Output
 Artifacts are written to:
 - `<build_dir>/<model_basename>/`

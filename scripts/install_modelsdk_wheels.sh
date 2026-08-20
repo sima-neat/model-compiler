@@ -131,12 +131,32 @@ elif expr == "python_package_specs":
         items.extend(source_items)
     if not isinstance(items, list):
         raise SystemExit(0)
-    for item in items:
+    for i, item in enumerate(items):
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "")).strip()
         version = str(item.get("version", "")).strip()
-        if name and version:
+        if "vulcan" in item:
+            vulcan = item["vulcan"]
+            if name != "sima_lmm[sdk]":
+                raise SystemExit(
+                    f"component entry at index {i} uses unsupported Vulcan package {name!r}; "
+                    "only \"sima_lmm[sdk]\" is supported"
+                )
+            if not isinstance(vulcan, dict):
+                raise SystemExit(f"component entry at index {i} requires vulcan to be an object")
+            policy = vulcan.get("policy")
+            ref = vulcan.get("ref")
+            if not (
+                (policy == "snap" and ref is None)
+                or (policy is None and isinstance(ref, str) and ref.strip())
+            ):
+                raise SystemExit(
+                    f"component entry at index {i} requires either vulcan.policy=\"snap\" "
+                    "or a non-empty vulcan.ref"
+                )
+            print(name)
+        elif name and version:
             print(f"{name}=={version}")
 ' "$SOURCE_JSON" "$expr"
 }
@@ -903,8 +923,119 @@ _model_compiler_prepend_path_if_dir() {
   fi
 }
 
+_model_compiler_xla_flags_with_neon() {
+  local current="\$1"
+  local flag=""
+  local updated=""
+
+  for flag in \$current; do
+    case "\$flag" in
+      --xla_cpu_max_isa=*)
+        continue
+        ;;
+    esac
+    if [ -n "\$updated" ]; then
+      updated="\$updated \$flag"
+    else
+      updated="\$flag"
+    fi
+  done
+
+  if [ -n "\$updated" ]; then
+    printf '%s %s\n' "\$updated" "--xla_cpu_max_isa=NEON"
+  else
+    printf '%s\n' "--xla_cpu_max_isa=NEON"
+  fi
+}
+
+_model_compiler_xla_flags_without_neon() {
+  local current="\$1"
+  local flag=""
+  local updated=""
+
+  for flag in \$current; do
+    if [ "\$flag" = "--xla_cpu_max_isa=NEON" ]; then
+      continue
+    fi
+    if [ -n "\$updated" ]; then
+      updated="\$updated \$flag"
+    else
+      updated="\$flag"
+    fi
+  done
+
+  printf '%s\n' "\$updated"
+}
+
+_model_compiler_save_compile_environment() {
+  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ "\${XLA_FLAGS+x}" = "x" ]; then
+    _MODEL_COMPILER_OLD_XLA_FLAGS_SET=1
+    _MODEL_COMPILER_OLD_XLA_FLAGS="\$XLA_FLAGS"
+  else
+    _MODEL_COMPILER_OLD_XLA_FLAGS_SET=0
+    unset _MODEL_COMPILER_OLD_XLA_FLAGS
+  fi
+  if [ "\${SIMA_MLA_COMPILE_USE_JAX+x}" = "x" ]; then
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET=1
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX="\$SIMA_MLA_COMPILE_USE_JAX"
+  else
+    _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET=0
+    unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
+  fi
+  _MODEL_COMPILER_COMPILE_ENV_ACTIVE=1
+}
+
+_model_compiler_restore_compile_environment() {
+  if [ "\${_MODEL_COMPILER_COMPILE_ENV_ACTIVE:-0}" != "1" ]; then
+    return 0
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_XLA_FLAGS_SET:-0}" = "1" ]; then
+    XLA_FLAGS="\${_MODEL_COMPILER_OLD_XLA_FLAGS:-}"
+    export XLA_FLAGS
+  else
+    unset XLA_FLAGS
+  fi
+  if [ "\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET:-0}" = "1" ]; then
+    SIMA_MLA_COMPILE_USE_JAX="\${_MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX:-}"
+    export SIMA_MLA_COMPILE_USE_JAX
+  else
+    unset SIMA_MLA_COMPILE_USE_JAX
+  fi
+  unset _MODEL_COMPILER_COMPILE_ENV_ACTIVE
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS_SET
+  unset _MODEL_COMPILER_OLD_XLA_FLAGS
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX_SET
+  unset _MODEL_COMPILER_OLD_SIMA_MLA_COMPILE_USE_JAX
+}
+
 activate-model-compiler() {
   local model_compiler_site_packages=""
+  local model_compiler_arch=""
+  local model_compiler_no_jax=0
+  local model_compiler_arg=""
+  local model_compiler_manage_compile_env=0
+
+  for model_compiler_arg in "\$@"; do
+    case "\$model_compiler_arg" in
+      --no-jax)
+        model_compiler_no_jax=1
+        ;;
+      -h|--help)
+        echo "Usage: activate-model-compiler [--no-jax]"
+        echo "  --no-jax  Disable the JAX compilation path for this activation."
+        return 0
+        ;;
+      *)
+        echo "Unknown option: \$model_compiler_arg" >&2
+        echo "Usage: activate-model-compiler [--no-jax]" >&2
+        return 2
+        ;;
+    esac
+  done
+
   if [ ! -f "$model_compiler_dir/bin/activate" ]; then
     echo "Model Compiler virtual environment not found: $model_compiler_dir" >&2
     return 1
@@ -928,6 +1059,38 @@ activate-model-compiler() {
     export PYTHONPATH
   fi
   export LD_LIBRARY_PATH
+
+  model_compiler_arch="\$(uname -m)"
+  case "\$model_compiler_arch" in
+    aarch64|arm64)
+      model_compiler_manage_compile_env=1
+      ;;
+  esac
+
+  if [ "\$model_compiler_no_jax" = "1" ]; then
+    model_compiler_manage_compile_env=1
+  fi
+  if [ "\$model_compiler_manage_compile_env" = "1" ]; then
+    _model_compiler_save_compile_environment
+  fi
+
+  if [ "\$model_compiler_no_jax" = "1" ]; then
+    XLA_FLAGS="\$(_model_compiler_xla_flags_without_neon "\${XLA_FLAGS:-}")"
+    if [ -n "\$XLA_FLAGS" ]; then
+      export XLA_FLAGS
+    else
+      unset XLA_FLAGS
+    fi
+    SIMA_MLA_COMPILE_USE_JAX=0
+    export SIMA_MLA_COMPILE_USE_JAX
+    echo "Model Compiler activated with JAX disabled."
+  elif [ "\$model_compiler_manage_compile_env" = "1" ]; then
+    XLA_FLAGS="\$(_model_compiler_xla_flags_with_neon "\${XLA_FLAGS:-}")"
+    SIMA_MLA_COMPILE_USE_JAX=1
+    export XLA_FLAGS SIMA_MLA_COMPILE_USE_JAX
+  else
+    _model_compiler_restore_compile_environment
+  fi
 
   hash -r 2>/dev/null || true
 }
@@ -961,6 +1124,8 @@ deactivate-model-compiler() {
   else
     unset LD_LIBRARY_PATH
   fi
+
+  _model_compiler_restore_compile_environment
 
   hash -r 2>/dev/null || true
 }
