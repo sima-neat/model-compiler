@@ -182,7 +182,7 @@ sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 
 出力は、コンパイルされたMLAプログラム、`_mpk.json`メタデータファイル、および実行統計ファイルを含む`.tar.gz`形式のアーカイブです。アーカイブの内容、バッチサイズ、およびテッセレーションオプションについては、**[Compilation](./model-compilation.md)**を参照してください。
 
-## 脚本全文
+## 脚本全文 {#full-script}
 
 完全なアノテーション付きのプログラムは以下に示します。また、これは、`resnet50-ptq/compile.py`として、および[ResNet-50 PTQのサンプルソース](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)として、モデルコンパイラのサンプルパッケージでも利用できます。GitHubで公開されています。
 

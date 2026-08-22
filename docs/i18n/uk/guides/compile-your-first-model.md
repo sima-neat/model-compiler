@@ -198,7 +198,7 @@ sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 Результатом є `.tar.gz` архів, який містить скомпільовані програми MLA, а також
 `_mpk.json` файл метаданих і файл зі статистикою виконання. Див.[Компіляція](./model-compilation.md)** для вмісту архіву, визначення розміру пакетів і параметрів теселяції.
 
-## Повний сценарій.
+## Повний сценарій {#full-script}
 
 Повний анотований код програми наведено нижче. Він також доступний у пакеті прикладів для компілятора моделей як `resnet50-ptq/compile.py`, а також у
 [ResNet-50 PTQ example source](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)

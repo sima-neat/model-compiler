@@ -192,7 +192,7 @@ sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 輸出結果為 `.tar.gz` 包含已編譯的 MLA 程式的檔案。
 `_mpk.json` 中繼資料檔案，以及執行統計資料檔案。請參閱[編譯](./model-compilation.md)**用於檔案內容、批次大小和鑲嵌選項。
 
-## 完整劇本
+## 完整劇本 {#full-script}
 
 完整的帶註解程式碼如下。它也包含在「模型編譯器範例」套件中，檔案名稱為 `resnet50-ptq/compile.py`，以及在 GitHub 上的 [ResNet-50 PTQ 範例原始碼](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq) 中。
 

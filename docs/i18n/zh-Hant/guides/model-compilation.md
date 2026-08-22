@@ -31,7 +31,7 @@ quant_model.compile(output_path="<output_folder_path>")
 | `.yaml` 檔案 | 執行統計資料分析 |
 | `_mpk.json` | 處理器外掛程式設定／流程管線中繼資料 |
 
-## 鑲嵌圖案
+## 鑲嵌圖案 {#tessellation}
 
 **鑲嵌**控制輸入和輸出張量如何在 DRAM 中排列，以供 MLA 使用。將張量**直接傳送到 MLA 並從 MLA 傳出**，輸入採用 `HWC` 格式，輸出採用 `HWC16` 格式，可繞過 EV74 資料重新排序單元，從而降低延遲。這是**建議的預設設定**，適用於直接饋送至加速器的模型。[第一個模型範例](./compile-your-first-model.md) 預設啟用此功能。
 

@@ -186,7 +186,7 @@ sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 결과는 다음과 같습니다. `.tar.gz` 컴파일된 MLA 프로그램이 포함된 아카이브입니다.
 `_mpk.json` 메타데이터 파일과 실행 통계 파일입니다. 자세한 내용은 다음을 참조하십시오.[컴파일](./model-compilation.md)** 아카이브 콘텐츠, 배치 크기 및 테셀레이션 옵션에 대해.
 
-## 전체 대본
+## 전체 대본 {#full-script}
 
 완전한 주석이 추가된 프로그램은 아래에 있습니다. 또한, 이 프로그램은 `resnet50-ptq/compile.py`로, 그리고 [ResNet-50 PTQ 예제 소스](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)로 GitHub에서 확인할 수 있습니다.
 
