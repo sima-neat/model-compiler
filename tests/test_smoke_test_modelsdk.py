@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -19,6 +20,36 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SmokeTestModelsdkTests(unittest.TestCase):
+    def test_yolo_smoke_validates_compiled_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            model_path = work_dir / "yolov8n.onnx"
+            model_path.write_bytes(b"onnx")
+            args = SimpleNamespace(
+                work_dir=str(work_dir),
+                yolo_model=str(model_path),
+                yolo_url="https://example.invalid/yolov8n.onnx",
+                dtype="int8",
+                strict_audit=False,
+                model_to_pipeline_dir=None,
+            )
+            metrics = {"sima_packages": "1", "mpk_archives": "1"}
+
+            with (
+                mock.patch.object(MODULE, "run"),
+                mock.patch.object(MODULE, "audit_onnx_model"),
+                mock.patch.object(MODULE, "run_quantize_compile"),
+                mock.patch.object(
+                    MODULE,
+                    "validate_and_measure_compiled_artifacts",
+                    return_value=metrics,
+                ) as validate,
+            ):
+                payload = MODULE.smoke_yolo(args)
+
+            validate.assert_called_once_with("yolov8", payload.artifacts, "int8")
+            self.assertEqual(payload.metrics, metrics)
+
     def test_llima_qwen3_disables_unsupported_onnx_quantization(self):
         command = MODULE.llima_qwen3_compile_command(
             Path("/tmp/compile_config.py"),
@@ -35,11 +66,12 @@ class SmokeTestModelsdkTests(unittest.TestCase):
 
     def test_python_environment_checks_pip_and_pinned_versions(self):
         with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "arm64"}),
             mock.patch.object(MODULE, "run") as run,
             mock.patch.object(
                 MODULE.importlib.metadata,
                 "version",
-                side_effect=lambda name: MODULE.REQUIRED_PACKAGE_VERSIONS[name],
+                side_effect=lambda name: MODULE.ARM64_REQUIRED_PACKAGE_VERSIONS[name],
             ),
         ):
             MODULE.smoke_python_environment()
@@ -50,17 +82,35 @@ class SmokeTestModelsdkTests(unittest.TestCase):
 
     def test_python_environment_rejects_wrong_pinned_version(self):
         with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "arm64"}),
             mock.patch.object(MODULE, "run"),
             mock.patch.object(
                 MODULE.importlib.metadata,
                 "version",
                 side_effect=lambda name: "0.0.0"
                 if name == "jax"
-                else MODULE.REQUIRED_PACKAGE_VERSIONS[name],
+                else MODULE.ARM64_REQUIRED_PACKAGE_VERSIONS[name],
             ),
         ):
             with self.assertRaisesRegex(MODULE.SmokeFailure, "jax: 0.0.0"):
                 MODULE.smoke_python_environment()
+
+    def test_amd64_python_environment_enforces_only_compatible_ml_dtypes(self):
+        with (
+            mock.patch.dict(MODULE.os.environ, {"MODELSDK_SMOKE_ARCH": "amd64"}),
+            mock.patch.object(MODULE, "run") as run,
+            mock.patch.object(
+                MODULE.importlib.metadata,
+                "version",
+                side_effect=lambda name: MODULE.X86_64_REQUIRED_PACKAGE_VERSIONS[name],
+            ) as version,
+        ):
+            MODULE.smoke_python_environment()
+
+        run.assert_called_once_with(
+            [MODULE.sys.executable, "-m", "pip", "check"], timeout=120
+        )
+        version.assert_called_once_with("ml-dtypes")
 
     def test_compiled_artifacts_require_sima_mpk_elf_and_precision_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -15,8 +15,12 @@ Merge rules:
   - Support flags (INT8/INT16/BF16/5D): the published table wins. For operators
     that exist only in the model-sdk DB, fall back to its int8/bfloat16 values;
     INT16/5D are reported unknown.
-  - Constraints column: published `constraints`, else model-sdk
-    `sima_hw_sw_constraints`.
+  - Constraints: model-sdk `sima_hw_sw_constraints`, else published
+    `constraints` for the operators it leaves empty. The engineering wording is
+    not published directly — scripts/data/constraint_copy.json holds the
+    customer-facing sentence for each operator, together with the engineering
+    text it was written from. If that text changes, the copy is stale and this
+    script fails rather than publishing wording that no longer matches.
   - Notes column: model-sdk `notes`, prefixed with the ONNX opset when known.
   - Support-flag conflicts between the two sources (e.g. one says INT8=Y, the
     other INT8=N) are printed to stdout and embedded as an HTML comment at the
@@ -33,6 +37,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUBLISHED = REPO_ROOT / "scripts" / "data" / "onnx_operators.json"
 MODEL_SDK = REPO_ROOT / "skills" / "model_surgery" / "data" / "supported_operators.json"
+COPY = REPO_ROOT / "scripts" / "data" / "constraint_copy.json"
 OUT = REPO_ROOT / "docs" / "guides" / "model-compatibility.md"
 
 YES, NO, UNK = "✅", "❌", "—"
@@ -50,19 +55,6 @@ def norm_flag(value) -> str:
     return UNK
 
 
-def brief(text: str, limit: int = 160) -> str:
-    """Trim a constraint to a brief form, cutting at a sentence/word boundary."""
-    text = text.strip()
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    dot = cut.rfind(". ")
-    if dot >= 80:
-        return cut[: dot + 1] + " …"
-    sp = cut.rfind(" ")
-    return (cut[:sp] if sp > 0 else cut).rstrip(",;") + " …"
-
-
 def fived_from_spatial(spatial) -> str:
     """Derive 5D support from the model-sdk `spatial_dimensions` string."""
     if not spatial:
@@ -77,6 +69,7 @@ def main() -> int:
     published = {row["operator"]: row for row in json.loads(PUBLISHED.read_text())}
     sdk_doc = json.loads(MODEL_SDK.read_text())
     sdk = sdk_doc.get("operators", {})
+    copy = json.loads(COPY.read_text()).get("constraints", {})
 
     names = sorted(set(published) | set(sdk), key=str.lower)
     conflicts: list[str] = []
@@ -101,12 +94,13 @@ def main() -> int:
                 if norm_flag(pv) != UNK and norm_flag(mv) != UNK and norm_flag(pv) != norm_flag(mv):
                     conflicts.append(f"{name}: {flag} published={pv!r} model-sdk={mv!r} (kept published)")
 
-        # Constraints — published first, else model-sdk hardware constraints.
+        # Constraints — the operator support database first, else the published
+        # table for the operators it leaves empty.
         constraints = ""
-        if p and p.get("constraints"):
-            constraints = p["constraints"]
-        elif m and m.get("sima_hw_sw_constraints"):
+        if m and m.get("sima_hw_sw_constraints"):
             constraints = m["sima_hw_sw_constraints"]
+        elif p and p.get("constraints"):
+            constraints = p["constraints"]
 
         # ONNX opset — short, numeric only (skip placeholder values like "x").
         opset = ""
@@ -114,8 +108,42 @@ def main() -> int:
             raw = str(m["onnx-opset-version"]).strip()
             opset = raw if raw.isdigit() else ""
 
-        constraints = (constraints or "").replace("\n", " ").strip()
+        constraints = (constraints or "").strip()
         rows.append((name, int8, bf16, fived, opset or UNK, constraints))
+
+    # Constraint copy is checked before anything is emitted — the curated
+    # sentences feed both the list below the table and the table's search index.
+    constrained = [(name, c) for (name, *_rest, c) in rows if c]
+    stale: list[str] = []
+    for name, c in constrained:
+        entry = copy.get(name)
+        if entry is None:
+            stale.append(f"{name}: no customer-facing copy in {COPY.name}")
+        elif entry.get("source", "").strip() != c:
+            stale.append(f"{name}: constraint changed since the copy was written")
+    orphans = sorted(set(copy) - {name for name, _ in constrained})
+    stale += [f"{o}: copy exists but the operator no longer has a constraint" for o in orphans]
+
+    if stale:
+        print(f"{len(stale)} constraint(s) out of sync with {COPY.relative_to(REPO_ROOT)}:")
+        for s in stale:
+            print(f"  - {s}")
+        print("\nUpdate the 'copy' and 'source' fields together, then re-run.")
+        print("Nothing written — the page would otherwise publish stale wording.")
+        return 1
+
+    # Payload for the OperatorTable component in the core docs site. The
+    # constraint text rides along so the table's search box matches on it, even
+    # though the sentences themselves render in the list below the table.
+    payload = json.dumps(
+        [
+            {"name": name, "int8": int8, "bf16": bf16, "fived": fived,
+             "opset": opset, "constraint": copy.get(name, {}).get("copy", "")}
+            for name, int8, bf16, fived, opset, _c in rows
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
     lines: list[str] = [
         "---",
@@ -139,25 +167,34 @@ def main() -> int:
         "",
         "## Supported operators",
         "",
-        "Use the table to check MLA compiler support by operator and precision "
-        "scheme. **INT8** runs on the MLA. **BF16** is available on Modalix "
-        "(developer preview). **5D** marks operators that accept 5D "
-        "(N, D, H, W, C) tensors. **Opset** is the ONNX opset version.",
+        "Search the table to check MLA compiler support by operator and "
+        "precision scheme. **INT8** runs on the MLA. **BF16** is available on "
+        "Modalix (developer preview). **5D** marks operators that accept 5D "
+        "(N, D, H, W, C) tensors. **Opset** is the ONNX opset version. Search "
+        "matches constraint text as well as operator names, and each operator "
+        "links to its reference on onnx.ai.",
         "",
-        "| Operator | INT8 | BF16 | 5D | Opset |",
-        "| --- | :---: | :---: | :---: | :---: |",
+        # Rendered by the OperatorTable component in the core docs site. The
+        # payload is the element's children, and CommonMark keeps an HTML block
+        # open until a blank line — so no blank lines inside these three.
+        "<OperatorTable>",
+        payload,
+        "</OperatorTable>",
+        "",
     ]
-    for name, int8, bf16, fived, opset, _ in rows:
-        lines.append(f"| `{name}` | {int8} | {bf16} | {fived} | {opset} |")
-    lines.append("")
 
-    # Constraints as a wrapping list below the matrix, so long hardware notes
-    # don't force the table wider than the page.
-    constrained = [(name, c) for (name, *_rest, c) in rows if c]
     if constrained:
-        lines += ["## Constraints", ""]
+        lines += [
+            "## Constraints",
+            "",
+            "These operators are supported with the limits below. Operators not "
+            "listed here have no additional constraints. Where a constraint "
+            "names an ONNX attribute, set it accordingly when you export the "
+            "model.",
+            "",
+        ]
         for name, c in constrained:
-            lines.append(f"- **{name}** — {brief(c)}")
+            lines.append(f"- **{name}** — {copy[name]['copy']}")
         lines.append("")
 
     OUT.write_text("\n".join(lines), encoding="utf-8")

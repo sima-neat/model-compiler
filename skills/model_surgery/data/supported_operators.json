@@ -327,6 +327,18 @@
       "bfloat16": "N",
       "notes": null
     },
+    "LpNormalization": {
+      "onnx-opset-version": "22",
+      "attributes": "axis: default -1\np = [1, 2]",
+      "element_wise": null,
+      "tvm_transforms_constraints": "Decomposed for p=2.",
+      "spatial_dimensions": "1D, 2D, 3D",
+      "sima_hw_sw_constraints": "Only p = 2 is supported for L2 normalization.",
+      "business_study": "p = 1",
+      "int8": "Y",
+      "bfloat16": "Y",
+      "notes": null
+    },
     "LRN": {
       "onnx-opset-version": "13",
       "attributes": "alpha\nbeta\nbias\nsize",
@@ -431,6 +443,18 @@
       "spatial_dimensions": "Any",
       "sima_hw_sw_constraints": null,
       "business_study": null,
+      "int8": "Y",
+      "bfloat16": "Y",
+      "notes": null
+    },
+    "ReduceL2": {
+      "onnx-opset-version": "18",
+      "attributes": "keepdims = [1, 0]",
+      "element_wise": null,
+      "tvm_transforms_constraints": "Decomposed.",
+      "spatial_dimensions": "1D, 2D, 3D",
+      "sima_hw_sw_constraints": "Expect following DIV to merge to L2 normalization.",
+      "business_study": "Stand alone l2 norm.",
       "int8": "Y",
       "bfloat16": "Y",
       "notes": null

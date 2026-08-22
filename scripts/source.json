@@ -24,9 +24,6 @@
     "numpy": "1.26.4",
     "matplotlib": "3.10.9",
     "grpcio": "1.75.1",
-    "jax": "0.5.3",
-    "jaxlib": "0.5.3",
-    "ml-dtypes": "0.4.1",
     "onnx": "1.17.0",
     "onnxruntime": "1.21.1",
     "protobuf": "4.25.7",
@@ -37,12 +34,24 @@
     "neural-compressor": "2.0.0.dev0+master.3",
     "sima-accelerator-mode": "2.1.3.dev0+master.17",
     "sima-ev-transforms": "2.1.3.dev0+master.18",
-    "sima-frontend": "2.1.3.dev0+master.390",
-    "sima-ml-kernels": "2.1.3.dev0+master.44",
-    "sima-mlc": "2.1.3.dev0+master.184",
+    "sima-frontend": "2.1.3.dev0+master.392",
+    "sima-ml-kernels": "2.1.3.dev0+master.45",
+    "sima-mlc": "2.1.3.dev0+master.187",
     "sima-mppe": "2.1.0.dev0+master.25",
     "sima-tvm": "1.4.0.dev0+master.19",
     "sima-utils": "2.1.3.dev0+master.37"
+  },
+  "aarch64": {
+    "dependency_overrides": {
+      "jax": "0.5.3",
+      "jaxlib": "0.5.3",
+      "ml-dtypes": "0.4.1"
+    }
+  },
+  "x86_64": {
+    "dependency_overrides": {
+      "ml-dtypes": "0.4.1"
+    }
   },
   "dependency_replacements": {
     "zmq": "pyzmq>=27.1.0"
@@ -87,7 +96,7 @@
     }
   ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "2.1.3.dev0+master.390" },
+    { "name": "sima-frontend", "version": "2.1.3.dev0+master.392" },
     { "name": "mpk_parser", "version": "2.1.3.dev0+master.38" },
     { "name": "sima-mppe", "version": "2.1.0.dev0+master.25" },
     { "name": "onnxoptimizer", "version": "0.3.13" },
@@ -97,7 +106,7 @@
     {
       "name": "sima_lmm[sdk]",
       "vulcan": {
-        "ref": "develop"
+        "policy": "snap"
       }
     }
   ],

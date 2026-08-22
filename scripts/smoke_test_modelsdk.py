@@ -9,6 +9,7 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -63,9 +64,13 @@ REQUIRED_MODULES = [
     "safetensors",
 ]
 
-REQUIRED_PACKAGE_VERSIONS = {
+ARM64_REQUIRED_PACKAGE_VERSIONS = {
     "jax": "0.5.3",
     "jaxlib": "0.5.3",
+    "ml-dtypes": "0.4.1",
+}
+
+X86_64_REQUIRED_PACKAGE_VERSIONS = {
     "ml-dtypes": "0.4.1",
 }
 
@@ -199,10 +204,20 @@ def smoke_preflight() -> SmokeCasePayload:
     return SmokeCasePayload()
 
 
+def required_package_versions() -> dict[str, str]:
+    target_arch = os.environ.get("MODELSDK_SMOKE_ARCH", platform.machine()).lower()
+    if target_arch in {"aarch64", "arm64"}:
+        return ARM64_REQUIRED_PACKAGE_VERSIONS
+    if target_arch in {"x86_64", "amd64"}:
+        return X86_64_REQUIRED_PACKAGE_VERSIONS
+    return {}
+
+
 def smoke_python_environment() -> None:
     run([sys.executable, "-m", "pip", "check"], timeout=120)
+    required_versions = required_package_versions()
     mismatches = []
-    for package, expected in REQUIRED_PACKAGE_VERSIONS.items():
+    for package, expected in required_versions.items():
         try:
             installed = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -212,13 +227,14 @@ def smoke_python_environment() -> None:
             mismatches.append(f"{package}: {installed} (expected {expected})")
     if mismatches:
         raise SmokeFailure("unexpected Python package versions: " + "; ".join(mismatches))
-    log(
-        "verified Python packages: "
-        + ", ".join(
-            f"{package}=={version}"
-            for package, version in REQUIRED_PACKAGE_VERSIONS.items()
+    if required_versions:
+        log(
+            "verified Python packages: "
+            + ", ".join(
+                f"{package}=={version}"
+                for package, version in required_versions.items()
+            )
         )
-    )
 
 
 def smoke_tools() -> None:
@@ -679,7 +695,9 @@ def smoke_yolo(args: argparse.Namespace) -> SmokeCasePayload:
         dtype=args.dtype,
     )
     log(f"YOLOv8 smoke artifacts: {build_dir}")
-    metrics = measure_compiled_artifacts("yolov8", build_dir)
+    metrics = validate_and_measure_compiled_artifacts(
+        "yolov8", build_dir, args.dtype
+    )
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
