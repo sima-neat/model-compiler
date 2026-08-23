@@ -1,5 +1,7 @@
 # Model Compiler Bundle Builder
 
+**Documentation:** [English](docs/guides/index.md) | [한국어](docs/i18n/ko/guides/index.md) | [日本語](docs/i18n/ja/guides/index.md) | [繁體中文](docs/i18n/zh-Hant/guides/index.md) | [Українська](docs/i18n/uk/guides/index.md)
+
 This repository builds a distributable Model Compiler bundle for `sima-cli`.
 
 The bundle contains:

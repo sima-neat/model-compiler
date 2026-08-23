@@ -1,53 +1,47 @@
 ---
-title: Compile Your First Model
+title: "Створіть свою першу модель."
 sidebar_position: 1
 ---
 
-# Compile Your First Model
+# Створіть свою першу модель.
 
-This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
-**Post-Training Quantization (PTQ)** workflow. The result is a compiled
-`.tar.gz` MPK archive for the Neat runtime.
+Ця інструкція показує, як за допомогою Model Compiler провести ONNX модель **ResNet-50** через процес **пост-тренувального квантування (PTQ)**. Результатом є скомпільований архів MPK у форматі `.tar.gz` для середовища виконання Neat.
 
-The workflow has four stages:
+Процес складається з чотирьох етапів:
 
-1. **Load** the model.
-2. **Quantize** it to INT8 by default, or BF16 when requested.
-3. **Validate** its accuracy.
-4. **Compile** it for execution on the MLSoC.
+1. **Завантажте** модель.
+2. За замовчуванням використовуйте квантування до INT8, або BF16, якщо це необхідно.
+3. **Перевірте** її точність.
+4. **Скомпілюйте** його для виконання на MLSoC.
 
-## Prerequisites
+## Необхідні умови / вимоги.
 
-- `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
-- Model Compiler installed in the Neat SDK or on an Ubuntu host. Enter the
-  environment with:
+- `sima-cli` встановлено (див. [інструкцію зі встановлення sima-cli](https://github.com/sima-neat/sima-cli)).
+- Model Compiler встановлено в Neat SDK або на хост-машині Ubuntu. Введіть.
+  середовище з:
 
 ```bash
 activate-model-compiler
 ```
 
-## Get the example
+## Отримайте приклад.
 
-On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
-Model Compiler examples with `sima-cli`:
+На хост-системі з встановленою Neat SDK або Ubuntu, де встановлено Model Compiler, встановіть приклади Model Compiler за допомогою `sima-cli`:
 
 ```bash
 sima-cli neat install model-compiler/examples
 ```
 
-Keep the Model Compiler environment active for the rest of the walkthrough.
+Залиште середовище Model Compiler активним протягом усього процесу.
 
-Run the quantize-and-compile example. The script generates the ResNet-50 ONNX
-model and downloads public Open Images calibration data if they are not already
-present:
+Запустіть приклад «quantize-and-compile». Скрипт генерує ONNX модель ResNet-50 і завантажує загальнодоступні дані калібрування Open Images, якщо їх ще немає:
 
 ```bash
 cd resnet50-ptq
 python3 compile.py
 ```
 
-When validation inputs are provided, the run should classify a Golden Retriever
-as ImageNet class 207 and produce a compiled archive:
+Коли надаються вхідні дані для перевірки, програма має ідентифікувати золотистого ретривера як зображення, що належить до класу 207 у базі даних ImageNet, і створити скомпільований архів:
 
 ```text
 Validation image prediction:
@@ -57,19 +51,19 @@ Compiling model. Output directory: .../compiled_resnet50
 Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` to [validate accuracy and performance](./validate-accuracy-performance.md),
-or use it to [build a pipeline application](/develop-apps/).
+Використовуйте отриманий `.tar.gz` для [перевірки точності та продуктивності](./validate-accuracy-performance.md),
+або використовуйте його для [створення застосунку для обробки даних у конвеєрі](/develop-apps/).
 
-The following sections explain each stage. The [full script](#full-script)
-appears at the end. MLA tessellation is **enabled by default**, so the compiled
-model feeds the accelerator directly. See
-[Compilation > Tessellation](./model-compilation.md#tessellation).
+Наступні розділи пояснюють кожен етап. [Повний скрипт](#full-script)
+наведено в кінці. MLA-теселяція **увімкнена за замовчуванням**, тому скомпільована
+модель безпосередньо передає дані прискорювачу. Див.
+[Компіляція > Теселяція](./model-compilation.md#tessellation).
 
-## How it works
+## Як це працює.
 
-### 1. Load the model
+### 1. Завантажте модель.
 
-Load the ONNX ResNet-50 model into the SDK's internal representation.
+Завантажте ONNX модель ResNet-50 у внутрішнє представлення SDK.
 
 ```python
 from afe.apis.loaded_net import load_model
@@ -90,17 +84,15 @@ importer_params = onnx_source(str(MODEL_PATH), input_shapes_dict, input_types_di
 loaded_net = load_model(importer_params, target=TARGET)
 ```
 
-The input tensor `"input"` has shape `(1, 3, 224, 224)` — batch size one, three
-color channels, 224×224 pixels — and type `float32`. `onnx_source` describes how
-to read the model (the ONNX file itself is unchanged); `load_model` converts it
-into a `LoadedNet` ready for quantization. `TARGET` selects the platform:
-`gen1_target` for MLSoC, `gen2_target` for Modalix.
+Вхідний тензор `"input"` має розмірність `(1, 3, 224, 224)` — розмір пакета дорівнює одному, три
+кольорові канали, 224×224 пікселів — і тип `float32`. `onnx_source` описує, як
+зчитувати модель (сам файл ONNX не змінюється); `load_model` перетворює її
+на `LoadedNet`, готову до квантування. `TARGET` вибирає платформу:
+`gen1_target` для MLSoC, `gen2_target` для Modalix.
 
-### 2. Prepare a calibration dataset
+### 2. Підготуйте набір даних для калібрування.
 
-Quantization needs a small, representative calibration dataset. The dataset
-sets scaling factors that map FP32 values into the integer range while avoiding
-excessive clipping or precision loss.
+Для квантування потрібен невеликий, репрезентативний набір даних для калібрування. Цей набір даних визначає коефіцієнти масштабування, які відображають значення FP32 в цілочисельний діапазон, запобігаючи надмірному обрізанню або втраті точності.
 
 ```python
 import cv2
@@ -125,13 +117,13 @@ calib_data = convert_data_generator_to_iterable(
 ```
 
 :::note
-Calibration data passed to `DataGenerator` must be in **NHWC** layout
-(`[batch, height, width, channels]`), even when the model's input tensor is
-**NCHW** (`[batch, channels, height, width]`) — as in this example, where the
-ONNX input shape is `(1, 3, 224, 224)`. The example above already produces NHWC
-because `preprocess` returns HWC images. If your preprocessing pipeline
-produces NCHW arrays instead, transpose them before building the calibration
-dataset:
+Дані калібрування, що передаються до `DataGenerator`, повинні бути у форматі **NHWC**
+(`[batch, height, width, channels]`), навіть якщо вхідний тензор моделі має формат
+**NCHW** (`[batch, channels, height, width]`) — як у цьому прикладі, де
+формат вхідних даних ONNX дорівнює `(1, 3, 224, 224)`. Наведений вище приклад вже генерує NHWC,
+оскільки `preprocess` повертає зображення у форматі HWC. Якщо ваш процес попередньої обробки
+генерує масиви у форматі NCHW, виконайте їх транспонування перед створенням
+набору даних для калібрування:
 
 ```python
 # Convert NCHW -> NHWC
@@ -141,15 +133,11 @@ calib_data = convert_data_generator_to_iterable(
 ```
 :::
 
-Use representative images from the same input distribution as your deployment
-workload.
+Використовуйте репрезентативні зображення, отримані з того ж набору даних, що й для вашого робочого навантаження під час розгортання.
 
-### 3. Quantize
+### 3. Квантування
 
-After you load the model and prepare calibration data, quantize it. The
-packaged example defaults to INT8 because it is the broadly supported path.
-Some models may emit saturation warnings during INT8 quantization; validate the
-quantized model before using the compiled output:
+Після завантаження моделі та підготовки даних для калібрування виконайте її квантування. У наданому прикладі за замовчуванням використовується INT8, оскільки це найбільш поширений формат. Під час квантування деяких моделей у формат INT8 можуть з’являтися попередження про переповнення; перевірте квантовану модель перед використанням скомпільованого результату:
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -170,15 +158,11 @@ sdk_net = loaded_net.quantize(
 )
 ```
 
-This example uses 8-bit asymmetric per-tensor quantization for activations and
-8-bit symmetric per-channel quantization for weights. For BF16 and calibration
-options, see
-**[Quantization](./quantization.md)**.
+У цьому прикладі використовується 8-бітове асиметричне квантування для кожного тензора для активацій і 8-бітове симетричне квантування для кожного каналу для ваг. Щодо параметрів BF16 і калібрування, див. **[Квантування](./quantization.md)**.
 
-### 4. Validate accuracy
+### 4. Перевірте точність.
 
-Before you compile, run the quantized model in software with
-`sdk_net.execute(...)` and confirm that it still classifies correctly:
+Перш ніж виконати компіляцію, запустіть квантовану модель у програмному забезпеченні за допомогою `sdk_net.execute(...)` і переконайтеся, що вона, як і раніше, правильно класифікує дані:
 
 ```python
 import numpy as np
@@ -198,14 +182,12 @@ idx, name, score = postprocess_output(output, labels)
 print(f"class {idx}: '{name}' -> {100.0 * score:.2f}%")
 ```
 
-A correct, high-confidence prediction, such as
-`207 'golden retriever' -> 98.82%`, confirms that preprocessing and
-quantization are aligned. A misclassification usually indicates a preprocessing
-mismatch or a quantization issue to retune.
+Точний прогноз із високим ступенем достовірності, наприклад,
+`207 'golden retriever' -> 98.82%`, підтверджує, що попередня обробка та квантування узгоджені. Неправильна класифікація зазвичай вказує на невідповідність у попередній обробці або на проблему з квантуванням, яку необхідно виправити.
 
-### 5. Compile
+### 5. Зберіть (усі частини) разом.
 
-After validation passes, save and compile the model:
+Після успішної перевірки збережіть і скомпілюйте модель:
 
 ```python
 sdk_net.save(model_name="quantized_resnet50", output_directory=args.output)
@@ -213,25 +195,21 @@ tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
 sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 ```
 
-The output is a `.tar.gz` archive that contains the compiled MLA programs, an
-`_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./model-compilation.md)** for archive contents, batch sizing,
-and tessellation options.
+Результатом є `.tar.gz` архів, який містить скомпільовані програми MLA, а також
+`_mpk.json` файл метаданих і файл зі статистикою виконання. Див.[Компіляція](./model-compilation.md)** для вмісту архіву, визначення розміру пакетів і параметрів теселяції.
 
-## Full script {#full-script}
+## Повний сценарій {#full-script}
 
-The complete annotated program is below. It is also available in the Model
-Compiler examples package as `resnet50-ptq/compile.py`, and in the
+Повний анотований код програми наведено нижче. Він також доступний у пакеті прикладів для компілятора моделей як `resnet50-ptq/compile.py`, а також у
 [ResNet-50 PTQ example source](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)
-on GitHub:
+на GitHub:
 
 ```bash
 sima-cli neat install model-compiler/examples
 cd resnet50-ptq
 ```
 
-The script runs against **your own** ONNX model and a folder of calibration
-images:
+Скрипт запускається для вашої власної ONNX моделі та папки з калібрувальними зображеннями:
 
 ```bash
 python3 compile.py \
@@ -521,8 +499,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-## Next steps
+## Наступні кроки.
 
-Use the compiled `.tar.gz` to build your first runtime pipeline, or continue to
-the in-depth **[Quantization](./quantization.md)** and **[Compilation](./model-compilation.md)**
-guides.
+Використовуйте скомпільований файл `.tar.gz` для створення вашого першого конвеєра виконання або продовжуйте вивчати
+детальні посібники з **[квантування](./quantization.md)** та **[компіляції](./model-compilation.md)**.

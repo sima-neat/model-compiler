@@ -1,53 +1,47 @@
 ---
-title: Compile Your First Model
+title: "첫 번째 모델을 컴파일하세요."
 sidebar_position: 1
 ---
 
-# Compile Your First Model
+# 첫 번째 모델을 컴파일하세요.
 
-This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
-**Post-Training Quantization (PTQ)** workflow. The result is a compiled
-`.tar.gz` MPK archive for the Neat runtime.
+이 튜토리얼에서는 **ResNet-50** ONNX 모델을 Model Compiler를 사용하여 **사후 학습 양자화(PTQ)** 워크플로를 거칩니다. 결과는 Neat 런타임용으로 컴파일된 `.tar.gz` MPK 아카이브입니다.
 
-The workflow has four stages:
+이 워크플로는 네 단계로 구성됩니다.
 
-1. **Load** the model.
-2. **Quantize** it to INT8 by default, or BF16 when requested.
-3. **Validate** its accuracy.
-4. **Compile** it for execution on the MLSoC.
+1. **모델을 로드**합니다.
+2. 기본적으로 INT8로 양자화하고, 요청 시에는 BF16으로 양자화합니다.
+3. **정확성**을 확인하십시오.
+4. MLSoC에서 실행할 수 있도록 컴파일하세요.
 
-## Prerequisites
+## 필수 조건
 
-- `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
-- Model Compiler installed in the Neat SDK or on an Ubuntu host. Enter the
-  environment with:
+- `sima-cli`가 설치되었습니다([sima-cli 설정 가이드](https://github.com/sima-neat/sima-cli) 참조).
+- Model Compiler 설치된 위치 Neat SDK 또는 Ubuntu 호스트에 설치합니다. 다음을 입력하세요.
+  다음 환경에서:
 
 ```bash
 activate-model-compiler
 ```
 
-## Get the example
+## 예제를 가져오세요.
 
-On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
-Model Compiler examples with `sima-cli`:
+Model Compiler가 설치된 Neat SDK 또는 Ubuntu 호스트에서 `sima-cli`를 사용하여 Model Compiler 예제를 설치합니다.
 
 ```bash
 sima-cli neat install model-compiler/examples
 ```
 
-Keep the Model Compiler environment active for the rest of the walkthrough.
+튜토리얼의 나머지 부분에서는 Model Compiler 환경을 활성 상태로 유지하십시오.
 
-Run the quantize-and-compile example. The script generates the ResNet-50 ONNX
-model and downloads public Open Images calibration data if they are not already
-present:
+양자화 및 컴파일 예제를 실행합니다. 이 스크립트는 ResNet-50 ONNX 모델을 생성하고, 필요한 경우 공개 Open Images 교정 데이터를 다운로드합니다.
 
 ```bash
 cd resnet50-ptq
 python3 compile.py
 ```
 
-When validation inputs are provided, the run should classify a Golden Retriever
-as ImageNet class 207 and produce a compiled archive:
+검증 입력이 제공되면 실행 과정에서 골든 리트리버 이미지를 ImageNet 클래스 207으로 분류하고, 컴파일된 아카이브를 생성해야 합니다.
 
 ```text
 Validation image prediction:
@@ -57,19 +51,18 @@ Compiling model. Output directory: .../compiled_resnet50
 Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` to [validate accuracy and performance](./validate-accuracy-performance.md),
-or use it to [build a pipeline application](/develop-apps/).
+결과적으로 생성된 `.tar.gz` 파일을 사용하여 [정확도와 성능을 검증](./validate-accuracy-performance.md)하거나,
+또는 이를 사용하여 [파이프라인 애플리케이션을 구축](/develop-apps/)할 수 있습니다.
 
-The following sections explain each stage. The [full script](#full-script)
-appears at the end. MLA tessellation is **enabled by default**, so the compiled
-model feeds the accelerator directly. See
-[Compilation > Tessellation](./model-compilation.md#tessellation).
+다음 섹션에서는 각 단계를 설명합니다. [전체 스크립트](#full-script)는
+마지막에 나타납니다. MLA 테셀레이션은 **기본적으로 활성화**되어 있으므로 컴파일된
+모델이 가속기에 직접 전달됩니다. [컴파일 > 테셀레이션](./model-compilation.md#tessellation)을 참조하십시오.
 
-## How it works
+## 작동 방식
 
-### 1. Load the model
+### 1. 모델을 불러옵니다.
 
-Load the ONNX ResNet-50 model into the SDK's internal representation.
+ONNX ResNet-50 모델을 SDK의 내부 표현 방식으로 로드합니다.
 
 ```python
 from afe.apis.loaded_net import load_model
@@ -90,17 +83,11 @@ importer_params = onnx_source(str(MODEL_PATH), input_shapes_dict, input_types_di
 loaded_net = load_model(importer_params, target=TARGET)
 ```
 
-The input tensor `"input"` has shape `(1, 3, 224, 224)` — batch size one, three
-color channels, 224×224 pixels — and type `float32`. `onnx_source` describes how
-to read the model (the ONNX file itself is unchanged); `load_model` converts it
-into a `LoadedNet` ready for quantization. `TARGET` selects the platform:
-`gen1_target` for MLSoC, `gen2_target` for Modalix.
+입력 텐서 `"input"`는 `(1, 3, 224, 224)` 형태를 가집니다. 즉, 배치 크기는 1, 색상 채널은 3개, 224x224 픽셀이며, 데이터 유형은 `float32`입니다. `onnx_source`는 모델을 읽는 방법을 설명합니다(실제 ONNX 파일은 변경되지 않음). `load_model`은 모델을 양자화를 위해 사용할 수 있는 `LoadedNet`으로 변환합니다. `TARGET`은 플랫폼을 선택합니다. MLSoC에는 `gen1_target`를, Modalix에는 `gen2_target`를 사용합니다.
 
-### 2. Prepare a calibration dataset
+### 2. 보정 데이터 세트를 준비합니다.
 
-Quantization needs a small, representative calibration dataset. The dataset
-sets scaling factors that map FP32 values into the integer range while avoiding
-excessive clipping or precision loss.
+양자화에는 작고 대표적인 보정 데이터 세트가 필요합니다. 이 데이터 세트는 FP32 값을 정수 범위로 매핑하는 스케일링 요소를 설정하여 과도한 클리핑이나 정밀도 손실을 방지합니다.
 
 ```python
 import cv2
@@ -125,13 +112,7 @@ calib_data = convert_data_generator_to_iterable(
 ```
 
 :::note
-Calibration data passed to `DataGenerator` must be in **NHWC** layout
-(`[batch, height, width, channels]`), even when the model's input tensor is
-**NCHW** (`[batch, channels, height, width]`) — as in this example, where the
-ONNX input shape is `(1, 3, 224, 224)`. The example above already produces NHWC
-because `preprocess` returns HWC images. If your preprocessing pipeline
-produces NCHW arrays instead, transpose them before building the calibration
-dataset:
+`DataGenerator`에 전달되는 보정 데이터는 **NHWC** 레이아웃(`[batch, height, width, channels]`)으로 제공되어야 합니다. 모델의 입력 텐서가 **NCHW**(`[batch, channels, height, width]`)인 경우에도 마찬가지입니다. 예를 들어, ONNX 입력 형식이 `(1, 3, 224, 224)`인 경우입니다. 위의 예제는 이미 NHWC 형식을 생성합니다. 이는 `preprocess`가 HWC 이미지를 반환하기 때문입니다. 전처리 파이프라인에서 NCHW 배열을 생성하는 경우, 보정 데이터 세트를 생성하기 전에 배열을 전치해야 합니다.
 
 ```python
 # Convert NCHW -> NHWC
@@ -141,15 +122,11 @@ calib_data = convert_data_generator_to_iterable(
 ```
 :::
 
-Use representative images from the same input distribution as your deployment
-workload.
+배포할 워크로드와 동일한 입력 분포에서 대표적인 이미지를 사용하세요.
 
-### 3. Quantize
+### 3. 양자화
 
-After you load the model and prepare calibration data, quantize it. The
-packaged example defaults to INT8 because it is the broadly supported path.
-Some models may emit saturation warnings during INT8 quantization; validate the
-quantized model before using the compiled output:
+모델을 로드하고 보정 데이터를 준비한 후 양자화를 수행합니다. 패키지 예제는 기본적으로 INT8을 사용하는데, 이는 널리 지원되는 방식이기 때문입니다. 일부 모델은 INT8 양자화 중에 포화 경고를 표시할 수 있습니다. 따라서 컴파일된 출력을 사용하기 전에 양자화된 모델을 검증하십시오.
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -170,15 +147,11 @@ sdk_net = loaded_net.quantize(
 )
 ```
 
-This example uses 8-bit asymmetric per-tensor quantization for activations and
-8-bit symmetric per-channel quantization for weights. For BF16 and calibration
-options, see
-**[Quantization](./quantization.md)**.
+이 예제에서는 활성화 값에 대해 8비트 비대칭 텐서별 양자화를 사용하고, 가중치에는 8비트 대칭 채널별 양자화를 사용합니다. BF16 및 보정 옵션에 대한 자세한 내용은 **[Quantization](./quantization.md)**를 참조하십시오.
 
-### 4. Validate accuracy
+### 4. 정확성 검증
 
-Before you compile, run the quantized model in software with
-`sdk_net.execute(...)` and confirm that it still classifies correctly:
+컴파일하기 전에 양자화된 모델을 소프트웨어에서 `sdk_net.execute(...)`를 사용하여 실행하고, 여전히 올바르게 분류하는지 확인하세요.
 
 ```python
 import numpy as np
@@ -198,14 +171,11 @@ idx, name, score = postprocess_output(output, labels)
 print(f"class {idx}: '{name}' -> {100.0 * score:.2f}%")
 ```
 
-A correct, high-confidence prediction, such as
-`207 'golden retriever' -> 98.82%`, confirms that preprocessing and
-quantization are aligned. A misclassification usually indicates a preprocessing
-mismatch or a quantization issue to retune.
+정확하고 신뢰도가 높은 예측, 예를 들어 `207 'golden retriever' -> 98.82%`는 전처리 및 양자화가 올바르게 수행되었음을 나타냅니다. 오분류는 일반적으로 전처리 과정의 불일치 또는 재조정이 필요한 양자화 문제를 나타냅니다.
 
-### 5. Compile
+### 5. 컴파일
 
-After validation passes, save and compile the model:
+검증이 완료되면 모델을 저장하고 컴파일합니다.
 
 ```python
 sdk_net.save(model_name="quantized_resnet50", output_directory=args.output)
@@ -213,25 +183,19 @@ tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
 sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 ```
 
-The output is a `.tar.gz` archive that contains the compiled MLA programs, an
-`_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./model-compilation.md)** for archive contents, batch sizing,
-and tessellation options.
+결과는 다음과 같습니다. `.tar.gz` 컴파일된 MLA 프로그램이 포함된 아카이브입니다.
+`_mpk.json` 메타데이터 파일과 실행 통계 파일입니다. 자세한 내용은 다음을 참조하십시오.[컴파일](./model-compilation.md)** 아카이브 콘텐츠, 배치 크기 및 테셀레이션 옵션에 대해.
 
-## Full script {#full-script}
+## 전체 대본 {#full-script}
 
-The complete annotated program is below. It is also available in the Model
-Compiler examples package as `resnet50-ptq/compile.py`, and in the
-[ResNet-50 PTQ example source](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)
-on GitHub:
+완전한 주석이 추가된 프로그램은 아래에 있습니다. 또한, 이 프로그램은 `resnet50-ptq/compile.py`로, 그리고 [ResNet-50 PTQ 예제 소스](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)로 GitHub에서 확인할 수 있습니다.
 
 ```bash
 sima-cli neat install model-compiler/examples
 cd resnet50-ptq
 ```
 
-The script runs against **your own** ONNX model and a folder of calibration
-images:
+이 스크립트는 **사용자 지정** ONNX 모델과 보정 이미지 폴더를 대상으로 실행됩니다.
 
 ```bash
 python3 compile.py \
@@ -521,8 +485,6 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-## Next steps
+## 다음 단계
 
-Use the compiled `.tar.gz` to build your first runtime pipeline, or continue to
-the in-depth **[Quantization](./quantization.md)** and **[Compilation](./model-compilation.md)**
-guides.
+컴파일된 `.tar.gz` 파일을 사용하여 첫 번째 런타임 파이프라인을 구축하거나, 심층적인 **[양자화](./quantization.md)** 및 **[컴파일](./model-compilation.md)** 가이드로 계속 진행하세요.
