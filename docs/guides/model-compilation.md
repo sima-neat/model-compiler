@@ -33,7 +33,7 @@ contains:
 | `.yaml` file | Execution-statistics profiling |
 | `_mpk.json` | Processor-plugin configuration / pipeline metadata |
 
-## Tessellation
+## Tessellation {#tessellation}
 
 **Tessellation** controls how input and output tensors are laid out in DRAM for
 the MLA. Driving tensors **directly to and from the MLA**, with inputs in `HWC`

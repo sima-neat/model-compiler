@@ -1,53 +1,47 @@
 ---
-title: Compile Your First Model
+title: "編譯您的第一個模型"
 sidebar_position: 1
 ---
 
-# Compile Your First Model
+# 編譯您的第一個模型
 
-This walkthrough takes a **ResNet-50** ONNX model through the Model Compiler
-**Post-Training Quantization (PTQ)** workflow. The result is a compiled
-`.tar.gz` MPK archive for the Neat runtime.
+本教學將引導您使用 Model Compiler，將一個 **ResNet-50** ONNX 模型應用於 **訓練後量化 (PTQ)** 工作流程。最終結果是一個編譯後的 `.tar.gz` MPK 檔案，適用於 Neat 執行環境。
 
-The workflow has four stages:
+此工作流程包含四個階段：
 
-1. **Load** the model.
-2. **Quantize** it to INT8 by default, or BF16 when requested.
-3. **Validate** its accuracy.
-4. **Compile** it for execution on the MLSoC.
+1. **載入**模型。
+2. 預設情況下，將其量化為 INT8，或在要求時量化為 BF16。
+3. **驗證**其準確性。
+4. 將其編譯，以便在 MLSoC 上執行。
 
-## Prerequisites
+## 先決條件
 
-- `sima-cli` installed (see the [sima-cli setup guide](https://github.com/sima-neat/sima-cli)).
-- Model Compiler installed in the Neat SDK or on an Ubuntu host. Enter the
-  environment with:
+- 已安裝 `sima-cli`（請參閱 [sima-cli 安裝指南](https://github.com/sima-neat/sima-cli)）。
+- 已在 Neat SDK 或 Ubuntu 主機上安裝 Model Compiler。請輸入。
+  環境設定：
 
 ```bash
 activate-model-compiler
 ```
 
-## Get the example
+## 取得範例
 
-On the Neat SDK or Ubuntu host where Model Compiler is installed, install the
-Model Compiler examples with `sima-cli`:
+在已安裝 Model Compiler 的 Neat SDK 或 Ubuntu 主機上，使用 `sima-cli` 安裝 Model Compiler 範例：
 
 ```bash
 sima-cli neat install model-compiler/examples
 ```
 
-Keep the Model Compiler environment active for the rest of the walkthrough.
+在剩餘的逐步說明過程中，請保持 Model Compiler 環境處於啟用狀態。
 
-Run the quantize-and-compile example. The script generates the ResNet-50 ONNX
-model and downloads public Open Images calibration data if they are not already
-present:
+執行「量化與編譯」範例。此指令碼會產生 ResNet-50 ONNX 模型，如果尚未存在，則會下載公開的 Open Images 校正資料：
 
 ```bash
 cd resnet50-ptq
 python3 compile.py
 ```
 
-When validation inputs are provided, the run should classify a Golden Retriever
-as ImageNet class 207 and produce a compiled archive:
+當提供驗證輸入時，程式應將黃金獵犬分類為 ImageNet 類別 207，並產生一個已編譯的檔案：
 
 ```text
 Validation image prediction:
@@ -57,19 +51,18 @@ Compiling model. Output directory: .../compiled_resnet50
 Compiled MPK archive written to: .../compiled_resnet50/quantized_resnet50_mpk.tar.gz
 ```
 
-Use the resulting `.tar.gz` to [validate accuracy and performance](./validate-accuracy-performance.md),
-or use it to [build a pipeline application](/develop-apps/).
+使用產生的 `.tar.gz` 來 [驗證準確性和效能](./validate-accuracy-performance.md)，
+或者使用它來 [建立一個管道應用程式](/develop-apps/)。
 
-The following sections explain each stage. The [full script](#full-script)
-appears at the end. MLA tessellation is **enabled by default**, so the compiled
-model feeds the accelerator directly. See
-[Compilation > Tessellation](./model-compilation.md#tessellation).
+以下各節將說明每個階段。[完整指令碼](#full-script)
+出現在結尾。MLA 細分預設為**啟用**，因此編譯後的模型會直接饋送給加速器。請參閱
+[編譯 > 細分](./model-compilation.md#tessellation)。
 
-## How it works
+## 它的運作方式
 
-### 1. Load the model
+### 1. 載入模型
 
-Load the ONNX ResNet-50 model into the SDK's internal representation.
+將 ONNX ResNet-50 模型載入到 SDK 的內部表示形式中。
 
 ```python
 from afe.apis.loaded_net import load_model
@@ -90,17 +83,11 @@ importer_params = onnx_source(str(MODEL_PATH), input_shapes_dict, input_types_di
 loaded_net = load_model(importer_params, target=TARGET)
 ```
 
-The input tensor `"input"` has shape `(1, 3, 224, 224)` — batch size one, three
-color channels, 224×224 pixels — and type `float32`. `onnx_source` describes how
-to read the model (the ONNX file itself is unchanged); `load_model` converts it
-into a `LoadedNet` ready for quantization. `TARGET` selects the platform:
-`gen1_target` for MLSoC, `gen2_target` for Modalix.
+輸入張量 `"input"` 的形狀為 `(1, 3, 224, 224)`，即批次大小為 1，包含三個顏色通道，尺寸為 224×224 像素，且類型為 `float32`。`onnx_source` 描述了如何讀取模型（ONNX 檔案本身不會更改）；`load_model` 將其轉換為 `LoadedNet`，以便進行量化。`TARGET` 選擇平台：`gen1_target` 用於 MLSoC，`gen2_target` 用於 Modalix。
 
-### 2. Prepare a calibration dataset
+### 2. 準備一個校準資料集
 
-Quantization needs a small, representative calibration dataset. The dataset
-sets scaling factors that map FP32 values into the integer range while avoiding
-excessive clipping or precision loss.
+量化需要一個小型且具代表性的校正資料集。該資料集會設定縮放係數，將 FP32 值映射到整數範圍，同時避免過度截斷或精確度損失。
 
 ```python
 import cv2
@@ -125,13 +112,11 @@ calib_data = convert_data_generator_to_iterable(
 ```
 
 :::note
-Calibration data passed to `DataGenerator` must be in **NHWC** layout
-(`[batch, height, width, channels]`), even when the model's input tensor is
-**NCHW** (`[batch, channels, height, width]`) — as in this example, where the
-ONNX input shape is `(1, 3, 224, 224)`. The example above already produces NHWC
-because `preprocess` returns HWC images. If your preprocessing pipeline
-produces NCHW arrays instead, transpose them before building the calibration
-dataset:
+傳遞給 `DataGenerator` 的校正資料必須採用 **NHWC** 佈局
+(`[batch, height, width, channels]`)，即使模型輸入的張量是
+**NCHW** (`[batch, channels, height, width]`)，就像這個範例一樣，其中
+ONNX 的輸入形狀為 `(1, 3, 224, 224)`。 上述範例已經產生 NHWC 格式，因為
+`preprocess` 會傳回 HWC 圖像。 如果您的預處理流程產生 NCHW 陣列，請在建立校正資料集之前，先將它們轉換：
 
 ```python
 # Convert NCHW -> NHWC
@@ -141,15 +126,13 @@ calib_data = convert_data_generator_to_iterable(
 ```
 :::
 
-Use representative images from the same input distribution as your deployment
-workload.
+使用與您部署工作負載相同的輸入分佈中的代表性圖像。
 
-### 3. Quantize
+### 3. 量化
 
-After you load the model and prepare calibration data, quantize it. The
-packaged example defaults to INT8 because it is the broadly supported path.
-Some models may emit saturation warnings during INT8 quantization; validate the
-quantized model before using the compiled output:
+在您載入模型並準備好校準資料後，請對其進行量化。
+打包範例預設使用 INT8，因為這是廣泛支援的設定。
+某些模型在進行 INT8 量化時可能會產生飽和警告；在使用編譯後的輸出之前，請驗證量化後的模型：
 
 ```python
 from afe.apis.defines import QuantizationParams, quantization_scheme, CalibrationMethod
@@ -170,15 +153,11 @@ sdk_net = loaded_net.quantize(
 )
 ```
 
-This example uses 8-bit asymmetric per-tensor quantization for activations and
-8-bit symmetric per-channel quantization for weights. For BF16 and calibration
-options, see
-**[Quantization](./quantization.md)**.
+這個範例使用 8 位元非對稱的逐張量量化，用於激活函數，以及 8 位元對稱的逐通道量化，用於權重。如需 BF16 和校準選項，請參閱 **[量化](./quantization.md)**。
 
-### 4. Validate accuracy
+### 4. 驗證準確性
 
-Before you compile, run the quantized model in software with
-`sdk_net.execute(...)` and confirm that it still classifies correctly:
+在編譯之前，請在軟體中執行量化後的模型，並使用 `sdk_net.execute(...)`，確認它是否仍然可以正確地進行分類：
 
 ```python
 import numpy as np
@@ -198,14 +177,11 @@ idx, name, score = postprocess_output(output, labels)
 print(f"class {idx}: '{name}' -> {100.0 * score:.2f}%")
 ```
 
-A correct, high-confidence prediction, such as
-`207 'golden retriever' -> 98.82%`, confirms that preprocessing and
-quantization are aligned. A misclassification usually indicates a preprocessing
-mismatch or a quantization issue to retune.
+一個正確且具有高度可信度的預測，例如 `207 'golden retriever' -> 98.82%`，表示預處理和量化步驟已正確對齊。如果預測結果錯誤，通常表示預處理步驟或量化步驟存在問題，需要重新調整。
 
-### 5. Compile
+### 5. 編譯
 
-After validation passes, save and compile the model:
+驗證通過後，請儲存並編譯模型：
 
 ```python
 sdk_net.save(model_name="quantized_resnet50", output_directory=args.output)
@@ -213,25 +189,19 @@ tess = mla_tessellate_params(sdk_net) if args.mla_tessellation else None
 sdk_net.compile(output_path=args.output, tessellate_parameters=tess)
 ```
 
-The output is a `.tar.gz` archive that contains the compiled MLA programs, an
-`_mpk.json` metadata file, and an execution-statistics file. See
-**[Compilation](./model-compilation.md)** for archive contents, batch sizing,
-and tessellation options.
+輸出結果為 `.tar.gz` 包含已編譯的 MLA 程式的檔案。
+`_mpk.json` 中繼資料檔案，以及執行統計資料檔案。請參閱[編譯](./model-compilation.md)**用於檔案內容、批次大小和鑲嵌選項。
 
-## Full script {#full-script}
+## 完整劇本 {#full-script}
 
-The complete annotated program is below. It is also available in the Model
-Compiler examples package as `resnet50-ptq/compile.py`, and in the
-[ResNet-50 PTQ example source](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq)
-on GitHub:
+完整的帶註解程式碼如下。它也包含在「模型編譯器範例」套件中，檔案名稱為 `resnet50-ptq/compile.py`，以及在 GitHub 上的 [ResNet-50 PTQ 範例原始碼](https://github.com/sima-neat/model-compiler/tree/main/examples/resnet50-ptq) 中。
 
 ```bash
 sima-cli neat install model-compiler/examples
 cd resnet50-ptq
 ```
 
-The script runs against **your own** ONNX model and a folder of calibration
-images:
+這個指令碼會針對**您自己的** ONNX 模型，以及一個包含校正圖像的資料夾來執行：
 
 ```bash
 python3 compile.py \
@@ -521,8 +491,6 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-## Next steps
+## 後續步驟
 
-Use the compiled `.tar.gz` to build your first runtime pipeline, or continue to
-the in-depth **[Quantization](./quantization.md)** and **[Compilation](./model-compilation.md)**
-guides.
+使用編譯後的 `.tar.gz` 檔案來建立您的第一個執行時流程，或者繼續閱讀深入的量化 (**[Quantization](./quantization.md)**) 和編譯 (**[Compilation](./model-compilation.md)**) 指南。
