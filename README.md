@@ -422,8 +422,11 @@ and the Model Compiler virtual environment is active without running
 container commands. The prompt includes the image version, for example
 `[model-compiler feature/container:deadbee]`. Development builds use
 `branch:short-git-hash`; an exact official release tag such as `v2.1.3` is used
-on a tagged commit. `/etc/sdk-release` records that version, the source branch
-and commit, and the UTC image build time.
+on a tagged commit. `/etc/sdk-release` records that version, the SDK and Python
+versions, the target architecture, the source branch and commit, the UTC image
+build time, and component versions resolved from the bundle's `source.json`.
+The source manifest is also preserved at
+`/usr/local/share/model-compiler/source.json` for detailed inspection.
 
 Run a compile smoke test and keep its artifacts on the host:
 

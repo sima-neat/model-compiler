@@ -38,7 +38,8 @@ RUN --mount=type=bind,from=modelsdk_bundle,source=.,target=/tmp/modelsdk-bundle,
     test -f /tmp/modelsdk-bundle/install_modelsdk_wheels.sh \
     && test -f /tmp/modelsdk-bundle/source.json \
     && test -f /tmp/modelsdk-bundle/manifest.txt \
-    && mkdir -p /sdk-extensions \
+    && mkdir -p /sdk-extensions /usr/local/share/model-compiler \
+    && cp /tmp/modelsdk-bundle/source.json /usr/local/share/model-compiler/source.json \
     && MODELSDK_TARGET_ARCH="${MODEL_COMPILER_TARGET_ARCH}" \
         bash /tmp/modelsdk-bundle/install_modelsdk_wheels.sh \
     && test -x "${MODEL_COMPILER_HOME}/bin/python"
@@ -65,12 +66,16 @@ ENV MODEL_COMPILER_GIT_BRANCH="${MODEL_COMPILER_GIT_BRANCH}" \
 
 LABEL org.opencontainers.image.source="${MODEL_COMPILER_SOURCE_URL}"
 
-RUN printf '%s\n' \
-      "Model Compiler Version = ${MODEL_COMPILER_VERSION}" \
-      "Git Branch = ${MODEL_COMPILER_GIT_BRANCH}" \
-      "Git Commit = ${MODEL_COMPILER_GIT_HASH}" \
-      "Build Time (UTC) = ${MODEL_COMPILER_BUILD_TIME}" \
-      > /etc/sdk-release
+COPY scripts/generate_container_release.py /usr/local/bin/generate-container-release
+
+RUN "${MODEL_COMPILER_HOME}/bin/python" /usr/local/bin/generate-container-release \
+      --source-json /usr/local/share/model-compiler/source.json \
+      --output /etc/sdk-release \
+      --model-compiler-version "${MODEL_COMPILER_VERSION}" \
+      --git-branch "${MODEL_COMPILER_GIT_BRANCH}" \
+      --git-commit "${MODEL_COMPILER_GIT_HASH}" \
+      --build-time "${MODEL_COMPILER_BUILD_TIME}" \
+      --target-arch "${MODEL_COMPILER_TARGET_ARCH}"
 
 COPY container/model-compiler-shell.sh /etc/profile.d/model-compiler.sh
 COPY container/entrypoint.sh /usr/local/bin/model-compiler-entrypoint
