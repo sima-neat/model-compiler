@@ -448,11 +448,12 @@ Build natively on a matching host when possible: `linux/amd64` on `ll2` and
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are
-lowercased and characters such as `/` are replaced with `-`; for example,
+lowercased, characters such as `/` are replaced with `-`, and a stable hash of
+the original branch name prevents normalized-name collisions. For example,
 `fix/container-build` publishes:
 
 ```text
-ghcr.io/sima-neat/model-compiler-fix-container-build:latest
+ghcr.io/sima-neat/model-compiler-fix-container-build-f492aeaada4d:latest
 ```
 
 The full source commit is also published as an immutable image tag. Deleting a

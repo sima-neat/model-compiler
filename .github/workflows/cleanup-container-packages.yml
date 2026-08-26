@@ -50,15 +50,21 @@ jobs:
             const workflowRunPageLimit = 50;
 
             function branchSlug(branchName) {
+              const hash = require('crypto').createHash('sha256')
+                .update(branchName, 'utf8')
+                .digest('hex')
+                .slice(0, 12);
               let slug = branchName.toLowerCase()
                 .replace(/[^a-z0-9._-]+/g, '-')
-                .replace(/^-+/, '')
-                .replace(/-+$/, '')
-                .replace(/-{2,}/g, '-');
+                .replace(/^[^a-z0-9]+/, '')
+                .replace(/[^a-z0-9]+$/, '')
+                .replace(/-{2,}/g, '-')
+                .slice(0, 180)
+                .replace(/[^a-z0-9]+$/, '');
               if (!slug) {
                 slug = 'branch';
               }
-              return slug;
+              return `${slug}-${hash}`;
             }
 
             function packageForBranch(branchName) {
@@ -150,14 +156,18 @@ jobs:
             core.info(`Found ${branches.length} live branch(es).`);
 
             const candidates = new Map();
-            function addCandidate(branchName, commitSha = '') {
-              const packageName = packageForBranch(branchName);
+            function addPackageCandidate(packageName, commitSha = '') {
               if (!candidates.has(packageName)) {
                 candidates.set(packageName, new Set());
               }
               if (commitSha) {
                 candidates.get(packageName).add(commitSha);
               }
+            }
+
+            function addCandidate(branchName, commitSha = '') {
+              const packageName = packageForBranch(branchName);
+              addPackageCandidate(packageName, commitSha);
             }
 
             if (requestedBranch) {
@@ -186,6 +196,21 @@ jobs:
                 break;
               }
             }
+
+            const orgPackages = await paginate('GET /orgs/{org}/packages', {
+              org: owner,
+              package_type: 'container',
+            });
+            let enumeratedPackages = 0;
+            for (const pkg of orgPackages) {
+              const packageName = String(pkg.name || '');
+              if (!packageName.startsWith('model-compiler-')) {
+                continue;
+              }
+              addPackageCandidate(packageName);
+              enumeratedPackages += 1;
+            }
+            core.info(`Enumerated ${enumeratedPackages} Model Compiler container package(s).`);
 
             core.info(`Found ${candidates.size} branch package candidate(s).`);
             for (const [packageName, commitShas] of candidates) {

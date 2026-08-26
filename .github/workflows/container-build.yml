@@ -84,19 +84,32 @@ jobs:
               return;
             }
 
-            let slug = branch.toLowerCase()
-              .replace(/[^a-z0-9._-]+/g, '-')
-              .replace(/^-+/, '')
-              .replace(/-+$/, '')
-              .replace(/-{2,}/g, '-');
-            if (!slug) {
-              slug = 'branch';
+            const crypto = require('crypto');
+            function packageForBranch(branchName) {
+              const hash = crypto.createHash('sha256')
+                .update(branchName, 'utf8')
+                .digest('hex')
+                .slice(0, 12);
+              let slug = branchName.toLowerCase()
+                .replace(/[^a-z0-9._-]+/g, '-')
+                .replace(/^[^a-z0-9]+/, '')
+                .replace(/[^a-z0-9]+$/, '')
+                .replace(/-{2,}/g, '-')
+                .slice(0, 180)
+                .replace(/[^a-z0-9]+$/, '');
+              if (!slug) {
+                slug = 'branch';
+              }
+              return `model-compiler-${slug}-${hash}`;
             }
+
+            const packageName = packageForBranch(branch);
+            const developPackageName = packageForBranch('develop');
             const owner = context.repo.owner.toLowerCase();
             core.setOutput('eligible', 'true');
             core.setOutput('branch', branch);
-            core.setOutput('image', `ghcr.io/${owner}/model-compiler-${slug}`);
-            core.setOutput('base_cache_image', `ghcr.io/${owner}/model-compiler-develop`);
+            core.setOutput('image', `ghcr.io/${owner}/${packageName}`);
+            core.setOutput('base_cache_image', `ghcr.io/${owner}/${developPackageName}`);
             core.setOutput('sha', sha);
             core.setOutput('run_id', runId);
 

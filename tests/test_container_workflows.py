@@ -36,7 +36,9 @@ class ContainerWorkflowTests(unittest.TestCase):
     def test_publish_uses_branch_scoped_package_and_multiarch_latest(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("model-compiler-${slug}", text)
+        self.assertIn("createHash('sha256')", text)
+        self.assertIn(".slice(0, 12)", text)
+        self.assertIn("packageForBranch(branch)", text)
         self.assertIn('--tag "${IMAGE}:${SHA}"', text)
         self.assertIn('--tag "${IMAGE}:latest"', text)
         self.assertIn("packages: write", text)
@@ -73,6 +75,10 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn("schedule:", text)
         self.assertIn("github.event.ref_type", text)
         self.assertIn("model-compiler-${branchSlug(branchName)}", text)
+        self.assertIn("GET /orgs/{org}/packages", text)
+        self.assertIn("package_type: 'container'", text)
+        self.assertIn("addPackageCandidate(packageName)", text)
+        self.assertIn("createHash('sha256')", text)
         self.assertIn("livePackages.has(packageName)", text)
         self.assertIn("DELETE /orgs/{org}/packages/{package_type}/{package_name}", text)
         self.assertIn("model-compiler-container-{0}", text)
