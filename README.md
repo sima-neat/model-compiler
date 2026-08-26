@@ -377,6 +377,97 @@ the generated MPK archive when those files are present.
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
 
+## Local Model Compiler Containers
+
+After creating a bundle, install it into an Ubuntu 24.04 container with:
+
+```bash
+# x86_64 host and bundle
+./scripts/build_modelsdk_container.sh \
+  --bundle-dir dist/amd64/package \
+  --target-arch amd64 \
+  --image model-compiler:local \
+  --smoke-test
+
+# ARM64 host and bundle
+./scripts/build_modelsdk_container.sh \
+  --bundle-dir dist/arm64/package \
+  --target-arch arm64 \
+  --image model-compiler:arm64-local \
+  --smoke-test
+```
+
+The bundle directory must already contain `install_modelsdk_wheels.sh`,
+`source.json`, `manifest.txt`, and the downloaded wheel and binary artifacts.
+The container helper does not build or download the bundle. It passes the local
+directory to BuildKit as a temporary build context, so package credentials and
+the multi-gigabyte bundle are not copied into an image layer.
+
+For example, on `macstudio`, download and extract the official ARM64 bundle
+before invoking the container helper:
+
+```bash
+mkdir -p model-compiler-arm64 && cd model-compiler-arm64
+sima-cli neat download model-compiler/arm64
+unzip -q model-compiler-arm64.zip -d bundle
+```
+
+Open an interactive shell:
+
+```bash
+docker run --rm -it -v "$PWD:/workspace" model-compiler:local
+```
+
+The container starts Bash as a login shell. pyenv is initialized automatically,
+and the Model Compiler virtual environment is active without running
+`activate-model-compiler` manually. The same environment is applied to direct
+container commands. The prompt includes the image version, for example
+`[model-compiler feature/container:deadbee]`. Development builds use
+`branch:short-git-hash`; an exact official release tag such as `v2.1.3` is used
+on a tagged commit. `/etc/sdk-release` records that version, the SDK and Python
+versions, the target architecture, the source branch and commit, the UTC image
+build time, and component versions resolved from the bundle's `source.json`.
+The source manifest is also preserved at
+`/usr/local/share/model-compiler/source.json` for detailed inspection.
+
+Run a compile smoke test and keep its artifacts on the host:
+
+```bash
+mkdir -p modelsdk-smoke
+docker run --rm \
+  -v "$PWD/modelsdk-smoke:/workspace/modelsdk-smoke" \
+  model-compiler:local \
+  python /opt/model-compiler-tests/scripts/smoke_test_modelsdk.py \
+    --tier resnet-compile \
+    --work-dir /workspace/modelsdk-smoke
+```
+
+Build natively on a matching host when possible: `linux/amd64` on `ll2` and
+`linux/arm64` on `macstudio`.
+
+## Branch Container Images
+
+After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
+the amd64 and arm64 containers from that run's package artifacts and publishes
+a multi-architecture image to a branch-scoped GHCR package. Branch names are
+lowercased, characters such as `/` are replaced with `-`, and a stable hash of
+the original branch name prevents normalized-name collisions. For example,
+`fix/container-build` publishes:
+
+```text
+ghcr.io/sima-neat/model-compiler-fix-container-build-f492aeaada4d:latest
+```
+
+The full source commit is also published as an immutable image tag. Deleting a
+branch deletes its branch-scoped package. A daily reconciliation run handles
+any cleanup event that was missed, and the cleanup workflow supports a manual
+dry run.
+
+Container builds use architecture-specific Buildx registry caches stored as
+`buildcache-amd64` and `buildcache-arm64` tags in the branch package. A branch
+also imports the matching `develop` cache when available. Deleting the branch
+package therefore removes both its images and its build caches.
+
 On ARM systems, activation enables the JAX compilation path with the NEON CPU
 ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
 

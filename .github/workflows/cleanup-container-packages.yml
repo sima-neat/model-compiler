@@ -1,0 +1,223 @@
+name: Cleanup Branch Container Packages
+
+on:
+  delete:
+  schedule:
+    - cron: "41 9 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Show what would be deleted without deleting packages
+        required: false
+        default: false
+        type: boolean
+      branch_name:
+        description: Optional deleted branch name to reconcile directly
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    name: Delete packages for removed branches
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.event_name == 'delete' && format('model-compiler-container-{0}', github.event.ref) || github.workflow }}
+      cancel-in-progress: false
+    steps:
+      - name: Reconcile branch-scoped GHCR packages
+        uses: actions/github-script@v8
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          REQUESTED_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.branch_name || '' }}
+          DELETED_REF: ${{ github.event_name == 'delete' && github.event.ref || '' }}
+          DELETED_REF_TYPE: ${{ github.event_name == 'delete' && github.event.ref_type || '' }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const repoFullName = `${owner}/${repo}`;
+            const dryRun = String(process.env.DRY_RUN).toLowerCase() === 'true';
+            const requestedBranch = String(process.env.REQUESTED_BRANCH || '').trim();
+            const deletedRef = String(process.env.DELETED_REF || '').trim();
+            const deletedRefType = String(process.env.DELETED_REF_TYPE || '').trim();
+            const buildWorkflowFile = 'build.yml';
+            const workflowRunPageLimit = 50;
+
+            function branchSlug(branchName) {
+              const hash = require('crypto').createHash('sha256')
+                .update(branchName, 'utf8')
+                .digest('hex')
+                .slice(0, 12);
+              let slug = branchName.toLowerCase()
+                .replace(/[^a-z0-9._-]+/g, '-')
+                .replace(/^[^a-z0-9]+/, '')
+                .replace(/[^a-z0-9]+$/, '')
+                .replace(/-{2,}/g, '-')
+                .slice(0, 180)
+                .replace(/[^a-z0-9]+$/, '');
+              if (!slug) {
+                slug = 'branch';
+              }
+              return `${slug}-${hash}`;
+            }
+
+            function packageForBranch(branchName) {
+              return `model-compiler-${branchSlug(branchName)}`;
+            }
+
+            async function paginate(route, parameters) {
+              return github.paginate(route, { per_page: 100, ...parameters });
+            }
+
+            function packageRepositoryFullName(pkg) {
+              if (pkg.repository?.full_name) {
+                return pkg.repository.full_name;
+              }
+              const repoOwner = pkg.repository?.owner?.login;
+              const repoName = pkg.repository?.name;
+              return repoOwner && repoName ? `${repoOwner}/${repoName}` : '';
+            }
+
+            async function getPackage(packageName) {
+              try {
+                const response = await github.request(
+                  'GET /orgs/{org}/packages/{package_type}/{package_name}',
+                  { org: owner, package_type: 'container', package_name: packageName },
+                );
+                return response.data;
+              } catch (error) {
+                if (error.status === 404) {
+                  return null;
+                }
+                throw error;
+              }
+            }
+
+            async function packageHasWorkflowVersion(packageName, commitShas) {
+              if (!commitShas.size) {
+                return false;
+              }
+              const expectedTags = new Set();
+              for (const sha of commitShas) {
+                expectedTags.add(sha);
+                expectedTags.add(`${sha}-amd64`);
+                expectedTags.add(`${sha}-arm64`);
+              }
+              const versions = await paginate(
+                'GET /orgs/{org}/packages/{package_type}/{package_name}/versions',
+                { org: owner, package_type: 'container', package_name: packageName },
+              );
+              return versions.some((version) => {
+                const tags = version.metadata?.container?.tags ?? [];
+                return tags.some((tag) => expectedTags.has(tag));
+              });
+            }
+
+            async function deletePackage(packageName, commitShas) {
+              const pkg = await getPackage(packageName);
+              if (!pkg) {
+                core.info(`${packageName}: package does not exist; nothing to delete.`);
+                return;
+              }
+
+              const packageRepo = packageRepositoryFullName(pkg);
+              if (packageRepo && packageRepo !== repoFullName) {
+                core.warning(
+                  `${packageName}: skipping package associated with ${packageRepo}; expected ${repoFullName}.`,
+                );
+                return;
+              }
+              if (!packageRepo && !(await packageHasWorkflowVersion(packageName, commitShas))) {
+                core.warning(
+                  `${packageName}: skipping package with unknown repository ownership and no matching workflow tags.`,
+                );
+                return;
+              }
+
+              if (dryRun) {
+                core.info(`[dry-run] would delete package ${packageName}`);
+                return;
+              }
+              await github.request(
+                'DELETE /orgs/{org}/packages/{package_type}/{package_name}',
+                { org: owner, package_type: 'container', package_name: packageName },
+              );
+              core.info(`Deleted package ${packageName}`);
+            }
+
+            const branches = await paginate('GET /repos/{owner}/{repo}/branches', { owner, repo });
+            const livePackages = new Set(branches.map((branch) => packageForBranch(branch.name)));
+            core.info(`Found ${branches.length} live branch(es).`);
+
+            const candidates = new Map();
+            function addPackageCandidate(packageName, commitSha = '') {
+              if (!candidates.has(packageName)) {
+                candidates.set(packageName, new Set());
+              }
+              if (commitSha) {
+                candidates.get(packageName).add(commitSha);
+              }
+            }
+
+            function addCandidate(branchName, commitSha = '') {
+              const packageName = packageForBranch(branchName);
+              addPackageCandidate(packageName, commitSha);
+            }
+
+            if (requestedBranch) {
+              addCandidate(requestedBranch);
+              core.info(`Added requested branch candidate: ${requestedBranch}`);
+            }
+            if (deletedRef && deletedRefType === 'branch') {
+              addCandidate(deletedRef);
+              core.info(`Added deleted branch candidate: ${deletedRef}`);
+            } else if (deletedRef) {
+              core.info(`Delete event was for ${deletedRefType} ${deletedRef}; no branch package cleanup needed.`);
+            }
+
+            for (let page = 1; page <= workflowRunPageLimit; page += 1) {
+              const response = await github.request(
+                'GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs',
+                { owner, repo, workflow_id: buildWorkflowFile, per_page: 100, page },
+              );
+              const runs = response.data.workflow_runs ?? [];
+              for (const run of runs) {
+                if (run.event === 'push' && run.head_branch) {
+                  addCandidate(run.head_branch, run.head_sha || '');
+                }
+              }
+              if (runs.length < 100) {
+                break;
+              }
+            }
+
+            const orgPackages = await paginate('GET /orgs/{org}/packages', {
+              org: owner,
+              package_type: 'container',
+            });
+            let enumeratedPackages = 0;
+            for (const pkg of orgPackages) {
+              const packageName = String(pkg.name || '');
+              if (!packageName.startsWith('model-compiler-')) {
+                continue;
+              }
+              addPackageCandidate(packageName);
+              enumeratedPackages += 1;
+            }
+            core.info(`Enumerated ${enumeratedPackages} Model Compiler container package(s).`);
+
+            core.info(`Found ${candidates.size} branch package candidate(s).`);
+            for (const [packageName, commitShas] of candidates) {
+              if (livePackages.has(packageName)) {
+                core.info(`${packageName}: a matching live branch exists; keeping package.`);
+                continue;
+              }
+              core.info(`${packageName}: no matching live branch; deleting package.`);
+              await deletePackage(packageName, commitShas);
+            }
