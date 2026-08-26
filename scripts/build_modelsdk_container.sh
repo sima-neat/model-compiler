@@ -9,6 +9,8 @@ DOCKERFILE="${MODELSDK_CONTAINER_DOCKERFILE:-${REPO_ROOT}/container/Dockerfile}"
 IMAGE="${MODELSDK_CONTAINER_IMAGE:-model-compiler:local}"
 TARGET_ARCH="${MODELSDK_CONTAINER_ARCH:-amd64}"
 SMOKE_TEST=0
+BUILDX_CACHE_FROM="${BUILDX_CACHE_FROM:-}"
+BUILDX_CACHE_TO="${BUILDX_CACHE_TO:-}"
 
 usage() {
   cat <<EOF
@@ -36,6 +38,8 @@ Environment overrides:
   MODELSDK_CONTAINER_GIT_TAG     Exact source tag override
   MODELSDK_CONTAINER_SOURCE_URL  OCI source URL label
   MODELSDK_CONTAINER_BUILD_TIME  UTC ISO-8601 timestamp (defaults to current time)
+  BUILDX_CACHE_FROM              Space-separated registry cache references to import
+  BUILDX_CACHE_TO                Registry cache reference to export with mode=max
 EOF
 }
 
@@ -174,20 +178,38 @@ echo "Build time: ${build_time}"
 echo "Bundle directory: ${BUNDLE_DIR}"
 echo "Dockerfile: ${DOCKERFILE}"
 
-docker buildx build \
-  --load \
-  --platform "${DOCKER_PLATFORM}" \
-  --build-context "modelsdk_bundle=${BUNDLE_DIR}" \
-  --build-arg "MODEL_COMPILER_TARGET_ARCH=${MODELSDK_TARGET_ARCH}" \
-  --build-arg "MODEL_COMPILER_SMOKE_ARCH=${TARGET_ARCH}" \
-  --build-arg "MODEL_COMPILER_GIT_BRANCH=${git_branch}" \
-  --build-arg "MODEL_COMPILER_GIT_HASH=${git_hash}" \
-  --build-arg "MODEL_COMPILER_VERSION=${model_compiler_version}" \
-  --build-arg "MODEL_COMPILER_BUILD_TIME=${build_time}" \
-  --build-arg "MODEL_COMPILER_SOURCE_URL=${source_url}" \
-  --file "${DOCKERFILE}" \
-  --tag "${IMAGE}" \
+buildx_cmd=(
+  docker buildx build
+  --load
+  --platform "${DOCKER_PLATFORM}"
+)
+if [[ -n "${BUILDX_CACHE_FROM}" ]]; then
+  read -r -a cache_from_refs <<< "${BUILDX_CACHE_FROM}"
+  for cache_from_ref in "${cache_from_refs[@]}"; do
+    buildx_cmd+=(--cache-from "type=registry,ref=${cache_from_ref}")
+  done
+fi
+if [[ -n "${BUILDX_CACHE_TO}" ]]; then
+  buildx_cmd+=(
+    --cache-to
+    "type=registry,ref=${BUILDX_CACHE_TO},mode=max,oci-mediatypes=true,image-manifest=true"
+  )
+fi
+
+buildx_cmd+=(
+  --build-context "modelsdk_bundle=${BUNDLE_DIR}"
+  --build-arg "MODEL_COMPILER_TARGET_ARCH=${MODELSDK_TARGET_ARCH}"
+  --build-arg "MODEL_COMPILER_SMOKE_ARCH=${TARGET_ARCH}"
+  --build-arg "MODEL_COMPILER_GIT_BRANCH=${git_branch}"
+  --build-arg "MODEL_COMPILER_GIT_HASH=${git_hash}"
+  --build-arg "MODEL_COMPILER_VERSION=${model_compiler_version}"
+  --build-arg "MODEL_COMPILER_BUILD_TIME=${build_time}"
+  --build-arg "MODEL_COMPILER_SOURCE_URL=${source_url}"
+  --file "${DOCKERFILE}"
+  --tag "${IMAGE}"
   "${REPO_ROOT}"
+)
+"${buildx_cmd[@]}"
 
 if [[ "${SMOKE_TEST}" == "1" ]]; then
   docker run --rm "${IMAGE}" \

@@ -163,6 +163,35 @@ class ModelCompilerContainerTests(unittest.TestCase):
             args,
         )
 
+    def test_build_supports_registry_cache_import_and_export(self):
+        result = self.run_build(
+            env_overrides={
+                "BUILDX_CACHE_FROM": (
+                    "ghcr.io/sima-neat/model-compiler-feature:buildcache-amd64 "
+                    "ghcr.io/sima-neat/model-compiler-develop:buildcache-amd64"
+                ),
+                "BUILDX_CACHE_TO": (
+                    "ghcr.io/sima-neat/model-compiler-feature:buildcache-amd64"
+                ),
+            }
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.docker_log.read_text(encoding="utf-8").splitlines()
+        self.assertIn(
+            "type=registry,ref=ghcr.io/sima-neat/model-compiler-feature:buildcache-amd64",
+            args,
+        )
+        self.assertIn(
+            "type=registry,ref=ghcr.io/sima-neat/model-compiler-develop:buildcache-amd64",
+            args,
+        )
+        self.assertIn(
+            "type=registry,ref=ghcr.io/sima-neat/model-compiler-feature:buildcache-amd64,"
+            "mode=max,oci-mediatypes=true,image-manifest=true",
+            args,
+        )
+
     def test_build_supports_native_arm64_target(self):
         result = self.run_build("--target-arch", "arm64")
 

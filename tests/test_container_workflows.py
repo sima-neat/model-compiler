@@ -41,6 +41,19 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn('--tag "${IMAGE}:latest"', text)
         self.assertIn("packages: write", text)
 
+    def test_publish_uses_architecture_scoped_registry_caches(self):
+        text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("Set up Docker Buildx", text)
+        self.assertIn("base_cache_image", text)
+        self.assertIn(":buildcache-${{ matrix.arch }}", text)
+        self.assertIn("BUILDX_CACHE_FROM:", text)
+        self.assertIn("BUILDX_CACHE_TO:", text)
+        self.assertLess(
+            text.index("Log in to GitHub Container Registry"),
+            text.index("Build and smoke-test container"),
+        )
+
     def test_feature_branch_can_call_publisher_after_package_tests(self):
         build_text = BUILD_WORKFLOW.read_text(encoding="utf-8")
         publish_text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")

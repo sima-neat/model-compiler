@@ -460,6 +460,11 @@ branch deletes its branch-scoped package. A daily reconciliation run handles
 any cleanup event that was missed, and the cleanup workflow supports a manual
 dry run.
 
+Container builds use architecture-specific Buildx registry caches stored as
+`buildcache-amd64` and `buildcache-arm64` tags in the branch package. A branch
+also imports the matching `develop` cache when available. Deleting the branch
+package therefore removes both its images and its build caches.
+
 On ARM systems, activation enables the JAX compilation path with the NEON CPU
 ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
 

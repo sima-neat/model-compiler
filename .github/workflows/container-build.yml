@@ -40,6 +40,7 @@ jobs:
       eligible: ${{ steps.branch.outputs.eligible }}
       branch: ${{ steps.branch.outputs.branch }}
       image: ${{ steps.branch.outputs.image }}
+      base_cache_image: ${{ steps.branch.outputs.base_cache_image }}
       sha: ${{ steps.branch.outputs.sha }}
       run_id: ${{ steps.branch.outputs.run_id }}
     steps:
@@ -95,6 +96,7 @@ jobs:
             core.setOutput('eligible', 'true');
             core.setOutput('branch', branch);
             core.setOutput('image', `ghcr.io/${owner}/model-compiler-${slug}`);
+            core.setOutput('base_cache_image', `ghcr.io/${owner}/model-compiler-develop`);
             core.setOutput('sha', sha);
             core.setOutput('run_id', runId);
 
@@ -145,8 +147,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and smoke-test container
         env:
+          BUILDX_CACHE_FROM: ${{ needs.prepare.outputs.image }}:buildcache-${{ matrix.arch }} ${{ needs.prepare.outputs.base_cache_image }}:buildcache-${{ matrix.arch }}
+          BUILDX_CACHE_TO: ${{ needs.prepare.outputs.image }}:buildcache-${{ matrix.arch }}
           MODELSDK_CONTAINER_GIT_BRANCH: ${{ needs.prepare.outputs.branch }}
           MODELSDK_CONTAINER_GIT_HASH: ${{ needs.prepare.outputs.sha }}
           MODELSDK_CONTAINER_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
@@ -157,13 +168,6 @@ jobs:
             --bundle-dir _bundle \
             --image "model-compiler:ci-${{ matrix.arch }}" \
             --smoke-test
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish architecture image
         env:
