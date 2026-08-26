@@ -4,41 +4,59 @@ on:
   workflow_run:
     workflows: [Build]
     types: [completed]
+  workflow_call:
+    inputs:
+      source_branch:
+        description: Branch whose package artifacts should be containerized
+        required: true
+        type: string
+      source_sha:
+        description: Commit whose package artifacts should be containerized
+        required: true
+        type: string
+      source_run_id:
+        description: Build workflow run containing the package artifacts
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: model-compiler-container-${{ github.event.workflow_run.head_branch }}
+  group: model-compiler-container-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || inputs.source_branch }}
   cancel-in-progress: true
 
 jobs:
   prepare:
     name: Resolve successful branch build
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     outputs:
       eligible: ${{ steps.branch.outputs.eligible }}
       branch: ${{ steps.branch.outputs.branch }}
       image: ${{ steps.branch.outputs.image }}
       sha: ${{ steps.branch.outputs.sha }}
+      run_id: ${{ steps.branch.outputs.run_id }}
     steps:
       - name: Verify branch still points to the successful commit
         id: branch
         uses: actions/github-script@v8
         env:
-          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_BRANCH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || inputs.source_branch }}
+          SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.source_sha }}
+          SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.source_run_id }}
         with:
           script: |
             const branch = String(process.env.SOURCE_BRANCH || '').trim();
             const sha = String(process.env.SOURCE_SHA || '').trim();
-            if (!branch || !/^[0-9a-f]{40}$/.test(sha)) {
-              core.info('The triggering run has no valid branch and commit; skipping.');
+            const runId = String(process.env.SOURCE_RUN_ID || '').trim();
+            if (!branch || !/^[0-9a-f]{40}$/.test(sha) || !/^\d+$/.test(runId)) {
+              core.info('The triggering run has no valid branch, commit, or run ID; skipping.');
               core.setOutput('eligible', 'false');
               return;
             }
@@ -78,6 +96,7 @@ jobs:
             core.setOutput('branch', branch);
             core.setOutput('image', `ghcr.io/${owner}/model-compiler-${slug}`);
             core.setOutput('sha', sha);
+            core.setOutput('run_id', runId);
 
   build:
     name: Build and publish ${{ matrix.arch }} image
@@ -109,7 +128,7 @@ jobs:
         with:
           name: model-compiler-${{ matrix.arch }}
           path: _package
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ needs.prepare.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx

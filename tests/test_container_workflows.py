@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD_WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
 PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "container-build.yml"
 CLEANUP_WORKFLOW = ROOT / ".github" / "workflows" / "cleanup-container-packages.yml"
 
@@ -21,7 +22,7 @@ class ContainerWorkflowTests(unittest.TestCase):
     def test_publish_uses_build_artifacts_for_both_architectures(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("run-id: ${{ github.event.workflow_run.id }}", text)
+        self.assertIn("run-id: ${{ needs.prepare.outputs.run_id }}", text)
         self.assertIn("name: model-compiler-${{ matrix.arch }}", text)
         self.assertIn("runner: ubuntu-24.04", text)
         self.assertIn("runner: ubuntu-24.04-arm", text)
@@ -36,6 +37,18 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn('--tag "${IMAGE}:${SHA}"', text)
         self.assertIn('--tag "${IMAGE}:latest"', text)
         self.assertIn("packages: write", text)
+
+    def test_feature_branch_can_call_publisher_after_package_tests(self):
+        build_text = BUILD_WORKFLOW.read_text(encoding="utf-8")
+        publish_text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("workflow_call:", publish_text)
+        self.assertIn("source_run_id:", publish_text)
+        self.assertIn("test-branch-containers:", build_text)
+        self.assertIn("github.ref_name == 'container-image'", build_text)
+        self.assertIn("- test-package-install", build_text)
+        self.assertIn("uses: ./.github/workflows/container-build.yml", build_text)
+        self.assertIn("source_run_id: ${{ github.run_id }}", build_text)
 
     def test_cleanup_handles_branch_deletion_and_reconciliation(self):
         text = CLEANUP_WORKFLOW.read_text(encoding="utf-8")

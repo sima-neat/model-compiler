@@ -368,3 +368,18 @@ jobs:
       sse_kms_key_id: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
       artifact_folder: arm64
       validate_manifest: true
+
+  test-branch-containers:
+    name: Test branch container publication
+    if: ${{ github.ref_type == 'branch' && github.ref_name == 'container-image' }}
+    needs:
+      - test-package-install
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container-build.yml
+    with:
+      source_branch: ${{ github.ref_name }}
+      source_sha: ${{ github.sha }}
+      source_run_id: ${{ github.run_id }}
