@@ -1,0 +1,179 @@
+name: Publish Branch Containers
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: model-compiler-container-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Resolve successful branch build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    outputs:
+      eligible: ${{ steps.branch.outputs.eligible }}
+      branch: ${{ steps.branch.outputs.branch }}
+      image: ${{ steps.branch.outputs.image }}
+      sha: ${{ steps.branch.outputs.sha }}
+    steps:
+      - name: Verify branch still points to the successful commit
+        id: branch
+        uses: actions/github-script@v8
+        env:
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            const branch = String(process.env.SOURCE_BRANCH || '').trim();
+            const sha = String(process.env.SOURCE_SHA || '').trim();
+            if (!branch || !/^[0-9a-f]{40}$/.test(sha)) {
+              core.info('The triggering run has no valid branch and commit; skipping.');
+              core.setOutput('eligible', 'false');
+              return;
+            }
+
+            let branchRef;
+            try {
+              branchRef = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch}`,
+              });
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`Branch ${branch} no longer exists; skipping publication.`);
+                core.setOutput('eligible', 'false');
+                return;
+              }
+              throw error;
+            }
+
+            if (branchRef.data.object.sha !== sha) {
+              core.info(`Branch ${branch} advanced beyond ${sha}; skipping stale publication.`);
+              core.setOutput('eligible', 'false');
+              return;
+            }
+
+            let slug = branch.toLowerCase()
+              .replace(/[^a-z0-9._-]+/g, '-')
+              .replace(/^-+/, '')
+              .replace(/-+$/, '')
+              .replace(/-{2,}/g, '-');
+            if (!slug) {
+              slug = 'branch';
+            }
+            const owner = context.repo.owner.toLowerCase();
+            core.setOutput('eligible', 'true');
+            core.setOutput('branch', branch);
+            core.setOutput('image', `ghcr.io/${owner}/model-compiler-${slug}`);
+            core.setOutput('sha', sha);
+
+  build:
+    name: Build and publish ${{ matrix.arch }} image
+    if: needs.prepare.outputs.eligible == 'true'
+    needs: prepare
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out successful source commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download Model Compiler bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: model-compiler-${{ matrix.arch }}
+          path: _package
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and smoke-test container
+        env:
+          MODELSDK_CONTAINER_GIT_BRANCH: ${{ needs.prepare.outputs.branch }}
+          MODELSDK_CONTAINER_GIT_HASH: ${{ needs.prepare.outputs.sha }}
+          MODELSDK_CONTAINER_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ./scripts/build_modelsdk_container.sh \
+            --target-arch "${{ matrix.arch }}" \
+            --bundle-dir _package \
+            --image "model-compiler:ci-${{ matrix.arch }}" \
+            --smoke-test
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish architecture image
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          docker tag "model-compiler:ci-${ARCH}" "${IMAGE}:${SHA}-${ARCH}"
+          docker push "${IMAGE}:${SHA}-${ARCH}"
+
+  manifest:
+    name: Publish multi-architecture manifest
+    if: needs.prepare.outputs.eligible == 'true'
+    needs:
+      - prepare
+      - build
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and publish manifest
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${SHA}" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}:${SHA}-amd64" \
+            "${IMAGE}:${SHA}-arm64"
