@@ -24,6 +24,9 @@ class ContainerWorkflowTests(unittest.TestCase):
 
         self.assertIn("run-id: ${{ needs.prepare.outputs.run_id }}", text)
         self.assertIn("name: model-compiler-${{ matrix.arch }}", text)
+        self.assertIn('archive="_package/model-compiler-${ARCH}.zip"', text)
+        self.assertIn('unzip -oq "${archive}" -d _bundle', text)
+        self.assertIn("--bundle-dir _bundle", text)
         self.assertIn("runner: ubuntu-24.04", text)
         self.assertIn("runner: ubuntu-24.04-arm", text)
         self.assertIn("--smoke-test", text)
