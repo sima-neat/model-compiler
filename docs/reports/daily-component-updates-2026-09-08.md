@@ -80,3 +80,9 @@ The full dual-architecture install/compile gate and hosted scanner execution can
 Production branch mutation and privileged PR creation were not exercised live: they depend on deploying the new default-branch workflows. Branch mutation was exercised against a temporary bare Git remote; credentials were checked using a local HTTP server. No production daily branch or update PR was created by these tests. No merges were performed.
 
 The final report/regression-test commit uses `[skip ci]` to avoid launching another redundant packaging run against the known DNS failure. Runtime changes are in commits `bf9ea7c` and `979f2a7`; all 89 tests were run locally after the final regression additions.
+
+## Bridge runner correction
+
+The AMD64 private packaging labels were changed from `self-hosted, Linux, X64, issue-triage` to `self-hosted, Linux, X64, bridge` following the runner-access correction. `actionlint` passes for `build.yml`.
+
+[Candidate revalidation](https://github.com/sima-neat/model-compiler/actions/runs/34281751544) uses candidate commit `360fc87` and scheduled AMD64 packaging on `sima-bridge-2-linux-x64-ipqf2d`. Revalidation is in progress; the earlier DNS failure describes the retired runner selection and is not the result of this new run.
