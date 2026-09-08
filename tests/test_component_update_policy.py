@@ -136,6 +136,35 @@ class BranchEndToEndTests(unittest.TestCase):
         (self.repo/'scripts/source.json').write_text('{"version": 3}\n'); self.refresh()
         self.assertNotEqual(first, self.run_git(self.repo, 'rev-parse', 'HEAD'))
 
+    def test_app_auth_replaces_checkout_header(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        received = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                received.extend(self.headers.get_all("Authorization", []))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"001e# service=git-upload-pack\n00000000")
+            def log_message(self, *args):
+                pass
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.handle_request, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_port}"
+        key = f"http.{url}/.extraheader"
+        self.run_git(self.repo, 'config', key, 'Authorization: basic OLD_CHECKOUT_TOKEN')
+        try:
+            subprocess.run(['git', 'ls-remote', url + '/repo.git'], cwd=self.repo,
+                env={**os.environ, 'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': key,
+                     'GIT_CONFIG_VALUE_0': '', 'GIT_CONFIG_KEY_1': key,
+                     'GIT_CONFIG_VALUE_1': 'Authorization: basic NEW_APP_TOKEN'},
+                capture_output=True, timeout=10)
+            thread.join(timeout=5)
+            self.assertEqual(received, ['basic NEW_APP_TOKEN'])
+        finally:
+            server.server_close()
+
     def test_stale_develop_is_rejected(self):
         (self.repo/'new').write_text('advance'); self.run_git(self.repo, 'add', '.')
         self.run_git(self.repo, 'commit', '-m', 'advance'); self.run_git(self.repo, 'push')
