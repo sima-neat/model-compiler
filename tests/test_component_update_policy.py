@@ -85,6 +85,21 @@ class PolicyTests(unittest.TestCase):
                 else:
                     self.assertFalse(M.wheel_is_available('pkg', '1', **args))
 
+    def test_scan_falls_back_to_newest_compatible_wheel(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp)/'source.json'; source.write_text(json.dumps(self.source()))
+            output = Path(temp)/'scan.json'
+            with patch.object(M, 'python_index_versions', return_value=[
+                '3.0.0.dev0+develop.102', '3.0.0.dev0+develop.101', '3.0.0.dev0+develop.100',
+            ]), patch.object(M, 'wheel_is_available', side_effect=[False, True]) as check:
+                M.scan(source, target_arch='aarch64', output=output,
+                       index_url='https://example.invalid/simple', artifactory_url='https://example.invalid',
+                       max_candidates=0, newest_only=True)
+            self.assertEqual(check.call_count, 2)
+            entry = next(iter(json.loads(output.read_text())['components'].values()))
+            self.assertEqual(entry['available'], ['3.0.0.dev0+develop.101'])
+            self.assertEqual(entry['version_prefix'], '3.0.0.dev0+develop.')
+
     def test_cli_merge_and_summary_reject_unmanaged_changes(self):
         import hashlib
         with tempfile.TemporaryDirectory() as temp:
@@ -135,6 +150,45 @@ class BranchEndToEndTests(unittest.TestCase):
         self.assertIn(first, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
         (self.repo/'scripts/source.json').write_text('{"version": 3}\n'); self.refresh()
         self.assertNotEqual(first, self.run_git(self.repo, 'rev-parse', 'HEAD'))
+
+    def test_app_auth_replaces_checkout_header(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        received = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                received.extend(self.headers.get_all("Authorization", []))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"001e# service=git-upload-pack\n00000000")
+            def log_message(self, *args):
+                pass
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.handle_request, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_port}"
+        key = f"http.{url}/.extraheader"
+        self.run_git(self.repo, 'config', key, 'Authorization: basic OLD_CHECKOUT_TOKEN')
+        try:
+            subprocess.run(['git', 'ls-remote', url + '/repo.git'], cwd=self.repo,
+                env={**os.environ, 'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': key,
+                     'GIT_CONFIG_VALUE_0': '', 'GIT_CONFIG_KEY_1': key,
+                     'GIT_CONFIG_VALUE_1': 'Authorization: basic NEW_APP_TOKEN'},
+                capture_output=True, timeout=10)
+            thread.join(timeout=5)
+            self.assertEqual(received, ['basic NEW_APP_TOKEN'])
+        finally:
+            server.server_close()
+
+    def test_explicit_lease_rejects_concurrent_branch_creation(self):
+        import shlex
+        hook = self.repo/'.git/hooks/pre-push'
+        remote = shlex.quote(str(self.root/'origin.git'))
+        hook.write_text(f'#!/bin/sh\ngit --git-dir={remote} update-ref refs/heads/daily {self.sha}\n')
+        hook.chmod(0o755)
+        (self.repo/'scripts/source.json').write_text('{"version": 2}\n')
+        self.refresh(expected=1)
+        self.assertIn(self.sha, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
 
     def test_stale_develop_is_rejected(self):
         (self.repo/'new').write_text('advance'); self.run_git(self.repo, 'add', '.')

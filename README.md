@@ -134,7 +134,9 @@ cross-component compatibility; individual artifact availability does not.
 A successful current manifest-only updater commit opens or refreshes one PR
 from `daily` to `develop`, with old/new versions, prefixes and the Build link.
 
-Manual dry runs are available through `workflow_dispatch`. Artifactory access
+Manual dry runs are available through `workflow_dispatch`. The optional
+`source_ref` input can select a feature-branch manifest only with `dry_run=true`;
+normal updates always read `develop`. Artifactory access
 uses the private runner's existing netrc credentials. Pushes use
 `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
 GitHub executes scheduled and `workflow_run` workflows from the default branch:

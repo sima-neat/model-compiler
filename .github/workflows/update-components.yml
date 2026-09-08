@@ -172,11 +172,13 @@ jobs:
 
           # checkout@v5 persists GITHUB_TOKEN in this header. Replace it for
           # this process so the App-authenticated push triggers Build.
-          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_COUNT=2
           export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
-          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_APP_TOKEN}" | base64 | tr -d '\n')"
-          export GIT_CONFIG_VALUE_0
-          echo "::add-mask::${GIT_CONFIG_VALUE_0}"
+          export GIT_CONFIG_VALUE_0=
+          export GIT_CONFIG_KEY_1=http.https://github.com/.extraheader
+          GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_APP_TOKEN}" | base64 | tr -d '\n')"
+          export GIT_CONFIG_VALUE_1
+          echo "::add-mask::${GIT_CONFIG_VALUE_1}"
           bash _component-updater/scripts/refresh_daily_branch.sh
 
       - name: Report no changes
