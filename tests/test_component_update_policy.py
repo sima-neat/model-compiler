@@ -85,6 +85,21 @@ class PolicyTests(unittest.TestCase):
                 else:
                     self.assertFalse(M.wheel_is_available('pkg', '1', **args))
 
+    def test_scan_falls_back_to_newest_compatible_wheel(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp)/'source.json'; source.write_text(json.dumps(self.source()))
+            output = Path(temp)/'scan.json'
+            with patch.object(M, 'python_index_versions', return_value=[
+                '3.0.0.dev0+develop.102', '3.0.0.dev0+develop.101', '3.0.0.dev0+develop.100',
+            ]), patch.object(M, 'wheel_is_available', side_effect=[False, True]) as check:
+                M.scan(source, target_arch='aarch64', output=output,
+                       index_url='https://example.invalid/simple', artifactory_url='https://example.invalid',
+                       max_candidates=0, newest_only=True)
+            self.assertEqual(check.call_count, 2)
+            entry = next(iter(json.loads(output.read_text())['components'].values()))
+            self.assertEqual(entry['available'], ['3.0.0.dev0+develop.101'])
+            self.assertEqual(entry['version_prefix'], '3.0.0.dev0+develop.')
+
     def test_cli_merge_and_summary_reject_unmanaged_changes(self):
         import hashlib
         with tempfile.TemporaryDirectory() as temp:
@@ -164,6 +179,16 @@ class BranchEndToEndTests(unittest.TestCase):
             self.assertEqual(received, ['basic NEW_APP_TOKEN'])
         finally:
             server.server_close()
+
+    def test_explicit_lease_rejects_concurrent_branch_creation(self):
+        import shlex
+        hook = self.repo/'.git/hooks/pre-push'
+        remote = shlex.quote(str(self.root/'origin.git'))
+        hook.write_text(f'#!/bin/sh\ngit --git-dir={remote} update-ref refs/heads/daily {self.sha}\n')
+        hook.chmod(0o755)
+        (self.repo/'scripts/source.json').write_text('{"version": 2}\n')
+        self.refresh(expected=1)
+        self.assertIn(self.sha, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
 
     def test_stale_develop_is_rejected(self):
         (self.repo/'new').write_text('advance'); self.run_git(self.repo, 'add', '.')
