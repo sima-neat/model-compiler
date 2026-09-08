@@ -20,6 +20,40 @@
       "zlib1g-dev"
     ]
   },
+  "component-updates": {
+    "python-packages": {
+      "mpk-parser": {
+        "version-prefix": "2.1.3.dev0+develop."
+      },
+      "neural-compressor": {
+        "version-prefix": "2.0.0.dev0+develop."
+      },
+      "sima-accelerator-mode": {
+        "version-prefix": "2.1.3.dev0+develop."
+      },
+      "sima-ev-transforms": {
+        "version-prefix": "3.0.0.dev0+develop."
+      },
+      "sima-frontend": {
+        "version-prefix": "3.0.0.dev0+develop."
+      },
+      "sima-ml-kernels": {
+        "version-prefix": "3.0.0.dev0+develop."
+      },
+      "sima-mlc": {
+        "version-prefix": "3.0.0.dev0+develop."
+      },
+      "sima-mppe": {
+        "version-prefix": "2.1.0.dev0+develop."
+      },
+      "sima-tvm": {
+        "version-prefix": "1.4.0.dev0+develop."
+      },
+      "sima-utils": {
+        "version-prefix": "3.0.0.dev0+develop."
+      }
+    }
+  },
   "dependency_overrides": {
     "numpy": "1.26.4",
     "matplotlib": "3.10.9",

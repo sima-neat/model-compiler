@@ -99,27 +99,47 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Daily Component Update` workflow checks `scripts/source.json` every
-day at 00:00 UTC. The current version is the update policy: for example,
-`2.1.3.dev0+master.390` can advance only within
-`2.1.3.dev0+master.*`, and `v2.1.3560-develop.409` can advance only within
-`v2.1.3560-develop.*`. Changing a base version or channel remains a manual
-manifest change.
+The `Daily Component Update` workflow checks `develop`'s `scripts/source.json`
+every day at 00:00 UTC. Exact versions remain the build inputs. The optional
+`component-updates` block explicitly lists packages managed by automation:
 
-The private macOS/ARM64 runner validates available artifacts and acts as the
-authoritative scanner because Artifactory publishes matching component
-versions for ARM64 and amd64. Changed manifests refresh the stable
-`automation/component-updates` branch from the tested `develop` commit. The
-ordinary Build workflow still packages and tests both architectures. A
-successful Build run for that exact branch commit creates or updates one pull
-request back to `develop`.
+```json
+"component-updates": {
+  "python-packages": {
+    "sima-frontend": {"version-prefix": "3.0.0.dev0+develop."}
+  }
+}
+```
 
-Manual dry runs are available through `workflow_dispatch`. Branch pushes use
-the `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY` secrets so the
-push triggers the Build workflow. GitHub executes scheduled and
-`workflow_run` workflows from the repository default branch, so both
-automation workflow files must be present on `main` before unattended runs
-and automatic PR creation become active.
+The scanner chooses the greatest numeric build suffix in that exact prefix.
+A prefix may differ from the current pin, explicitly authorizing the initial
+base/channel transition. Subsequent runs advance only within that prefix.
+Editing an exact pin does not change the configured prefix. Different components
+may use different base versions. Package names are normalized, and matching
+pins in `dependency_overrides` and `python-packages` update together.
+URL/file-pinned packages are excluded. Conflicting duplicate pins are rejected.
+
+Only listed components are managed when the block is present; an empty block
+manages none. Older manifests without the block retain pin-derived discovery.
+The supplied policy manages ten Python packages; MLA and moving LLiMa snap
+references are not included. Binary policies can use `binary-packages` with
+an explicit Artifactory name and `version-prefix`.
+
+The private macOS/ARM64 runner checks Python 3.12 ARM64 or universal wheels.
+A changed candidate refreshes `daily` from the scanned `develop` commit using
+an explicit force-with-lease. Identical existing candidates and no-change runs
+leave the branch untouched. GitHub App credentials trigger the ordinary Build,
+which packages, installs, and smoke-tests both architectures. These tests gate
+cross-component compatibility; individual artifact availability does not.
+A successful current manifest-only updater commit opens or refreshes one PR
+from `daily` to `develop`, with old/new versions, prefixes and the Build link.
+
+Manual dry runs are available through `workflow_dispatch`. Artifactory access
+uses the private runner's existing netrc credentials. Pushes use
+`NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
+GitHub executes scheduled and `workflow_run` workflows from the default branch:
+deploy the workflow and helper changes to `main`, and the policy to `develop`,
+before unattended updates can use the new configuration.
 
 ## Building a Bundle
 

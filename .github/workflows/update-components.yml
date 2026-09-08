@@ -11,6 +11,10 @@ on:
         description: Report available updates without pushing the automation branch
         type: boolean
         default: false
+      source_ref:
+        description: Manifest ref for dry-run testing only; normal updates always use develop
+        type: string
+        default: develop
 
 permissions:
   actions: write
@@ -31,10 +35,20 @@ jobs:
       sha: ${{ steps.source.outputs.sha }}
 
     steps:
+      - name: Validate source selection
+        env:
+          SOURCE_REF: ${{ inputs.source_ref || 'develop' }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          if [[ "${SOURCE_REF}" != "develop" && "${DRY_RUN}" != "true" ]]; then
+            echo "A custom source_ref requires dry_run=true." >&2
+            exit 1
+          fi
+
       - name: Checkout develop
         uses: actions/checkout@v5
         with:
-          ref: develop
+          ref: ${{ inputs.source_ref || 'develop' }}
           clean: true
 
       - name: Record source commit
@@ -76,7 +90,7 @@ jobs:
           set -euo pipefail
           python3 _component-updater/scripts/update_component_versions.py scan \
             --source-json scripts/source.json \
-            --target-arch aarch64 \
+            --target-arch aarch64 --newest-only \
             --output scan-aarch64.json
 
       - name: Upload scan report
@@ -134,8 +148,7 @@ jobs:
           cp "${RUNNER_TEMP}/source.json" scripts/source.json
           cat "${RUNNER_TEMP}/component-update-summary.md" >> "${GITHUB_STEP_SUMMARY}"
           python3 -m json.tool scripts/source.json >/dev/null
-          python3 -m unittest \
-            _component-updater/tests/test_update_component_versions.py -v
+          python3 -m unittest discover -s _component-updater/tests -p 'test*component*.py' -v
 
       - name: Show dry-run diff
         if: steps.merge.outputs.changed == 'true' && github.event_name == 'workflow_dispatch' && inputs.dry_run
@@ -157,25 +170,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          branch="automation/component-updates"
-          git fetch origin develop
-          current_develop="$(git rev-parse origin/develop)"
-          if [[ "${current_develop}" != "${SOURCE_SHA}" ]]; then
-            echo "develop advanced from ${SOURCE_SHA} to ${current_develop}; refusing a stale update." >&2
-            exit 1
-          fi
-
-          git config user.name "neat-releases[bot]"
-          git config user.email "neat-releases[bot]@users.noreply.github.com"
-          git switch -C "${branch}"
-          git add scripts/source.json
-          git commit -m "Update Model Compiler component versions"
-
-          git remote set-url origin \
-            "https://x-access-token:${GH_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}" || true
-          git push --force-with-lease origin "HEAD:refs/heads/${branch}"
+          # checkout@v5 persists GITHUB_TOKEN in this header. Replace it for
+          # this process so the App-authenticated push triggers Build.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_APP_TOKEN}" | base64 | tr -d '\n')"
+          export GIT_CONFIG_VALUE_0
+          echo "::add-mask::${GIT_CONFIG_VALUE_0}"
+          bash _component-updater/scripts/refresh_daily_branch.sh
 
       - name: Report no changes
         if: steps.merge.outputs.changed != 'true'
-        run: echo "No newer common component builds were found." >> "${GITHUB_STEP_SUMMARY}"
+        run: echo "No newer component builds matched the update policy." >> "${GITHUB_STEP_SUMMARY}"
