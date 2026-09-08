@@ -104,3 +104,9 @@ Next correction: resolve the target for the requested device without requiring G
 - [AMD64 install/smoke job](https://github.com/sima-neat/model-compiler/actions/runs/34281751544/job/102251538912)
 
 No runtime fix for this SDK API incompatibility is included in this diagnostic update.
+
+## SDK target compatibility correction
+
+Removed the unconditional Gen1 import. Target selection now resolves only the requested device: Modalix uses Gen2 without needing the deprecated API, while MLSoC remains available with SDKs that expose Gen1 and otherwise raises a clear unsupported-target error. Unknown device values are rejected.
+
+The complete local suite passes: **94 tests**, including five target-compatibility cases covering new and legacy SDKs. The resolved-candidate Build is being rerun to verify actual compilation beyond the previously failing import.
