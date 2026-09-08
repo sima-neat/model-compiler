@@ -85,4 +85,22 @@ The final report/regression-test commit uses `[skip ci]` to avoid launching anot
 
 The AMD64 private packaging labels were changed from `self-hosted, Linux, X64, issue-triage` to `self-hosted, Linux, X64, bridge` following the runner-access correction. `actionlint` passes for `build.yml`.
 
-[Candidate revalidation](https://github.com/sima-neat/model-compiler/actions/runs/34281751544) uses candidate commit `360fc87` and scheduled AMD64 packaging on `sima-bridge-2-linux-x64-ipqf2d`. Revalidation is in progress; the earlier DNS failure describes the retired runner selection and is not the result of this new run.
+[Candidate revalidation](https://github.com/sima-neat/model-compiler/actions/runs/34281751544) uses candidate commit `360fc87` and scheduled AMD64 packaging on `sima-bridge-2-linux-x64-ipqf2d`. Revalidation completed with a failure in the compilation smoke tests. Both architecture packages built successfully, and both installation steps succeeded. The earlier DNS failure describes the retired runner selection and was resolved by using bridge.
+
+
+## Bridge revalidation result: SDK API compatibility failure
+
+Both ARM64 and AMD64 passed packaging, package installation, `pip check`, and smoke preflight. Both failed ResNet INT8 and BF16 compilation at the same import in `skills/quantize_compile/scripts/quantize_compile.py:30`:
+
+```text
+ImportError: cannot import name 'gen1_target' from 'afe.apis.defines'
+```
+
+The candidate installs `sima-frontend==3.0.0.dev0+develop.2263`. That SDK artifact does not expose `gen1_target`, but the utility imports it unconditionally alongside `gen2_target`. The tests request `--device modalix`, so only `gen2_target` is required; the import fails before target selection or compilation. This is an SDK/script API incompatibility, not an installation or architecture-specific failure.
+
+Next correction: resolve the target for the requested device without requiring Gen1 support during Modalix runs. Retain Gen1 support where the installed SDK exposes it, and issue a clear unsupported-target error otherwise. Rerun both precision tests after that correction; the early import error does not establish that the rest of compilation is compatible.
+
+- [ARM64 install/smoke job](https://github.com/sima-neat/model-compiler/actions/runs/34281751544/job/102251538882)
+- [AMD64 install/smoke job](https://github.com/sima-neat/model-compiler/actions/runs/34281751544/job/102251538912)
+
+No runtime fix for this SDK API incompatibility is included in this diagnostic update.
