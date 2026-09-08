@@ -115,3 +115,11 @@ python3 skills/model_surgery/scripts/onnx_static_simplify.py \
   --replace batch=1
 ```
 - `--mla-tesselation` exists for advanced MLA direct mode (argument spelling is `tesselation` in the script).
+
+
+### SDK target compatibility
+
+Modalix (`--device modalix`, the default) uses the SDK Gen2 target and works
+without the deprecated Gen1 API. MLSoC (`--device mlsoc`) requires an older SDK
+that still exposes `gen1_target`; newer SDKs report an unsupported-target error.
+Selecting MLSoC never silently substitutes Modalix hardware.

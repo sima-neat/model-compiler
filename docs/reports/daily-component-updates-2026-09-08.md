@@ -80,3 +80,33 @@ The full dual-architecture install/compile gate and hosted scanner execution can
 Production branch mutation and privileged PR creation were not exercised live: they depend on deploying the new default-branch workflows. Branch mutation was exercised against a temporary bare Git remote; credentials were checked using a local HTTP server. No production daily branch or update PR was created by these tests. No merges were performed.
 
 The final report/regression-test commit uses `[skip ci]` to avoid launching another redundant packaging run against the known DNS failure. Runtime changes are in commits `bf9ea7c` and `979f2a7`; all 89 tests were run locally after the final regression additions.
+
+## Bridge runner correction
+
+The AMD64 private packaging labels were changed from `self-hosted, Linux, X64, issue-triage` to `self-hosted, Linux, X64, bridge` following the runner-access correction. `actionlint` passes for `build.yml`.
+
+[Candidate revalidation](https://github.com/sima-neat/model-compiler/actions/runs/34281751544) uses candidate commit `360fc87` and scheduled AMD64 packaging on `sima-bridge-2-linux-x64-ipqf2d`. Revalidation completed with a failure in the compilation smoke tests. Both architecture packages built successfully, and both installation steps succeeded. The earlier DNS failure describes the retired runner selection and was resolved by using bridge.
+
+
+## Bridge revalidation result: SDK API compatibility failure
+
+Both ARM64 and AMD64 passed packaging, package installation, `pip check`, and smoke preflight. Both failed ResNet INT8 and BF16 compilation at the same import in `skills/quantize_compile/scripts/quantize_compile.py:30`:
+
+```text
+ImportError: cannot import name 'gen1_target' from 'afe.apis.defines'
+```
+
+The candidate installs `sima-frontend==3.0.0.dev0+develop.2263`. That SDK artifact does not expose `gen1_target`, but the utility imports it unconditionally alongside `gen2_target`. The tests request `--device modalix`, so only `gen2_target` is required; the import fails before target selection or compilation. This is an SDK/script API incompatibility, not an installation or architecture-specific failure.
+
+Next correction: resolve the target for the requested device without requiring Gen1 support during Modalix runs. Retain Gen1 support where the installed SDK exposes it, and issue a clear unsupported-target error otherwise. Rerun both precision tests after that correction; the early import error does not establish that the rest of compilation is compatible.
+
+- [ARM64 install/smoke job](https://github.com/sima-neat/model-compiler/actions/runs/34281751544/job/102251538882)
+- [AMD64 install/smoke job](https://github.com/sima-neat/model-compiler/actions/runs/34281751544/job/102251538912)
+
+No runtime fix for this SDK API incompatibility is included in this diagnostic update.
+
+## SDK target compatibility correction
+
+Removed the unconditional Gen1 import. Target selection now resolves only the requested device: Modalix uses Gen2 without needing the deprecated API, while MLSoC remains available with SDKs that expose Gen1 and otherwise raises a clear unsupported-target error. Unknown device values are rejected.
+
+The complete local suite passes: **94 tests**, including five target-compatibility cases covering new and legacy SDKs. The resolved-candidate Build is being rerun to verify actual compilation beyond the previously failing import.
