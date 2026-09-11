@@ -3,3 +3,8 @@ __pycache__/
 .codex
 .vscode/
 examples/**/data/*.pkl
+
+# Local investigation output; publish findings in issues and CI artifacts.
+/debug-evidence/
+/debug-results/
+/docs/reports/

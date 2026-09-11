@@ -1,7 +1,0 @@
-{"case": "packages", "returncode": 0, "seconds": 0.5}
-{"case": "host", "returncode": 0, "seconds": 0.1}
-{"case": "simplify", "returncode": 0, "seconds": 1.2}
-{"case": "int8-control", "returncode": 0, "seconds": 177.5}
-{"case": "bf16-1", "returncode": 1, "seconds": 197.7}
-{"case": "bf16-2", "returncode": 1, "seconds": 198.8}
-{"case": "bf16-3", "returncode": 1, "seconds": 197.4}
