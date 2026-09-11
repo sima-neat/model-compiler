@@ -1,0 +1,16 @@
+Simplifying...
+Finish! Here is the difference:
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
+┃                   ┃ Original Model ┃ Simplified Model ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
+│ Add               │ 16             │ 16               │
+│ Constant          │ 61             │ 61               │
+│ Conv              │ 53             │ 53               │
+│ Flatten           │ 1              │ 1                │
+│ Gemm              │ 1              │ 1                │
+│ GlobalAveragePool │ 1              │ 1                │
+│ Identity          │ 47             │ 0                │
+│ MaxPool           │ 1              │ 1                │
+│ Relu              │ 49             │ 49               │
+│ Model Size        │ 97.3MiB        │ 97.3MiB          │
+└───────────────────┴────────────────┴──────────────────┘
