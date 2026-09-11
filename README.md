@@ -107,6 +107,12 @@ every day at 00:00 UTC. Exact versions remain the build inputs. The optional
 "component-updates": {
   "python-packages": {
     "sima-frontend": {"version-prefix": "3.0.0.dev0+develop."}
+  },
+  "binary-packages": {
+    "mla/toolchain/mla-toolchain": {
+      "version-prefix": "v3.0.0-",
+      "channel": "develop"
+    }
   }
 }
 ```
@@ -121,9 +127,15 @@ URL/file-pinned packages are excluded. Conflicting duplicate pins are rejected.
 
 Only listed components are managed when the block is present; an empty block
 manages none. Older manifests without the block retain pin-derived discovery.
-The supplied policy manages ten Python packages; MLA and moving LLiMa snap
-references are not included. Binary policies can use `binary-packages` with
-an explicit Artifactory name and `version-prefix`.
+The supplied policy manages ten Python packages and the MLA toolchain. Moving
+LLiMa snap references are not included. MLA uses `version-prefix` for the release
+and `channel` for the branch: `v3.0.0-` plus `develop` matches
+`v3.0.0-3609-develop.453`. Discovery orders the numeric revision first, then the
+numeric channel build, allowing both to advance within 3.0.0 develop. Other
+releases, PRs, and commit-only archives are excluded. An explicit policy allows
+migration from a legacy 2.1 pin. Legacy binary prefixes ending in `.` retain
+their existing suffix-only behavior. Architecture scans select only matching
+`x86` or `aarch64` Ubuntu ZIPs; merging two scans requires a common version.
 
 The private macOS/ARM64 runner checks Python 3.12 ARM64 or universal wheels.
 A changed candidate refreshes `daily` from the scanned `develop` commit using
