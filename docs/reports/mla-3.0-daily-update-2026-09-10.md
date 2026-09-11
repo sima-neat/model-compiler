@@ -50,14 +50,30 @@ with `OSError: [Errno 122] Disk quota exceeded`; installation/compilation jobs
 were skipped because packaging did not pass on both architectures.
 
 The [rebuild with disk-backed staging](https://github.com/sima-neat/model-compiler/actions/runs/34563727447)
-uses candidate `93f34df20b98b08e25de4b382e216cea2f5a3c1c` and is in progress.
+uses candidate `93f34df20b98b08e25de4b382e216cea2f5a3c1c`. Both architecture
+build, installation, and smoke-test jobs passed; downstream publication is
+still in progress at the time of this report.
 The x86 retry was scheduled on `bench31-pc1-modalix-pcie-linux-x64-753kyx`;
 therefore its result is not a direct rerun on the original bridge runner.
 Both packages built, validated, uploaded, and installed successfully. The x86
-artifact was approximately 5.3 GB and its upload took about 13 minutes. Both
-post-install smoke-test jobs are in progress; actual INT8/BF16 and LLiMa
-results remain pending. Packaging and installation do not establish runtime
-compatibility.
+artifact was approximately 5.3 GB and its upload took about 13 minutes. ARM64
+post-install validation passed: ResNet INT8 (134.0 s), ResNet BF16 (160.8 s),
+and Qwen3/LLiMa ONNX, quantization, compilation, and quantized-part execution.
+The ARM64 tools report `v3.0.0-3609-gd4b4b343`. The previous ARM64 INT8
+simulator crash did not recur. AMD64 also passed all smoke tests using the same
+MLA version; the previous BF16 `ofm_chk.mlc` failure did not recur.
+
+| Architecture | ResNet INT8 | ResNet BF16 | Qwen3/LLiMa |
+|---|---|---|---|
+| ARM64 | PASS — 134.0 s | PASS — 160.8 s | PASS |
+| AMD64 | PASS — 142.8 s | PASS — 187.4 s | PASS |
+
+- [ARM64 installation and smoke tests](https://github.com/sima-neat/model-compiler/actions/runs/34563727447/job/103155626728)
+- [AMD64 installation and smoke tests](https://github.com/sima-neat/model-compiler/actions/runs/34563727447/job/103155626768)
+
+The ten exact Python component pins were held constant for this comparison.
+LLiMa retains its pre-existing moving snap policy, so this is not a fully
+immutable comparison of every bundled dependency.
 
 ## Full policy scan
 
