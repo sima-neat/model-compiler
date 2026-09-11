@@ -486,6 +486,13 @@ Build natively on a matching host when possible: `linux/amd64` on `ll2` and
 
 ## Branch Container Images
 
+For `daily`, the `Build` workflow directly builds and smoke-tests amd64 and
+arm64 container images after both package installation tests pass. It reuses
+the same run’s package artifacts and publishes the multi-architecture GHCR
+image before the Build run completes, so daily success notifications and PR
+validation include container publication. This direct path does not require
+a container completion listener on `main`.
+
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are

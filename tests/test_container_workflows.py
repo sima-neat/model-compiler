@@ -13,6 +13,8 @@ class ContainerWorkflowTests(unittest.TestCase):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("workflows: [Build]", text)
+        completion_trigger = text.split("  workflow_run:", 1)[1].split("  workflow_call:", 1)[0]
+        self.assertIn("branches-ignore: [daily]", completion_trigger)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.event == 'push'", text)
         self.assertIn("head_repository.full_name == github.repository", text)
@@ -56,14 +58,14 @@ class ContainerWorkflowTests(unittest.TestCase):
             text.index("Build and smoke-test container"),
         )
 
-    def test_feature_branch_can_call_publisher_after_package_tests(self):
+    def test_daily_branch_calls_publisher_after_package_tests(self):
         build_text = BUILD_WORKFLOW.read_text(encoding="utf-8")
         publish_text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("workflow_call:", publish_text)
         self.assertIn("source_run_id:", publish_text)
-        self.assertIn("test-branch-containers:", build_text)
-        self.assertIn("github.ref_name == 'container-image'", build_text)
+        self.assertIn("daily-containers:", build_text)
+        self.assertIn("github.ref_name == 'daily'", build_text)
         self.assertIn("- test-package-install", build_text)
         self.assertIn("uses: ./.github/workflows/container-build.yml", build_text)
         self.assertIn("source_run_id: ${{ github.run_id }}", build_text)
