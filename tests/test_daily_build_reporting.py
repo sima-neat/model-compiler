@@ -38,6 +38,28 @@ class InventoryTests(unittest.TestCase):
         self.assertIn('sqlitedict', rendered)
         self.assertIn('abc123', rendered)
 
+    def test_binary_extensions_match_downloaded_archives(self):
+        version = 'v3.0.0-3609-develop.453'
+        for options in ({'extension': 'zip'}, {'extension': '.zip'},
+                        {'extension': ' zip '}, {'extension': '', 'archive-type': 'zip'},
+                        {'archive-type': 'zip'}, {}):
+            for arch, suffix in (('aarch64', 'aarch64'), ('x86_64', 'x86')):
+                with self.subTest(options=options, arch=arch):
+                    filename = f'mla-toolchain-{version}-{suffix}-ubuntu.zip'
+                    source = {'binary-packages': [
+                        {'name': 'mla/toolchain/mla-toolchain', 'version': version, **options},
+                    ]}
+                    rows = I.inventory([Path(filename)], source, arch)
+                    self.assertEqual(rows, [{'name': 'mla-toolchain', 'version': version,
+                                            'requested': version, 'kind': 'binary', 'artifact': filename}])
+
+    def test_non_zip_binary_uses_archive_type_without_mla_zip_suffix(self):
+        filename = 'mla-toolchain-v3.0.0.tar.gz'
+        source = {'binary-packages': [{'name': 'mla/toolchain/mla-toolchain',
+                  'version': 'v3.0.0', 'extension': '', 'archive-type': 'tar.gz'}]}
+        row = I.inventory([Path(filename)], source, 'aarch64')[0]
+        self.assertEqual((row['name'], row['version'], row['kind']), ('mla-toolchain', 'v3.0.0', 'binary'))
+
     def test_markdown_cells_are_escaped(self):
         text = I.summary([{'name': 'sima-<script>|x', 'version': '1', 'requested': 'a\nb', 'kind': 'wheel'}],
                          version='3.0.0', arch='x86_64', provenance={})

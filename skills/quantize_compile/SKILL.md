@@ -10,7 +10,7 @@ Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compil
 
 ## Target Devices
 
-- `--device mlsoc` selects `gen1_target` for MLSoC.
+- `--device mlsoc` selects `gen1_target` for MLSoC on legacy SDKs that still expose it.
 - `--device modalix` selects `gen2_target` for Modalix.
 
 ## Use When
@@ -70,7 +70,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
   --input_names input \
   --input_shapes 1,3,224,224 \
   --output_names output \
-  --device mlsoc \
+  --device modalix \
   --build_dir ./build \
   --real_data \
   --dataset_images /abs/path/calib_images \

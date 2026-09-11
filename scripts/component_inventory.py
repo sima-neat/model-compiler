@@ -26,8 +26,13 @@ def inventory(artifacts: list[Path], source: dict, arch: str) -> list[dict]:
     binaries = {}
     for item in selected.get("binary-packages", source.get("binary-packages", [])):
         name = item["name"].rsplit("/", 1)[-1]
-        suffix = f'-{ {"aarch64": "aarch64", "x86_64": "x86"}[arch]}-ubuntu' if name == "mla-toolchain" else ""
-        extension = item.get("extension", "." + item.get("archive-type", "zip"))
+        extension = str(item.get("extension", "")).strip()
+        archive_type = (
+            extension.lstrip(".")
+            if extension else str(item.get("archive-type", "zip")).strip() or "zip"
+        )
+        suffix = f'-{ {"aarch64": "aarch64", "x86_64": "x86"}[arch]}-ubuntu' if name == "mla-toolchain" and archive_type == "zip" else ""
+        extension = "." + archive_type
         binaries[f'{name}-{item["version"]}{suffix}{extension}'] = (name, item["version"])
     rows = []
     for artifact in artifacts:
