@@ -375,9 +375,9 @@ jobs:
       artifact_folder: arm64
       validate_manifest: true
 
-  test-branch-containers:
-    name: Test branch container publication
-    if: ${{ github.ref_type == 'branch' && github.ref_name == 'container-image' }}
+  daily-containers:
+    name: Publish daily container images
+    if: ${{ github.ref_type == 'branch' && github.ref_name == 'daily' }}
     needs:
       - test-package-install
     permissions:
