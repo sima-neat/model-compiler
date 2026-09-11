@@ -114,6 +114,9 @@ jobs:
           echo "Resolved bundle version: ${version}"
 
       - name: Build package
+        env:
+          # pip stages multi-GB dependencies; /tmp may be a small tmpfs.
+          TMPDIR: ${{ runner.temp }}
         run: |
           set -euo pipefail
           scripts/build_modelsdk_bundle.sh \

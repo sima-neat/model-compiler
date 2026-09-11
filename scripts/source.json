@@ -21,6 +21,12 @@
     ]
   },
   "component-updates": {
+    "binary-packages": {
+      "mla/toolchain/mla-toolchain": {
+        "version-prefix": "v3.0.0-",
+        "channel": "develop"
+      }
+    },
     "python-packages": {
       "mpk-parser": {
         "version-prefix": "2.1.3.dev0+develop."

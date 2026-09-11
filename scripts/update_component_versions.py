@@ -57,12 +57,16 @@ class UpdateError(RuntimeError):
 @dataclass(frozen=True)
 class VersionFamily:
     prefix: str
-    build: int
+    build: int | tuple[int, int]
     pattern: re.Pattern[str]
 
-    def parse_candidate(self, value: str) -> int | None:
+    def parse_candidate(self, value: str) -> int | tuple[int, int] | None:
         match = self.pattern.fullmatch(value)
-        return int(match.group("build")) if match else None
+        if match is None:
+            return None
+        if "revision" in match.groupdict():
+            return (int(match.group("revision")), int(match.group("build")))
+        return int(match.group("build"))
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,7 @@ class Component:
     name: str
     current: str
     version_prefix: str | None = None
+    channel: str | None = None
 
 
 def normalize_package_name(name: str) -> str:
@@ -94,7 +99,22 @@ def python_family(version: str) -> VersionFamily | None:
     )
 
 
+def mla_release_family(prefix: str, channel: str) -> VersionFamily | None:
+    if not re.fullmatch(r"v\d+\.\d+\.\d+-", prefix) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", channel):
+        return None
+    return VersionFamily(
+        prefix, (-1, -1),
+        re.compile(rf"{re.escape(prefix)}(?P<revision>\d+)-{re.escape(channel)}\.(?P<build>\d+)"),
+    )
+
+
 def binary_family(version: str) -> VersionFamily | None:
+    release = re.fullmatch(
+        r"(?P<prefix>v\d+\.\d+\.\d+-)\d+-(?P<channel>[A-Za-z][A-Za-z0-9_-]*)\.\d+", version
+    )
+    if release:
+        family = mla_release_family(release.group("prefix"), release.group("channel"))
+        return VersionFamily(family.prefix, family.parse_candidate(version), family.pattern)
     match = BINARY_VERSION_RE.fullmatch(version)
     if not match:
         return None
@@ -108,22 +128,35 @@ def binary_family(version: str) -> VersionFamily | None:
 
 def component_family(component: Component) -> VersionFamily:
     parser = python_family if component.kind == "python" else binary_family
-    if component.version_prefix is None:
+    if component.channel is not None:
+        family = mla_release_family(component.version_prefix or "", component.channel)
+        if family is not None:
+            current_build = family.parse_candidate(component.current)
+            family = VersionFamily(
+                family.prefix, (-1, -1) if current_build is None else current_build, family.pattern
+            )
+    elif component.version_prefix is None:
         family = parser(component.current)
     else:
         family = parser(component.version_prefix + "0")
         if family is not None:
             current_build = family.parse_candidate(component.current)
-            family = VersionFamily(
-                family.prefix, -1 if current_build is None else current_build,
-                family.pattern,
-            )
+            if current_build is None:
+                current_build = (-1, -1) if isinstance(family.build, tuple) else -1
+            family = VersionFamily(family.prefix, current_build, family.pattern)
     if family is None:
         raise UpdateError(f"invalid version prefix for {component.name}")
     return family
 
 
-def update_policy(doc: dict[str, Any]) -> dict[tuple[str, str], str] | None:
+def policy_label(component: Component) -> str:
+    family = component_family(component)
+    if component.channel is not None:
+        return f"{family.prefix}*-{component.channel}.*"
+    return f"{family.prefix}*"
+
+
+def update_policy(doc: dict[str, Any]) -> dict[tuple[str, str], tuple[str, str | None]] | None:
     """Absent policy preserves legacy pin-derived behavior; an empty policy manages none."""
     if "component-updates" not in doc:
         return None
@@ -139,16 +172,25 @@ def update_policy(doc: dict[str, Any]) -> dict[tuple[str, str], str] | None:
         if not isinstance(entries, dict):
             raise UpdateError(f"component-updates.{section} must be an object")
         for name, entry in entries.items():
-            if not isinstance(entry, dict) or set(entry) != {"version-prefix"}:
-                raise UpdateError(f"{name}: expected version-prefix")
+            if not isinstance(entry, dict) or set(entry) not in ({"version-prefix"}, {"version-prefix", "channel"}):
+                raise UpdateError(f"{name}: expected version-prefix and optional binary channel")
             prefix = entry["version-prefix"]
-            if not isinstance(prefix, str) or not prefix.endswith(".") or parser(prefix + "0") is None:
-                raise UpdateError(f"{name}: invalid version-prefix {prefix!r}")
+            channel = entry.get("channel")
+            if "channel" in entry:
+                valid = (
+                    kind == "binary" and name.strip("/") == "mla/toolchain/mla-toolchain"
+                    and isinstance(prefix, str) and isinstance(channel, str)
+                    and mla_release_family(prefix, channel) is not None
+                )
+            else:
+                valid = isinstance(prefix, str) and prefix.endswith(".") and parser(prefix + "0") is not None
+            if not valid:
+                raise UpdateError(f"{name}: invalid version-prefix/channel {entry!r}")
             normalized = normalize_package_name(name) if kind == "python" else name.strip("/")
             key = (kind, normalized)
             if key in result:
                 raise UpdateError(f"duplicate update policy for {normalized}")
-            result[key] = prefix
+            result[key] = (prefix, channel)
     return result
 
 
@@ -258,7 +300,7 @@ def collect_components(doc: dict[str, Any], target_arch: str) -> list[Component]
     policy = update_policy(doc)
     if policy is not None:
         components = {
-            key: Component(c.component_id, c.kind, c.name, c.current, policy[(c.kind, c.name)])
+            key: Component(c.component_id, c.kind, c.name, c.current, *policy[(c.kind, c.name)])
             for key, c in components.items() if (c.kind, c.name) in policy
         }
     return sorted(components.values(), key=lambda item: item.component_id)
@@ -383,7 +425,7 @@ def binary_index_versions(
 
     archive_suffix = MLA_ARCH_SUFFIX[target_arch]
     filename_re = re.compile(
-        rf"^/?{re.escape(leaf)}-(?P<version>{re.escape(family.prefix)}\d+)"
+        rf"^/?{re.escape(leaf)}-(?P<version>.+)"
         rf"-{re.escape(archive_suffix)}-ubuntu\.(?:zip)$"
     )
     versions = set()
@@ -458,6 +500,7 @@ def scan(
             "name": component.name,
             "current": component.current,
             "version_prefix": component_family(component).prefix,
+            "channel": component.channel,
             "coordinate": (
                 f"{index_url.rstrip('/')}/{component.name}/" if component.kind == "python"
                 else f"{artifactory_url.rstrip('/')}/{component.name}"
@@ -735,7 +778,7 @@ def merge(
         for component_id, new_version in sorted(updates.items()):
             component = components[component_id]
             lines.append(
-                f"| `{component.name}` | `{component.current}` | `{new_version}` | `{component_family(component).prefix}*` |"
+                f"| `{component.name}` | `{component.current}` | `{new_version}` | `{policy_label(component)}` |"
             )
     else:
         lines.append("No newer builds were available in the currently pinned version families.")
@@ -774,7 +817,7 @@ def summarize(base: Path, updated: Path, output: Path) -> None:
             build = family.parse_candidate(new_version)
             if build is None or build <= family.build:
                 raise UpdateError(f"candidate violates update policy for {key[1]}")
-            lines.append(f"| `{key[1]}` | `{old_version}` | `{new_version}` | `{family.prefix}*` |")
+            lines.append(f"| `{key[1]}` | `{old_version}` | `{new_version}` | `{policy_label(component)}` |")
             changes += 1
     components = {
         c.component_id: c for arch in SUPPORTED_ARCHES for c in collect_components(base_doc, arch)
