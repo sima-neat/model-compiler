@@ -13,10 +13,6 @@ if [[ "$(git rev-parse HEAD)" != "${SOURCE_SHA}" ]]; then
   echo "Checkout must be at SOURCE_SHA." >&2
   exit 1
 fi
-if git diff --quiet HEAD -- scripts/source.json; then
-  echo "No manifest changes; leaving daily untouched."
-  exit 0
-fi
 # Capture the expected remote SHA before preparing the commit. An absent branch
 # uses an empty explicit lease, which only permits creation.
 expected="$(git ls-remote --heads origin "refs/heads/${branch}" | cut -f1)"
@@ -37,10 +33,11 @@ git config user.name "neat-releases[bot]"
 git config user.email "neat-releases[bot]@users.noreply.github.com"
 git switch -C "${branch}"
 git add scripts/source.json
-if [[ "$(git diff --cached --name-only)" != "scripts/source.json" ]]; then
+changed_files="$(git diff --cached --name-only)"
+if [[ -n "${changed_files}" && "${changed_files}" != "scripts/source.json" ]]; then
   echo "Only scripts/source.json may be committed." >&2
   exit 1
 fi
-git commit -m "Update Model Compiler component versions" \
+git commit --allow-empty -m "Update Model Compiler component versions" \
   -m "Component-Updater: daily"
 git push "--force-with-lease=refs/heads/${branch}:${expected}" origin "HEAD:refs/heads/${branch}"

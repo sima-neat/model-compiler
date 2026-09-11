@@ -141,7 +141,9 @@ class BranchEndToEndTests(unittest.TestCase):
 
     def test_create_repeat_no_change_and_refresh(self):
         self.refresh()
-        self.assertEqual(self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'), '')
+        initial = self.run_git(self.repo, 'rev-parse', 'HEAD')
+        self.assertIn(initial, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
+        self.run_git(self.repo, 'checkout', '--detach', self.sha)
         (self.repo/'scripts/source.json').write_text('{"version": 2}\n'); self.refresh()
         first = self.run_git(self.repo, 'rev-parse', 'HEAD')
         self.assertEqual(self.run_git(self.repo, 'rev-parse', 'HEAD^'), self.sha)
@@ -149,6 +151,22 @@ class BranchEndToEndTests(unittest.TestCase):
         (self.repo/'scripts/source.json').write_text('{"version": 2}\n'); self.refresh()
         self.assertIn(first, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
         (self.repo/'scripts/source.json').write_text('{"version": 3}\n'); self.refresh()
+        self.assertNotEqual(first, self.run_git(self.repo, 'rev-parse', 'HEAD'))
+
+    def test_no_pin_change_still_follows_develop_without_repeated_commits(self):
+        self.refresh()
+        first = self.run_git(self.repo, 'rev-parse', 'HEAD')
+        self.run_git(self.repo, 'checkout', '--detach', self.sha)
+        self.refresh()
+        self.assertIn(first, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
+        self.run_git(self.repo, 'checkout', 'develop')
+        (self.repo/'code.txt').write_text('new code')
+        self.run_git(self.repo, 'add', 'code.txt')
+        self.run_git(self.repo, 'commit', '-m', 'advance develop')
+        self.run_git(self.repo, 'push', 'origin', 'develop')
+        self.sha = self.run_git(self.repo, 'rev-parse', 'HEAD')
+        self.refresh()
+        self.assertEqual(self.run_git(self.repo, 'rev-parse', 'HEAD^'), self.sha)
         self.assertNotEqual(first, self.run_git(self.repo, 'rev-parse', 'HEAD'))
 
     def test_app_auth_replaces_checkout_header(self):

@@ -126,6 +126,9 @@ jobs:
             --bundle-version "${{ steps.version.outputs.version }}" \
             --prod
 
+      - name: Report resolved component versions
+        run: cat "dist/${{ matrix.arch }}/package/component-versions.md" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Validate package
         run: |
           set -euo pipefail

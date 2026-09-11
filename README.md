@@ -100,7 +100,11 @@ resource-constrained machines.
 ### Automated component updates
 
 The `Daily Component Update` workflow checks `develop`'s `scripts/source.json`
-every day at 00:00 UTC. Exact versions remain the build inputs. The optional
+every four hours (00:17, 04:17, 08:17, 12:17, 16:17, and 20:17 UTC).
+A small `Daily Component Update` wrapper on the default branch calls the
+updater workflow on `develop`; updater scripts and the manifest are checked out
+from the same resolved `develop` commit. GitHub may delay scheduled runs.
+Exact versions remain the build inputs. The optional
 `component-updates` block explicitly lists packages managed by automation:
 
 ```json
@@ -139,8 +143,9 @@ their existing suffix-only behavior. Architecture scans select only matching
 
 The private macOS/ARM64 runner checks Python 3.12 ARM64 or universal wheels.
 A changed candidate refreshes `daily` from the scanned `develop` commit using
-an explicit force-with-lease. Identical existing candidates and no-change runs
-leave the branch untouched. GitHub App credentials trigger the ordinary Build,
+an explicit force-with-lease. Identical existing candidates
+leave the branch untouched. A new develop commit refreshes daily even if no
+package pins changed, so code and bundle-version changes are included. GitHub App credentials trigger the ordinary Build,
 which packages, installs, and smoke-tests both architectures. These tests gate
 cross-component compatibility; individual artifact availability does not.
 A successful current manifest-only updater commit opens or refreshes one PR
@@ -553,3 +558,32 @@ This repository currently focuses on:
 
 If you add more extensions later, use the existing extension-style install root
 under `sdk-extensions/`.
+
+
+### Build component metadata and daily notifications
+
+Every architecture's Build summary lists the actual selected SiMa component
+versions, including MLA, and an expandable table of all other bundled packages.
+The inventory is derived from downloaded artifact filenames, not just requested
+pins. `component-versions.json` and `component-versions.md` are included in the
+build artifacts; the same inventory is stored in `metadata.json` and
+`metadata-offline.json` under `component-versions`. LLiMa's resolved commit is
+reported separately.
+
+Completed `daily` Build runs report success or failure (including cancellation)
+to `neat-vulcan-events`, using the organization's `SLACK_BOT_TOKEN` secret and
+`SLACK_VULCAN_EVENT_CHANNEL_ID` variable. Notifications link to the build and its
+component tables. The completion listener must exist on default branch `main`;
+it calls the protected develop worker and executes trusted notification code
+from develop, never code from a build artifact. Feature-branch and develop builds do not send these notifications.
+
+The periodic updater only rebuilds when the resolved candidate or develop
+commit changes. To repeat validation of an unchanged candidate, manually run
+Build on `daily`. The test-only `codex/daily-component-updates-e2e` branch is no
+longer the publication target.
+
+The three default-branch entry points (`update-components.yml`,
+`daily-build-notify.yml`, and `open-component-update-pr.yml`) are kept in one
+isolated commit: merge into develop first, then cherry-pick that commit onto
+main. Each entry point calls its corresponding `*-worker.yml@develop`. Worker
+logic and helper scripts are maintained only on develop for this rollout.
