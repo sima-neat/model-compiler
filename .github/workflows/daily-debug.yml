@@ -1,0 +1,47 @@
+name: Daily amd64 compiler debug
+on:
+  push:
+    branches: [daily-debug]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v7
+        with:
+          name: model-compiler-amd64
+          path: _package
+          run-id: '34627171277'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record exact package checksum
+        run: sha256sum _package/model-compiler-amd64.zip > package-sha256.txt
+      - name: Install original failed-run package
+        working-directory: _package
+        run: |
+          script="$(python3 -c 'import json; print(json.load(open("metadata.json"))["installation"]["script"])')"
+          bash -c "$script"
+      - name: Repeat fixed-model amd64 compilation
+        run: |
+          bash --noprofile --rcfile "${HOME}/.bashrc" -i <<'BASH'
+          set -euo pipefail
+          activate-model-compiler
+          [[ -z "${SIMA_MLA_COMPILE_USE_JAX+x}" ]]
+          python scripts/daily_debug/run.py --output debug-results --attempts 3
+          BASH
+      - name: Preserve diagnostic output even on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: daily-debug-amd64-${{ github.run_attempt }}
+          path: |
+            debug-results
+            package-sha256.txt
+          retention-days: 7
