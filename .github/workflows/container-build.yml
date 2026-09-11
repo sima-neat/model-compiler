@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: [Build]
     types: [completed]
+    # daily publishes inside Build; do not publish the same artifacts again.
+    branches-ignore: [daily]
   workflow_call:
     inputs:
       source_branch:

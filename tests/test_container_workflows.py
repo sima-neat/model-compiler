@@ -13,6 +13,8 @@ class ContainerWorkflowTests(unittest.TestCase):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("workflows: [Build]", text)
+        completion_trigger = text.split("  workflow_run:", 1)[1].split("  workflow_call:", 1)[0]
+        self.assertIn("branches-ignore: [daily]", completion_trigger)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.event == 'push'", text)
         self.assertIn("head_repository.full_name == github.repository", text)
