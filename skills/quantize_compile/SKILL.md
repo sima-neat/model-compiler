@@ -65,9 +65,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 python3 skills/quantize_compile/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
   --model_format onnx \
-  --input_names input \
   --input_shapes 1,3,224,224 \
-  --output_names output \
   --build_dir ./build \
   --real_data \
   --dataset_images /abs/path/calib_images \
@@ -77,7 +75,8 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 ```
 
 ## Key Flags
-- `--input_names --input_shapes --output_names`
+- `--input_names --input_shapes` (required for PyTorch; shapes are also
+  required for dynamic ONNX inputs)
 - `--real_data --dataset_images --num_calib_samples`
 - `--bf16-weights --bf16-activations`
 - `--calib_method`
@@ -103,7 +102,9 @@ Artifacts are written to:
 ## Notes
 - The reference CLI exposes ONNX and PyTorch model formats; the documented
   workflow targets ONNX.
-- Auto-shape detection may fail on dynamic ONNX inputs; pass explicit `--input_shapes`.
+- AFE reads ONNX input/output names, static shapes, and data types from the
+  model and infers its conventional layout. Pass `--input_shapes` only for
+  dynamic ONNX inputs.
 - The current SDK enables any-shape-on-MLA, automatic layout conversion, and
   MLA-side input/output tessellation by default. The reference script inherits
   those defaults instead of overriding them.

@@ -54,6 +54,14 @@ def argument_choices(option_name):
     return ast.literal_eval(choices)
 
 
+def argument_names():
+    return [
+        call.args[0].value
+        for call in calls_to("add_argument")
+        if call.args and isinstance(call.args[0], ast.Constant)
+    ]
+
+
 class QuantizationManifestTests(unittest.TestCase):
     def test_bf16_weights_imply_bf16_activations(self):
         manifest = load_manifest_builder()(
@@ -85,6 +93,22 @@ class SDKDefaultTests(unittest.TestCase):
         self.assertEqual(len(load_calls), 1)
         keyword_names = {keyword.arg for keyword in load_calls[0].keywords}
         self.assertNotIn("target", keyword_names)
+
+    def test_reference_cli_uses_source_helpers(self):
+        self.assertEqual(len(calls_to("onnx_source")), 1)
+        self.assertEqual(len(calls_to("pytorch_source")), 1)
+        self.assertEqual(calls_to("ImporterParams"), [])
+
+    def test_onnx_source_infers_types_and_outputs(self):
+        onnx_calls = calls_to("onnx_source")
+
+        self.assertEqual(len(onnx_calls), 1)
+        keyword_names = {keyword.arg for keyword in onnx_calls[0].keywords}
+        self.assertNotIn("dtype_dict", keyword_names)
+        self.assertNotIn("output_names", keyword_names)
+
+    def test_output_names_are_not_a_cli_option(self):
+        self.assertNotIn("--output_names", argument_names())
 
     def test_quantize_inherits_mla_and_layout_defaults(self):
         quantize_calls = calls_to("quantize")
