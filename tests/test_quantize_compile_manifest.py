@@ -40,6 +40,20 @@ def calls_to(method_name):
     ]
 
 
+def argument_choices(option_name):
+    call = next(
+        call
+        for call in calls_to("add_argument")
+        if call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == option_name
+    )
+    choices = next(
+        keyword.value for keyword in call.keywords if keyword.arg == "choices"
+    )
+    return ast.literal_eval(choices)
+
+
 class QuantizationManifestTests(unittest.TestCase):
     def test_bf16_weights_imply_bf16_activations(self):
         manifest = load_manifest_builder()(
@@ -62,6 +76,9 @@ class QuantizationManifestTests(unittest.TestCase):
 
 
 class SDKDefaultTests(unittest.TestCase):
+    def test_reference_cli_exposes_supported_model_formats(self):
+        self.assertEqual(argument_choices("--model_format"), ["onnx", "pytorch"])
+
     def test_load_model_inherits_gen2_target(self):
         load_calls = calls_to("load_model")
 

@@ -7,7 +7,7 @@ This script provides a command-line interface to quantize and compile machine le
 for SiMa.ai Modalix hardware.
 
 Key Features:
-- Supports ONNX, TFLite, Keras, and PyTorch formats.
+- Supports ONNX and PyTorch models.
 - Automated ONNX simplification and shape inference.
 - Flexible calibration data support (Dummy or Real images).
 - Comprehensive quantization error analysis.
@@ -381,7 +381,12 @@ def main():
     
     # Model Metadata
     parser.add_argument("--model_path", required=True, help="Path to input model")
-    parser.add_argument("--model_format", default="onnx", choices=["onnx", "tflite", "keras", "pytorch"], help="Source format")
+    parser.add_argument(
+        "--model_format",
+        default="onnx",
+        choices=["onnx", "pytorch"],
+        help="Source format",
+    )
     parser.add_argument("--model_layout", default="NCHW", choices=["NCHW", "NHWC"], help="Input tensor layout")
     parser.add_argument("--input_names", nargs="+", required=False, help="Input node names (optional, auto-detected if omitted)")
     parser.add_argument("--input_shapes", nargs="+", required=False, help="Input shapes (e.g. 1,3,224,224) (optional, detected if static)")

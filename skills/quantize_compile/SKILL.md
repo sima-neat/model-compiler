@@ -101,6 +101,8 @@ Artifacts are written to:
 - `<build_dir>/<model_basename>/`
 
 ## Notes
+- The reference CLI exposes ONNX and PyTorch model formats; the documented
+  workflow targets ONNX.
 - Auto-shape detection may fail on dynamic ONNX inputs; pass explicit `--input_shapes`.
 - The current SDK enables any-shape-on-MLA, automatic layout conversion, and
   MLA-side input/output tessellation by default. The reference script inherits
