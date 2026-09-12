@@ -111,6 +111,18 @@
       "bfloat16": "Y",
       "notes": "fused with bias and activation.\n1. If depthwise, possible to support stride of power of 2.\nOther group size could be supported by splitting into multiple operations.\nONNX does not have 1D conv_transpose.  It would be possible to support 1D by converting to 2D."
     },
+    "Cos": {
+      "onnx-opset-version": "22",
+      "attributes": null,
+      "element_wise": "Y",
+      "tvm_transforms_constraints": null,
+      "spatial_dimensions": "Any",
+      "sima_hw_sw_constraints": "INT8 activation only. A bfloat16 activation request inserts casts and executes Cos as an INT8 lookup-table UDF.",
+      "business_study": "Native bfloat16 activation support",
+      "int8": "Y",
+      "bfloat16": "N",
+      "notes": "Ranks 1 through 5 were verified on MLA with automatic layout conversion. INT8 lookup-table accuracy depends on representative calibration data covering the deployed input range."
+    },
     "CumSum": {
       "onnx-opset-version": "14",
       "attributes": "exclusive = [0, 1]\nreverse = [0, 1]",
@@ -218,6 +230,18 @@
       "int8": "Y",
       "bfloat16": "N",
       "notes": "tanh approximation can be added."
+    },
+    "Gemm": {
+      "onnx-opset-version": "13",
+      "attributes": "alpha: float\nbeta: float\ntransA = [0, 1]\ntransB = [0, 1]\noptional C input",
+      "element_wise": null,
+      "tvm_transforms_constraints": "Imported as dense and lowered to an MLA convolution. B must be a compile-time constant initializer.",
+      "spatial_dimensions": null,
+      "sima_hw_sw_constraints": "A and B must be rank-2. B must be a compile-time constant initializer; a runtime B input is unsupported and fails before backend partitioning. alpha and beta may be finite floating-point values. transB = 0 or 1 is supported. transA = 1 requires flexible_batch_size=False because the leading dimension of A is K rather than batch. Optional constant C supports scalar, [N], [1,N], or [M,N]; constant [M,1] is unsupported. A runtime C remains entirely on MLA only for [1,N], [M,1], or [M,N]; runtime scalar or [N] C uses APU fallback.",
+      "business_study": "Runtime B input; constant C with [M,1] shape; runtime scalar or [N] C without fallback",
+      "int8": "Y",
+      "bfloat16": "Y",
+      "notes": "Verified with all transA/transB combinations and representative alpha/beta values 0, 1, 0.5, and -1. Both bfloat16 activations with INT8 weights and bfloat16 activations with bfloat16 weights map to MLA. With the default flexible-batch workflow, transA = 0 treats M as batch; disable flexible batching for general fixed-M GEMM or transA = 1."
     },
     "GridSample": {
       "onnx-opset-version": "16",
@@ -362,6 +386,18 @@
       "int8": "Y",
       "bfloat16": "Y",
       "notes": "Batched MatMul."
+    },
+    "MeanVarianceNormalization": {
+      "onnx-opset-version": "13",
+      "attributes": "axes: list of reduction axes; default = [0, 2, 3]",
+      "element_wise": null,
+      "tvm_transforms_constraints": "Decomposed into mean, subtract, multiply, sqrt/rsqrt, and divide operations.",
+      "spatial_dimensions": "1D, 2D; limited 3D",
+      "sima_hw_sw_constraints": "INT8 activation only. A bfloat16 activation request inserts casts, but sqrt/rsqrt and some reduction paths still execute as INT8. Rank-5 (3D spatial) axis handling is layout-pattern dependent and is not generally supported; use rank 4 or lower for portable MLA support. The selected axes must produce nonzero variance because this ONNX operator has no epsilon attribute.",
+      "business_study": "Native bfloat16 activation support; general rank-5 axis support",
+      "int8": "Y",
+      "bfloat16": "N",
+      "notes": "All non-empty rank-4 axis combinations were mapped to MLA. Reduction over only a singleton dimension produces zero variance and fails calibration mathematically. The default axes [0,2,3] are supported."
     },
     "MaxPool": {
       "onnx-opset-version": "12",
@@ -578,6 +614,18 @@
       "int8": "Y",
       "bfloat16": "Y",
       "notes": null
+    },
+    "Sin": {
+      "onnx-opset-version": "22",
+      "attributes": null,
+      "element_wise": "Y",
+      "tvm_transforms_constraints": null,
+      "spatial_dimensions": "Any",
+      "sima_hw_sw_constraints": "INT8 activation only. A bfloat16 activation request inserts casts and executes Sin as an INT8 lookup-table UDF.",
+      "business_study": "Native bfloat16 activation support",
+      "int8": "Y",
+      "bfloat16": "N",
+      "notes": "Ranks 1 through 5 were verified on MLA with automatic layout conversion. INT8 lookup-table accuracy depends on representative calibration data covering the deployed input range."
     },
     "Slice": {
       "onnx-opset-version": "13",
