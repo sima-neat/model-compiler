@@ -110,6 +110,12 @@ class SDKDefaultTests(unittest.TestCase):
     def test_output_names_are_not_a_cli_option(self):
         self.assertNotIn("--output_names", argument_names())
 
+    def test_verification_inherits_execution_backend(self):
+        self.assertNotIn("--executor", argument_names())
+        for execute_call in calls_to("execute"):
+            keyword_names = {keyword.arg for keyword in execute_call.keywords}
+            self.assertNotIn("use_jax", keyword_names)
+
     def test_quantize_inherits_mla_and_layout_defaults(self):
         quantize_calls = calls_to("quantize")
 

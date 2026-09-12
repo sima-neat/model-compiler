@@ -337,9 +337,8 @@ class ModelProcessor:
                 test_inputs[InputName(name)] = test_data
                 logger.info(f"Prepared test input '{name}' with shape {test_data.shape}")
 
-            use_jax = (self.args.executor == "jax")
-            logger.info(f"Executing quantized model (backend={'jax' if use_jax else 'normal'})...")
-            quant_out = quant_model.execute(inputs=test_inputs, use_jax=use_jax)
+            logger.info("Executing quantized model...")
+            quant_out = quant_model.execute(inputs=test_inputs)
             
             logger.info("Executing floating point model...")
             fp_out = loaded_net.execute(inputs=test_inputs)
@@ -396,7 +395,6 @@ def main():
 
     # Advanced SDK Tweaks
     parser.add_argument("--batch_size", type=int, default=1, help="Compilation batch size")
-    parser.add_argument("--executor", default="jax", choices=["jax", "normal"], help="Backend for verification")
 
     args = parser.parse_args()
     processor = ModelProcessor(args)
