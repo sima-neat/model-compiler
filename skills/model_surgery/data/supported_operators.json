@@ -39,7 +39,7 @@
       "bfloat16": "Y",
       "notes": "1. If global pool, any shape.\n2. The 128 is from the HW instruction limit in gen1 and gen2. Possible to impove in compiler.\n3. Possible to improve compiler to support any shape.\n4. HW does not support count_include_pad=False. Possible to support in compiler or Model Compiler.\n5. ceil_mode=True is handled by the rewrite rule SetCeilModeToFalseForNDPooling.\n6. dilation>1 is not supported by HW."
     },
-    "BatchNorm": {
+    "BatchNormalization": {
       "onnx-opset-version": "15",
       "attributes": "epsilon\nmomentum\ntraining_mode = [0, 1]",
       "element_wise": null,
@@ -255,7 +255,7 @@
       "bfloat16": "Y",
       "notes": "Same as HardSigmoidwith alpha = 1/6 and beta = 0.5"
     },
-    "InstanceNorm": {
+    "InstanceNormalization": {
       "onnx-opset-version": "6",
       "attributes": "epsilon",
       "element_wise": null,
@@ -267,7 +267,7 @@
       "bfloat16": "Y",
       "notes": "Possible to support any shape in compiler"
     },
-    "LayerNorm": {
+    "LayerNormalization": {
       "onnx-opset-version": "17",
       "attributes": "axis: first norm axis\nepsilon\nstash_type: [1, 10]",
       "element_wise": null,
