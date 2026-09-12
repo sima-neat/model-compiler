@@ -107,6 +107,9 @@ Artifacts are written to:
 
 ## Notes
 - Auto-shape detection may fail on dynamic ONNX inputs; pass explicit `--input_shapes`.
+- The current SDK enables any-shape-on-MLA, automatic layout conversion, and
+  MLA-side input/output tessellation by default. The reference script inherits
+  those defaults instead of overriding them.
 - For symbolic/dynamic ONNX dimensions, run:
 ```bash
 python3 skills/model_surgery/scripts/onnx_static_simplify.py \
@@ -114,7 +117,6 @@ python3 skills/model_surgery/scripts/onnx_static_simplify.py \
   --output /abs/path/model.static.sim.onnx \
   --replace batch=1
 ```
-- `--mla-tesselation` exists for advanced MLA direct mode (argument spelling is `tesselation` in the script).
 
 
 ### SDK target compatibility

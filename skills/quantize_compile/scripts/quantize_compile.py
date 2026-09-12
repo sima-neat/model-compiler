@@ -24,20 +24,18 @@ from PIL import Image
 import torch
 import onnx
 from onnxsim import simplify
-import dataclasses
 
 # SiMa Model Compiler Imports
 from afe.apis.defines import (
     default_quantization, quantization_scheme,
     RequantizationMode, CalibrationMethod, bfloat16_scheme,
-    TensorTessellateParameters, TensorDRAMLayout, InputName
+    InputName
 )
 from afe.load.importers.general_importer import ImporterParams, ModelFormat
 from afe.ir.tensor_type import ScalarType
 from afe.apis.loaded_net import load_model
 from afe.apis.error_handling_variables import enable_verbose_error_messages
 from afe.apis.release_v1 import get_model_sdk_version
-from afe.ir.node import node_is_tuple
 from sima_utils.data.data_generator import DataGenerator
 from afe.core.utils import convert_data_generator_to_iterable
 
@@ -337,8 +335,6 @@ class ModelProcessor:
         quant_model = loaded_net.quantize(
             calibration_data=calib_data,
             quantization_config=quant_config,
-            any_shape_on_mla=self.args.any_shape_on_mla,
-            automatic_layout_conversion=self.args.auto_layout,
             model_name=model_basename,
             log_level=logging.INFO
         )
@@ -349,85 +345,14 @@ class ModelProcessor:
 
         quant_model.save(model_name=model_basename, output_directory=self.output_path)
         logger.info("Quantized model saved.")
-        
-        # Debug: Print internal node names for tessellate parameters
-        logger.info(DIVIDER)
-        logger.info("Internal graph structure (for tessellate parameters):")
-        logger.info(f"  Input node names: {quant_model._net.input_node_names}")
-        logger.info(f"  Output node name: {quant_model._net.output_node_name}")
-        
-        # Show all nodes to find placeholder names
-        logger.info("  All nodes:")
-        for node_name in quant_model._net.nodes.keys():
-            node = quant_model._net.nodes[node_name]
-            from afe.ir.node import node_is_placeholder
-            if node_is_placeholder(node):
-                logger.info(f"    PLACEHOLDER: {node_name}")
-        logger.info(DIVIDER)
 
         # Step 3: Compilation
         if self.args.compile:
             logger.info(f"Compiling for {self.args.device} with batch size {self.args.batch_size}...")
-
-            tess_params = {}
-            if self.args.mla_tesselation:
-                logger.info(DIVIDER)
-                logger.info("MLA TESSELATION MODE ENABLED: Using internal MLA node names")
-                
-                # Get the MLA node to access internal names
-                logger.info("DEBUG: Checking for MLA_0 node...")
-                logger.info(f"DEBUG: Available nodes: {list(quant_model._net.nodes.keys())[:10]}...")
-                
-                assert "MLA_0" in quant_model._net.nodes, "MLA_0 node not found in compiled model"
-                mla_node = quant_model._net.nodes["MLA_0"]
-                
-                logger.info(f"DEBUG: MLA node found!")
-                logger.info(f"DEBUG: MLA node has {len(mla_node.input_names)} inputs")
-                logger.info(f"DEBUG: MLA input names: {mla_node.input_names}")
-                
-                # # Set input tessellate parameters using MLA internal names
-                input_tess_params = TensorTessellateParameters(
-                    tile_shape=(0, 0, 0, 0),
-                    enable_mla=True,
-                    dram_layout=TensorDRAMLayout.HWC
-                )
-                
-                for input_idx, input_name in enumerate(mla_node.input_names):
-                    logger.info(f"  Input {input_idx}: '{input_name}' -> MLA Direct (HWC)")
-                    tess_params[input_name] = dataclasses.replace(
-                        input_tess_params
-                    )
-                
-                # Set output tessellate parameters using MLA internal names
-                output_tess_params = TensorTessellateParameters(
-                    tile_shape=(0, 0, 0, 0),
-                    enable_mla=True,
-                    dram_layout=TensorDRAMLayout.HWC16
-                )
-                
-                logger.info(f"DEBUG: MLA output node name: {mla_node.ir.output_node_name}")
-                output_node = mla_node.ir.nodes[mla_node.ir.output_node_name]
-                logger.info(f"DEBUG: Output node is tuple: {node_is_tuple(output_node)}")
-                
-                out_names = output_node.input_node_names if node_is_tuple(output_node) else [output_node.name]
-                logger.info(f"DEBUG: Output names: {out_names}")
-                
-                for output_idx, output_name in enumerate(out_names):
-                    output_key = f"{output_name}_output"
-                    logger.info(f"  Output {output_idx}: '{output_key}' -> MLA Direct (HWC16)")
-                    tess_params[output_key] = dataclasses.replace(
-                        output_tess_params
-                    )
-                
-                logger.info(DIVIDER)
-                logger.info(f"DEBUG: Final tessellate_parameters keys: {list(tess_params.keys())}")
-                logger.info(DIVIDER)
-            
             quant_model.compile(
                 output_path=self.output_path,
                 batch_size=self.args.batch_size,
-                log_level=logging.INFO,
-                tessellate_parameters=tess_params if tess_params else None
+                log_level=logging.INFO
             )
             manifest_path = os.path.join(self.output_path, "quantization_manifest.json")
             with open(manifest_path, "w", encoding="utf-8") as manifest_file:
@@ -515,11 +440,6 @@ def main():
     # Advanced SDK Tweaks
     parser.add_argument("--batch_size", type=int, default=1, help="Compilation batch size")
     parser.add_argument("--executor", default="jax", choices=["jax", "normal"], help="Backend for verification")
-    parser.add_argument("--any_shape_on_mla", action="store_true", default=False, help="Allow non-4D ops on MLA")
-    parser.add_argument("--auto_layout", action="store_true", default=False, help="Enable automatic graph surgery")
-
-    # Advanced Tessellation
-    parser.add_argument("--mla-tesselation", action="store_true", help="Force ALL inputs (HWC) and outputs (HWC16) to direct MLA mode, bypassing EV74")
 
     args = parser.parse_args()
     processor = ModelProcessor(args)
