@@ -1,8 +1,5 @@
 import ast
 import unittest
-import sys
-import types
-from unittest.mock import patch
 from pathlib import Path
 
 
@@ -36,8 +33,10 @@ def calls_to(method_name):
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == method_name
+        and (
+            isinstance(node.func, ast.Attribute) and node.func.attr == method_name
+            or isinstance(node.func, ast.Name) and node.func.id == method_name
+        )
     ]
 
 
@@ -46,61 +45,30 @@ class QuantizationManifestTests(unittest.TestCase):
         manifest = load_manifest_builder()(
             bf16_activations=False,
             bf16_weights=True,
-            device="modalix",
         )
 
         self.assertEqual(manifest["activation_precision"], "bfloat16")
         self.assertEqual(manifest["weight_precision"], "bfloat16")
+        self.assertEqual(manifest["device"], "modalix")
 
     def test_int8_configuration_remains_int8(self):
         manifest = load_manifest_builder()(
             bf16_activations=False,
             bf16_weights=False,
-            device="modalix",
         )
 
         self.assertEqual(manifest["activation_precision"], "int8")
         self.assertEqual(manifest["weight_precision"], "int8")
 
 
-class TargetCompatibilityTests(unittest.TestCase):
-    def resolve(self, device, *, gen1_available):
-        afe = types.ModuleType("afe")
-        apis = types.ModuleType("afe.apis")
-        defines = types.ModuleType("afe.apis.defines")
-        defines.gen2_target = self.gen2
-        if gen1_available:
-            defines.gen1_target = self.gen1
-        afe.apis = apis
-        apis.defines = defines
-        with patch.dict(sys.modules, {
-            "afe": afe, "afe.apis": apis, "afe.apis.defines": defines,
-        }):
-            return load_function("resolve_target")(device)
-
-    def setUp(self):
-        self.gen1 = object()
-        self.gen2 = object()
-
-    def test_modalix_on_sdk_without_deprecated_gen1(self):
-        self.assertIs(self.resolve("modalix", gen1_available=False), self.gen2)
-
-    def test_modalix_on_legacy_sdk(self):
-        self.assertIs(self.resolve("modalix", gen1_available=True), self.gen2)
-
-    def test_mlsoc_on_legacy_sdk(self):
-        self.assertIs(self.resolve("mlsoc", gen1_available=True), self.gen1)
-
-    def test_mlsoc_on_new_sdk_reports_unsupported_target(self):
-        with self.assertRaisesRegex(ValueError, "does not support the deprecated MLSoC"):
-            self.resolve("mlsoc", gen1_available=False)
-
-    def test_unknown_device_never_silently_selects_gen1(self):
-        with self.assertRaisesRegex(ValueError, "Unsupported device"):
-            self.resolve("unknown", gen1_available=True)
-
-
 class SDKDefaultTests(unittest.TestCase):
+    def test_load_model_inherits_gen2_target(self):
+        load_calls = calls_to("load_model")
+
+        self.assertEqual(len(load_calls), 1)
+        keyword_names = {keyword.arg for keyword in load_calls[0].keywords}
+        self.assertNotIn("target", keyword_names)
+
     def test_quantize_inherits_mla_and_layout_defaults(self):
         quantize_calls = calls_to("quantize")
 
@@ -115,6 +83,9 @@ class SDKDefaultTests(unittest.TestCase):
         self.assertEqual(len(compile_calls), 1)
         keyword_names = {keyword.arg for keyword in compile_calls[0].keywords}
         self.assertNotIn("tessellate_parameters", keyword_names)
+
+    def test_quantization_config_inherits_requantization_default(self):
+        self.assertEqual(calls_to("with_requantization_mode"), [])
 
 
 if __name__ == "__main__":

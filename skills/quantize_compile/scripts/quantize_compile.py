@@ -4,7 +4,7 @@
 """
 SiMa.ai Model Quantization and Compilation Utility
 This script provides a command-line interface to quantize and compile machine learning models
-for SiMa.ai MLSoC and Modalix hardware.
+for SiMa.ai Modalix hardware.
 
 Key Features:
 - Supports ONNX, TFLite, Keras, and PyTorch formats.
@@ -28,7 +28,7 @@ from onnxsim import simplify
 # SiMa Model Compiler Imports
 from afe.apis.defines import (
     default_quantization, quantization_scheme,
-    RequantizationMode, CalibrationMethod, bfloat16_scheme,
+    CalibrationMethod, bfloat16_scheme,
     InputName
 )
 from afe.load.importers.general_importer import ImporterParams, ModelFormat
@@ -59,31 +59,13 @@ _ONNX_OPSET_VERSION = 17
 DIVIDER = "-" * 60
 
 
-def resolve_target(device):
-    """Resolve only the requested target; newer SDKs no longer expose Gen1."""
-    from afe.apis import defines
-
-    if device == "modalix":
-        return defines.gen2_target
-    if device == "mlsoc":
-        target = getattr(defines, "gen1_target", None)
-        if target is None:
-            raise ValueError(
-                "The installed Model SDK does not support the deprecated MLSoC "
-                "(Gen1) target. Use --device modalix for Modalix hardware, or "
-                "install an SDK that supports MLSoC."
-            )
-        return target
-    raise ValueError(f"Unsupported device: {device}")
-
-
-def build_quantization_manifest(*, bf16_activations, bf16_weights, device):
+def build_quantization_manifest(*, bf16_activations, bf16_weights):
     """Describe the effective precision selected by the quantization config."""
     effective_bf16_activations = bf16_activations or bf16_weights
     return {
         "activation_precision": "bfloat16" if effective_bf16_activations else "int8",
         "weight_precision": "bfloat16" if bf16_weights else "int8",
-        "device": device,
+        "device": "modalix",
     }
 
 
@@ -271,7 +253,6 @@ class ModelProcessor:
         return convert_data_generator_to_iterable(DataGenerator(inputs_dict))
 
     def run(self):
-        target_device = resolve_target(self.args.device)
         model_path = self.args.model_path
         if self.args.model_format == 'onnx' and self.args.simplify:
             model_path = self.prepare_onnx()
@@ -299,13 +280,12 @@ class ModelProcessor:
             output_names=output_names
         )
         
-        loaded_net = load_model(importer_params, target=target_device)
-        logger.info(f"Model successfully loaded for {self.args.device}")
+        loaded_net = load_model(importer_params)
+        logger.info("Model successfully loaded for Modalix")
 
         # Step 2: Quantization
         logger.info("Initializing quantization...")
         calib_data = self.get_calibration_data()
-        rq_mode = RequantizationMode.sima if self.args.requant_mode == 'sima' else RequantizationMode.tflite
         calib_method = CalibrationMethod.from_str(self.args.calib_method)
 
         if self.args.bf16_activations or self.args.bf16_weights: # if weights are bf16, activations must be too
@@ -321,12 +301,10 @@ class ModelProcessor:
         quantization_manifest = build_quantization_manifest(
             bf16_activations=self.args.bf16_activations,
             bf16_weights=self.args.bf16_weights,
-            device=self.args.device,
         )
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
-                                   .with_requantization_mode(rq_mode) \
                                    .with_calibration(calib_method)
 
         # Derive model name from ONNX file
@@ -348,7 +326,7 @@ class ModelProcessor:
 
         # Step 3: Compilation
         if self.args.compile:
-            logger.info(f"Compiling for {self.args.device} with batch size {self.args.batch_size}...")
+            logger.info(f"Compiling for Modalix with batch size {self.args.batch_size}...")
             quant_model.compile(
                 output_path=self.output_path,
                 batch_size=self.args.batch_size,
@@ -410,12 +388,6 @@ def main():
     parser.add_argument("--output_names", nargs="+", required=False, help="Output node names (optional, auto-detected if omitted)")
     
     # Workflow Flags
-    parser.add_argument(
-        "--device",
-        default="modalix",
-        choices=["modalix", "mlsoc"],
-        help="Target hardware (mlsoc=MLSoC, modalix=Modalix)",
-    )
     parser.add_argument("--build_dir", default="./build", help="Target directory for artifacts")
     parser.add_argument("--no-simplify", action="store_false", dest="simplify", help="Disable ONNX simplification")
     parser.add_argument("--no-compile", action="store_false", dest="compile", help="Skip the compilation step")
@@ -426,7 +398,6 @@ def main():
     parser.add_argument("--bf16-weights", action="store_true", help="Use BFloat16 for weights")
     parser.add_argument("--bf16-activations", action="store_true", help="Use BFloat16 for activations")
     parser.add_argument("--calib_method", default="mse", help="Calibration method (mse, entropy, etc.)")
-    parser.add_argument("--requant_mode", default="sima", choices=["sima", "tflite"], help="Requantization mode")
     
     # Calibration Data
     parser.add_argument("--real_data", action="store_true", help="Use images for calibration")

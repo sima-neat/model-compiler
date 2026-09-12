@@ -1,17 +1,16 @@
 ---
 name: sima-model-quantize-compile
-description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for MLSoC or Modalix.
+description: Use when quantizing and compiling a standard ONNX model for the SiMa Modalix platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation.
 ---
 
 # Quantize and Compile Standard ONNX Models for SiMa
 
 ## Purpose
-Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa (`mlsoc` or `modalix`).
+Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa Modalix.
 
-## Target Devices
+## Target Device
 
-- `--device mlsoc` selects `gen1_target` for MLSoC on legacy SDKs that still expose it.
-- `--device modalix` selects `gen2_target` for Modalix.
+- AFE selects the Gen2 Modalix target by default. Gen1 is no longer supported.
 
 ## Use When
 - You have an ONNX model and need SiMa quantized/compiled artifacts.
@@ -39,7 +38,7 @@ sima-cli install tools/model-compiler/arm64
 2. Validate model path and input/output interface.
 3. If model has symbolic dimensions, staticify/simplify it with `model_surgery` helper.
 4. Run quantization (with ONNX simplification enabled by default).
-5. Compile for target device.
+5. Compile for Modalix.
 6. Optionally run verification (`--verify`).
 
 ## Pre-Compile Audit (Required)
@@ -58,7 +57,6 @@ python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
 python3 skills/quantize_compile/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
   --model_format onnx \
-  --device modalix \
   --build_dir ./build
 ```
 
@@ -70,22 +68,19 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
   --input_names input \
   --input_shapes 1,3,224,224 \
   --output_names output \
-  --device modalix \
   --build_dir ./build \
   --real_data \
   --dataset_images /abs/path/calib_images \
   --num_calib_samples 50 \
   --calib_method mse \
-  --requant_mode sima \
   --verify
 ```
 
 ## Key Flags
-- `--device {modalix|mlsoc}`
 - `--input_names --input_shapes --output_names`
 - `--real_data --dataset_images --num_calib_samples`
 - `--bf16-weights --bf16-activations`
-- `--calib_method --requant_mode`
+- `--calib_method`
 - `--verify`, `--analyse-error`
 - `--no-compile` for quantize-only runs
 
@@ -117,11 +112,3 @@ python3 skills/model_surgery/scripts/onnx_static_simplify.py \
   --output /abs/path/model.static.sim.onnx \
   --replace batch=1
 ```
-
-
-### SDK target compatibility
-
-Modalix (`--device modalix`, the default) uses the SDK Gen2 target and works
-without the deprecated Gen1 API. MLSoC (`--device mlsoc`) requires an older SDK
-that still exposes `gen1_target`; newer SDKs report an unsupported-target error.
-Selecting MLSoC never silently substitutes Modalix hardware.
