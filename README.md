@@ -295,6 +295,11 @@ Use `model-compiler-amd64.zip` for an amd64 target. Alternatively, install
 through `metadata.json` with `sima-cli`, which extracts the same archive into a
 temporary directory and runs this installer automatically.
 
+Native dependency builds (including `llama_cpp_python`) use host `gcc`/`g++`
+and their default matching C++ headers. The installer clears inherited SDK
+compiler flags and compiler include/library search overrides for these builds;
+it does not select a version from `/usr/include/c++`.
+
 The installer performs these steps:
 1. Read `source.json`.
 2. Install required Ubuntu system packages from `system_dependencies.ubuntu`.
