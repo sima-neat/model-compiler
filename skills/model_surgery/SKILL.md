@@ -32,7 +32,9 @@ This skill generalizes the model surgery approach into one repeatable workflow:
 activate-model-compiler
 ```
 - `onnx` must be available in the active Python env.
-- `skills/model_surgery/data/supported_operators.json` is the default support DB used by the guard script.
+- `skills/model_surgery/data/supported_operators.json` is the sole operator-support source used by the guard and generated customer documentation.
+- Database keys must match canonical ONNX `node.op_type` names exactly. Keep engineering and customer-facing constraints together in `sima_hw_sw_constraints` and `customer_constraints`, and record 5D support explicitly in `fived`.
+- After changing operator metadata, run `python3 scripts/build_supported_operators_md.py` from the repository root and include the regenerated compatibility page.
 
 ## Workflow
 1. Inspect the available artifacts: source Python model, exported ONNX, compiler logs, and target dtype/platform.

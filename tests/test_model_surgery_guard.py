@@ -162,6 +162,42 @@ def test_real_support_db_describes_new_onnx_operator_precision_constraints():
     assert "Rank-5" in operators["MeanVarianceNormalization"]["sima_hw_sw_constraints"]
 
 
+def test_real_support_db_includes_decomposed_mla_onnx_operators():
+    support_db = guard._load_support_db(SUPPORT_DB_PATH)
+    operators = support_db["operators"]
+
+    expected = {
+        "Abs",
+        "Cos",
+        "Expand",
+        "Flatten",
+        "Gemm",
+        "GlobalAveragePool",
+        "GlobalLpPool",
+        "GlobalMaxPool",
+        "LogSoftmax",
+        "LpPool",
+        "Mean",
+        "MeanVarianceNormalization",
+        "Mish",
+        "Neg",
+        "ReduceL1",
+        "ReduceLogSum",
+        "ReduceLogSumExp",
+        "ReduceSumSquare",
+        "Sin",
+        "Softsign",
+        "Squeeze",
+        "Sum",
+        "Tile",
+        "TopK",
+        "Unsqueeze",
+    }
+
+    assert expected <= set(operators)
+    assert all(operators[name]["int8"] == "Y" for name in expected)
+
+
 def test_real_onnx_model_audits_new_operator_names_by_activation_precision(tmp_path):
     import onnx
     from onnx import TensorProto, helper
