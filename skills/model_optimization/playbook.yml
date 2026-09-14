@@ -1,0 +1,12 @@
+id: sima-model-optimization
+name: Optimize Models for SiMa MLA
+version: 0.0.1
+agents: [codex, claude]
+description: Pre-compilation model graph optimization using reviewed MLA patterns and numerical validation.
+compatibility:
+  env_types: [host, sdk]
+  env_subtypes: [linux, palette]
+  min_cli_version: 2.1.2
+runtime:
+  requires:
+    - python3

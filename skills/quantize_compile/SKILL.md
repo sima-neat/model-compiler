@@ -34,13 +34,14 @@ sima-cli install tools/model-compiler/arm64
 ```
 
 ## Default Workflow
-1. For models intended for SiMa BoxDecode, follow the `model_surgery` BoxDecode preflight before auditing or changing outputs.
-2. Run the operator audit (required gate before quantize/compile; use `model_surgery` policy).
-3. Validate model path and input/output interface.
-4. If model has symbolic dimensions, staticify/simplify it with `model_surgery` helper.
-5. Run quantization (with ONNX simplification enabled by default).
-6. Compile for Modalix.
-7. Optionally run verification (`--verify`).
+1. For models intended for SiMa BoxDecode, read `skills/model_surgery/references/boxdecode.md` before auditing or changing outputs.
+2. Validate the model path and input/output interface.
+3. If the model has symbolic dimensions, staticify/simplify it with the `model_surgery` helper.
+4. Run the operator audit (required gate before quantize/compile; use `model_surgery` policy).
+5. Run the `model_optimization` workflow on the audited graph. If it changes the model, validate and re-audit the optimized graph, then use that graph for all following steps.
+6. Run quantization (with ONNX simplification enabled by default).
+7. Compile for Modalix.
+8. Optionally run verification (`--verify`).
 
 ## Pre-Compile Audit (Required)
 Run graph compatibility audit before quantization/compilation, following

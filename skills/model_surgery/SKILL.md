@@ -1,23 +1,24 @@
 ---
 name: sima-model-surgery
-description: Use when analyzing or modifying model graphs for SiMa MLA compatibility or optimization, including source-model rewrites, ONNX surgery, YOLO graph optimization, unsupported-op detection, and post-surgery validation against supported_operators.json.
+description: Make source-model or ONNX compatibility changes for SiMa MLA, including unsupported operators or attributes, BoxDecode output contracts, YOLO surgery, and validation against supported_operators.json. Use model optimization instead for performance-only rewrites of an already compatible graph.
 ---
 
 # General Model Surgery for SiMa MLA
 
 ## Purpose
-Use this skill to inspect a model, choose the lowest-effort surgery path, apply targeted graph edits, and validate the result so it is more likely to quantize/compile and run efficiently on SiMa MLA.
+Use this skill to inspect a model, apply the smallest required compatibility
+changes, and validate that it can proceed to quantization and compilation.
 
 This skill generalizes the model surgery approach into one repeatable workflow:
 - detect unsupported or risky operators first,
 - prefer source-model rewrites when the Python model code is available,
 - edit exported ONNX directly when source rewrites are not practical,
-- apply focused rewrites,
+- apply focused compatibility rewrites,
 - validate topology, operator support, and numerical behavior again.
 
 ## Use When
 - A model fails quantization/compile due to unsupported ops or constraints.
-- A YOLO model needs compatibility or output-graph optimization before compile.
+- A YOLO model needs compatibility or an output-contract rewrite before compile.
 - You need a structured surgery loop before running compile.
 - You want operator decisions grounded in `supported_operators.json`.
 
@@ -86,6 +87,8 @@ Use `--dtype bfloat16` only when evaluating Modalix compatibility.
 - Preserve tensor names/shape contracts at model outputs.
 - If an op is unsupported, consult `notes` and `sima_hw_sw_constraints` in `supported_operators.json` first.
 - For MLA composite-pattern requirements, see `references/composite_patterns.md`.
+- For rewrites of unsupported operator forms or attributes, see
+  `references/compatibility_patterns.md`.
 
 ## Validation
 After edits, run:
