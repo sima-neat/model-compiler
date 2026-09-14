@@ -107,4 +107,3 @@ def test_documentation_generator_publishes_every_database_entry(tmp_path, monkey
 
     assert [row["name"] for row in rows] == database_names
     assert len(rows) == len(database_names)
-
