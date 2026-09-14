@@ -34,16 +34,19 @@ activate-model-compiler
 - `onnx` must be available in the active Python env.
 - `skills/model_surgery/data/supported_operators.json` is the sole operator-support source used by the guard and generated customer documentation.
 - Database keys must match canonical ONNX `node.op_type` names exactly. Keep engineering and customer-facing constraints together in `sima_hw_sw_constraints` and `customer_constraints`, and record 5D support explicitly in `fived`.
+- The database covers canonical ONNX operators only. Document multi-node MLA patterns, such as RMSNorm through opset 22, in `references/composite_patterns.md`.
 - After changing operator metadata, run `python3 scripts/build_supported_operators_md.py` from the repository root and include the regenerated compatibility page.
 
 ## Workflow
 1. Inspect the available artifacts: source Python model, exported ONNX, compiler logs, and target dtype/platform.
-2. Run `audit-model` on the exported ONNX first (required gate) before surgery or compilation.
-3. Build a surgery plan from unsupported ops, YOLO/output-graph needs, and support DB notes/constraints.
-4. Prefer changing the source model code and re-exporting when that is available and simpler to maintain.
-5. Otherwise, apply the smallest safe ONNX graph edits.
-6. Re-audit, run ONNX checks, and compare original vs modified inference outputs.
-7. Hand model to quantize/compile flow.
+2. For detection, pose, segmentation, or SuperPoint models, read `references/boxdecode.md` and confirm if the installed Neat version has a matching `BoxDecodeType` and the exported heads satisfy its contract.
+3. Run `audit-model` on the exported ONNX before surgery or compilation.
+4. Check `references/composite_patterns.md` for relevant MLA composite patterns; the node-level audit cannot verify fusion.
+5. Build a surgery plan from unsupported ops, composite-pattern requirements, output-graph needs, and support DB notes/constraints.
+6. Prefer changing the source model code and re-exporting when that is available and simpler to maintain.
+7. Otherwise, apply the smallest safe ONNX graph edits.
+8. Re-audit, run ONNX checks, and compare original vs modified inference outputs.
+9. Hand model to quantize/compile flow.
 
 ## Bundled Helpers
 - Download model from URL or HF Hub:
@@ -81,9 +84,8 @@ Use `--dtype bfloat16` only when evaluating Modalix compatibility.
 - Prefer source-model rewrites when they are available; they are usually easier to review and keep across model updates.
 - Prefer local, isolated edits over broad graph rewrites.
 - Preserve tensor names/shape contracts at model outputs.
-- For YOLO and repeated head/postprocess blocks, apply one rewrite pattern consistently and keep runtime output expectations explicit.
 - If an op is unsupported, consult `notes` and `sima_hw_sw_constraints` in `supported_operators.json` first.
-- For concrete rewrite examples, see `references/patterns.md`.
+- For MLA composite-pattern requirements, see `references/composite_patterns.md`.
 
 ## Validation
 After edits, run:
