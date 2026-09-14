@@ -16,7 +16,7 @@
   Split(axis=2) -> Concat(axis=1) -> [B,H*D,1,Q]
   ```
 
-  Expand GQA heads with `Split`/repeated `Concat`, or `Expand` only when it
+  Expand GQA heads with `Split`/repeated `Concat` when it
   produces the same ordering.
 - **Guards:** Do not rewrite attention with different normalization, head
   mapping, mask domain, cache semantics, or output ordering. Preserve chunked
