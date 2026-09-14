@@ -63,7 +63,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Test LLiMa wheel resolution
+      - name: Set up Node.js for workflow tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Run repository unit tests
         run: python3 -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Upgrade pip
