@@ -231,6 +231,7 @@ jobs:
         with:
           sparse-checkout: |
             scripts/smoke_test_modelsdk.py
+            scripts/smoke_evidence.py
             skills/model_surgery
             skills/quantize_compile
           sparse-checkout-cone-mode: false
@@ -243,10 +244,21 @@ jobs:
       - name: Show test environment
         run: |
           set -euo pipefail
-          uname -a
-          python3 --version
-          python3 -m pip --version
-          df -h
+          mkdir -p "${RUNNER_TEMP}/modelsdk-evidence"
+          {
+            uname -a
+            lscpu
+            free -h
+            ulimit -a
+            python3 --version
+            python3 -m pip --version
+            df -h
+          } 2>&1 | tee "${RUNNER_TEMP}/modelsdk-evidence/host.log"
+
+      - name: Install diagnostic debugger
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gdb
 
       - name: Download generated package artifact
         uses: actions/download-artifact@v7
@@ -259,7 +271,8 @@ jobs:
           set -euo pipefail
           script="$(python3 -c 'import json; print(json.load(open("_package/metadata.json"))["installation"]["script"])')"
           cd _package
-          bash -c "$script"
+          sha256sum model-compiler-*.zip > "${RUNNER_TEMP}/modelsdk-evidence/package-sha256.txt"
+          bash -c "$script" 2>&1 | tee "${RUNNER_TEMP}/modelsdk-evidence/install.log"
 
       - name: Run post-install smoke test
         env:
@@ -267,6 +280,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          exec > >(tee "${RUNNER_TEMP}/modelsdk-evidence/activation-and-smoke.log") 2>&1
+          ulimit -c 0
           model_compiler_dir="${HOME}/sdk-extensions/model-compiler"
           if [[ ! -f "${model_compiler_dir}/bin/activate" ]]; then
             echo "Model Compiler venv was not installed at ${model_compiler_dir}" >&2
@@ -302,12 +317,34 @@ jobs:
 
           smoke_tier="resnet-compile-precisions"
           echo "Running Model Compiler smoke tier: ${smoke_tier}"
-          python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}"
+          python scripts/smoke_evidence.py run --output "${RUNNER_TEMP}/modelsdk-evidence/resnet" -- \
+            python scripts/smoke_test_modelsdk.py --tier "${smoke_tier}" --verbose \
+              --work-dir "${RUNNER_TEMP}/modelsdk-smoke-work/resnet"
 
           export HF_HOME="${RUNNER_TEMP}/huggingface"
           echo "Running Model Compiler smoke tier: llima-qwen3-compile"
-          python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
+          python scripts/smoke_evidence.py run --output "${RUNNER_TEMP}/modelsdk-evidence/llima" -- \
+            python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile --verbose \
+              --work-dir "${RUNNER_TEMP}/modelsdk-smoke-work/llima"
           BASH
+
+      - name: Upload smoke evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-smoke-evidence-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/modelsdk-evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload failed smoke work directory
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-compiler-smoke-work-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/modelsdk-smoke-work/
+          if-no-files-found: warn
+          retention-days: 7
 
   publish-amd64:
     name: Publish amd64 Package to Vulcan

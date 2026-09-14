@@ -611,3 +611,36 @@ The three default-branch entry points (`update-components.yml`,
 isolated commit: merge into develop first, then cherry-pick that commit onto
 main. Each entry point calls its corresponding `*-worker.yml@develop`. Worker
 logic and helper scripts are maintained only on develop for this rollout.
+
+### CI smoke-test evidence
+
+Package-install tests upload `model-compiler-smoke-evidence-<arch>-<attempt>`
+on both success and failure, retained for 14 days. The artifact contains host CPU
+and memory information, installed package versions, package and simulator hashes,
+installation/activation logs, and complete smoke output. Each MLA simulator
+invocation includes separate stdout/stderr, its original command and exit status,
+and copies of the ELF/data/check inputs taken before SDK temporary-file cleanup.
+A supervisor stops the simulator process group and reaps the simulator if its
+wrapper is terminated, including when a caller timeout kills the wrapper with
+SIGKILL. A failed invocation also gets a GDB replay with a 120-second limit. A successful
+replay does not change the original failure. Job failure additionally uploads
+`model-compiler-smoke-work-<arch>-<attempt>` for 7 days, containing the generated
+smoke models and compiler outputs. Abrupt runner loss can still prevent uploading.
+
+After extracting the evidence on a host with the matching compiler installed:
+
+```bash
+# replay.sh uses the captured absolute simulator path by default.
+MODELSDK_SIMULATOR="$(command -v mla-msim)" sh path/to/failed-invocation/replay.sh
+```
+
+Choose the invocation directory whose `command.json` reports the failure (the
+artifact also includes successful invocations and preflight `--help` calls).
+The wrapper is enabled only in CI or when explicitly requested; normal compiler
+activation and compilation are unchanged. To collect the same evidence locally:
+
+```bash
+python scripts/smoke_evidence.py run --output ./debug-evidence/resnet -- \
+  python scripts/smoke_test_modelsdk.py --tier resnet-compile-precisions --verbose \
+    --work-dir ./debug-results/resnet
+```
