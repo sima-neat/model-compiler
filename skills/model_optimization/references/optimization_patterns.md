@@ -114,15 +114,12 @@
   1. `Where(Equal(mask, 0), 0, data)` with a numeric `{0,1}` mask.
   2. `Where(..., -inf, score)` immediately before Softmax, with at least one
      unmasked element in every row and no other consumer of the masked logits.
-  3. `x * mask`, followed only by pointwise operations and a later identical
-     mask multiplication dominating all live consumers.
 
 - **Rewrite:** For variant 1, use `data * mask`. For variant 2, use an equivalent
-  arithmetic/additive mask with the score dtype's finite minimum. For variant 3,
-  remove the earlier multiplication.
+  arithmetic/additive mask with the score dtype's finite minimum.
 - **Guards:** Preserve comparison polarity and broadcasting. Reject nonbinary,
   inverted, probabilistic, NaN-bearing, or transformed masks; all-masked
-  Softmax rows; and paths that mix positions or have fan-out.
+  Softmax rows; and paths that mix positions.
 
 ## `reshape-shuffle-to-depthtospace`
 
