@@ -19,7 +19,8 @@ def compose(run: dict, jobs: list[dict], channel: str) -> dict:
         return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     title = "Model Compiler daily build succeeded" if success else f"Model Compiler daily build: {conclusion}"
-    text = f"{title}\n<{base_url}|Build #{run['run_number']}> · commit {run['head_sha'][:12]} · attempt {run.get('run_attempt', 1)}"
+    status_icon = "🟢" if success else "🔴"
+    text = f"🦉 {status_icon} {title}\n<{base_url}|Build #{run['run_number']}> · commit {run['head_sha'][:12]} · attempt {run.get('run_attempt', 1)}"
     sections = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
     if success:
         sections.append({"type": "section", "text": {"type": "mrkdwn", "text":
