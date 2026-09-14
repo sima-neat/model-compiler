@@ -328,6 +328,8 @@ jobs:
       artifact_glob: "*"
       min_artifact_count: 2
       publish_manifest: true
+      # Containers also consume these artifacts; let the 3-day retention expire them.
+      cleanup_github_artifacts: false
 
   publish-arm64:
     name: Publish arm64 Package to Vulcan
@@ -348,6 +350,8 @@ jobs:
       artifact_glob: "*"
       min_artifact_count: 2
       publish_manifest: true
+      # Containers also consume these artifacts; let the 3-day retention expire them.
+      cleanup_github_artifacts: false
 
   update-amd64-latest:
     name: Update amd64 Vulcan Latest Tag

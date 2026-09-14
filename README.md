@@ -498,6 +498,11 @@ image before the Build run completes, so daily success notifications and PR
 validation include container publication. This direct path does not require
 a container completion listener on `main`.
 
+Vulcan publication keeps the GitHub package artifacts for their configured
+three-day retention period. Container jobs need those same artifacts, both when
+running alongside publication on `daily` and when triggered after a successful
+Build on other branches.
+
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are

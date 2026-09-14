@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import textwrap
 import unittest
@@ -134,6 +135,24 @@ const github = {
         self.assertIn("- test-package-install", build_text)
         self.assertIn("uses: ./.github/workflows/container-build.yml", build_text)
         self.assertIn("source_run_id: ${{ github.run_id }}", build_text)
+
+    def test_vulcan_publishers_preserve_packages_for_container_consumers(self):
+        text = BUILD_WORKFLOW.read_text(encoding="utf-8")
+        for arch in ("amd64", "arm64"):
+            with self.subTest(arch=arch):
+                job = re.split(
+                    r"\n  (?=\S)",
+                    text.split(f"\n  publish-{arch}:\n", 1)[1],
+                    maxsplit=1,
+                )[0]
+                self.assertIn("cleanup_github_artifacts: false", job)
+                self.assertIn(f"artifact_pattern: model-compiler-{arch}", job)
+        # Both the parallel daily consumer and the workflow_run consumer need
+        # packages after S3 publication. Retention still bounds storage use.
+        upload = text.split("uses: actions/upload-artifact@v7", 1)[1].split(
+            "\n  test-package-install:", 1
+        )[0]
+        self.assertIn("retention-days: 3", upload)
 
     def test_cleanup_handles_branch_deletion_and_reconciliation(self):
         text = CLEANUP_WORKFLOW.read_text(encoding="utf-8")
