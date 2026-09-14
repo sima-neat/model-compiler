@@ -27,6 +27,10 @@ def load_manifest_builder():
     return load_function("build_quantization_manifest")
 
 
+def load_input_orderer():
+    return load_function("order_onnx_model_inputs")
+
+
 def calls_to(method_name):
     tree = ast.parse(SCRIPT.read_text(encoding="utf-8"), filename=str(SCRIPT))
     return [
@@ -84,6 +88,32 @@ class QuantizationManifestTests(unittest.TestCase):
 
 
 class SDKDefaultTests(unittest.TestCase):
+    def test_onnx_static_shapes_follow_requested_input_order(self):
+        class ModelInput:
+            def __init__(self, name):
+                self.name = name
+
+        image = ModelInput("image")
+        scale = ModelInput("scale")
+
+        ordered = load_input_orderer()([image, scale], ["scale", "image"])
+
+        self.assertEqual(
+            [model_input.name for model_input in ordered], ["scale", "image"]
+        )
+
+    def test_onnx_input_names_must_match_runtime_inputs_exactly(self):
+        class ModelInput:
+            def __init__(self, name):
+                self.name = name
+
+        model_inputs = [ModelInput("image"), ModelInput("scale")]
+
+        with self.assertRaisesRegex(ValueError, "duplicate.*missing"):
+            load_input_orderer()(model_inputs, ["image", "image"])
+        with self.assertRaisesRegex(ValueError, "unknown.*missing"):
+            load_input_orderer()(model_inputs, ["image", "offset"])
+
     def test_reference_cli_exposes_supported_model_formats(self):
         self.assertEqual(argument_choices("--model_format"), ["onnx", "pytorch"])
 
