@@ -295,6 +295,11 @@ Use `model-compiler-amd64.zip` for an amd64 target. Alternatively, install
 through `metadata.json` with `sima-cli`, which extracts the same archive into a
 temporary directory and runs this installer automatically.
 
+Native dependency builds (including `llama_cpp_python`) use host `gcc`/`g++`
+and their default matching C++ headers. The installer clears inherited SDK
+compiler flags and compiler include/library search overrides for these builds;
+it does not select a version from `/usr/include/c++`.
+
 The installer performs these steps:
 1. Read `source.json`.
 2. Install required Ubuntu system packages from `system_dependencies.ubuntu`.
@@ -496,18 +501,30 @@ a container completion listener on `main`.
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are
-lowercased, characters such as `/` are replaced with `-`, and a stable hash of
-the original branch name prevents normalized-name collisions. For example,
-`fix/container-build` publishes:
+lowercased and runs of non-alphanumeric characters (including `/`, `_`, and
+`.`) become a single `-`. Leading and trailing separators are removed, and
+the branch suffix is limited to 180 characters to keep Docker names valid.
+This follows the Neat SDK repo-and-branch naming convention. The package name is `model-compiler-<branch>`, except that
+`main` uses `model-compiler` without a branch suffix:
 
 ```text
-ghcr.io/sima-neat/model-compiler-fix-container-build-f492aeaada4d:latest
+main                 ghcr.io/sima-neat/model-compiler:latest
+daily                ghcr.io/sima-neat/model-compiler-daily:latest
+develop              ghcr.io/sima-neat/model-compiler-develop:latest
+fix/container-build  ghcr.io/sima-neat/model-compiler-fix-container-build:latest
 ```
 
-The full source commit is also published as an immutable image tag. Deleting a
-branch deletes its branch-scoped package. A daily reconciliation run handles
-any cleanup event that was missed, and the cleanup workflow supports a manual
-dry run.
+The full source commit is also published as an immutable image tag. Branches
+that normalize or truncate to the same name (for example, `fix/foo` and `fix-foo`) share a
+package; use distinct normalized branch names when separate images are needed.
+Deleting a branch deletes its package only when no live branch maps to it.
+The canonical `model-compiler` release package is always retained. A daily
+reconciliation run handles missed cleanup events and supports a manual dry run.
+
+Previously published packages with a branch-hash suffix are retained while
+their source branch exists, but new builds publish only to the names above.
+Update pull commands and integrations to the new names to receive new builds.
+Legacy packages become eligible for cleanup after their branch is deleted.
 
 Container builds use architecture-specific Buildx registry caches stored as
 `buildcache-amd64` and `buildcache-arm64` tags in the branch package. A branch

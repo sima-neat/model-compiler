@@ -1,3 +1,6 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -38,12 +41,74 @@ class ContainerWorkflowTests(unittest.TestCase):
     def test_publish_uses_branch_scoped_package_and_multiarch_latest(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("createHash('sha256')", text)
-        self.assertIn(".slice(0, 12)", text)
+        self.assertNotIn("createHash", text)
         self.assertIn("packageForBranch(branch)", text)
         self.assertIn('--tag "${IMAGE}:${SHA}"', text)
         self.assertIn('--tag "${IMAGE}:latest"', text)
         self.assertIn("packages: write", text)
+
+    def test_package_names_match_sdk_convention_in_publish_and_cleanup(self):
+        branches = ["main", "daily", "develop", "fix/Container-Build", "fix--foo", "///",
+                    "foo_", "foo/_bar", "foo..bar", "foo__bar", "_foo",
+                    "a" * 300, "a" * 179 + "/bar"]
+        expected = ["model-compiler", "model-compiler-daily", "model-compiler-develop",
+                    "model-compiler-fix-container-build", "model-compiler-fix-foo",
+                    "model-compiler-branch", "model-compiler-foo", "model-compiler-foo-bar",
+                    "model-compiler-foo-bar", "model-compiler-foo-bar", "model-compiler-foo",
+                    "model-compiler-" + "a" * 180, "model-compiler-" + "a" * 179]
+        for path in (PUBLISH_WORKFLOW, CLEANUP_WORKFLOW):
+            with self.subTest(workflow=path.name):
+                script = path.read_text().split("            function packageForBranch", 1)[1]
+                helper = "function packageForBranch" + script.split("\n            }", 1)[0] + "\n}"
+                result = subprocess.run(
+                    ["node", "-e", helper + "\nconsole.log(JSON.stringify(" +
+                     json.dumps(branches) + ".map(packageForBranch)));"],
+                    check=True, capture_output=True, text=True,
+                )
+                names = json.loads(result.stdout)
+                self.assertEqual(names, expected)
+                for name in names:
+                    self.assertRegex(name, r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+                    self.assertLessEqual(len("ghcr.io/" + "o" * 39 + "/" + name), 255)
+
+    def test_cleanup_preserves_live_legacy_and_shared_packages(self):
+        script = textwrap.dedent(CLEANUP_WORKFLOW.read_text().split("          script: |\n", 1)[1])
+        harness = r"""
+const crypto = require('crypto');
+const legacy = 'model-compiler-daily-' + crypto.createHash('sha256').update('daily').digest('hex').slice(0, 12);
+const deleted = [];
+const names = ['model-compiler', 'model-compiler-daily', legacy,
+               'model-compiler-fix-foo', 'model-compiler-removed'];
+const context = {repo: {owner: 'sima-neat', repo: 'model-compiler'}};
+const core = {info() {}, warning() {}};
+process.env.DELETED_REF = 'fix/foo';
+process.env.DELETED_REF_TYPE = 'branch';
+process.env.REQUESTED_BRANCH = 'main';
+process.env.DRY_RUN = 'false';
+const github = {
+  async paginate(route) {
+    if (route.endsWith('/branches')) return [{name: 'daily'}, {name: 'fix-foo'}];
+    if (route.endsWith('/packages')) return names.map(name => ({name}));
+    throw new Error(route);
+  },
+  async request(route, params) {
+    if (route.endsWith('/runs')) return {data: {workflow_runs: []}};
+    if (route.startsWith('GET ')) return {data: {repository: {full_name: 'sima-neat/model-compiler'}}};
+    if (route.startsWith('DELETE ')) {deleted.push(params.package_name); return {};}
+    throw new Error(route);
+  },
+};
+"""
+        result = subprocess.run(
+            ["node", "-e", harness + "\n(async () => {\n" + script +
+             "\nconsole.log(JSON.stringify(deleted));\n})().catch(e => {console.error(e); process.exit(1)});"],
+            check=True, capture_output=True, text=True,
+        )
+        self.assertIn("model-compiler-removed", json.loads(result.stdout))
+        self.assertNotIn("model-compiler", json.loads(result.stdout))
+        self.assertNotIn("model-compiler-daily", json.loads(result.stdout))
+        self.assertNotIn("model-compiler-fix-foo", json.loads(result.stdout))
+        self.assertFalse(any(name.startswith("model-compiler-daily-") for name in json.loads(result.stdout)))
 
     def test_publish_uses_architecture_scoped_registry_caches(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
@@ -76,7 +141,7 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn("delete:", text)
         self.assertIn("schedule:", text)
         self.assertIn("github.event.ref_type", text)
-        self.assertIn("model-compiler-${branchSlug(branchName)}", text)
+        self.assertIn("legacyPackageForBranch(branchName)", text)
         self.assertIn("GET /orgs/{org}/packages", text)
         self.assertIn("package_type: 'container'", text)
         self.assertIn("addPackageCandidate(packageName)", text)
