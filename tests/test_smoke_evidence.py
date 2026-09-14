@@ -143,6 +143,65 @@ print("GDB replay with preserved inputs")
         self.assertIn("simulator stdout", (output / "smoke.log").read_text())
         self.assertIn("sha256", json.loads((output / "simulators.json").read_text())["mla-msim"])
 
+    def sleeping_simulator_command(self, output):
+        pid_file = output.with_suffix(".pid")
+        self.simulator.write_text(f"#!{sys.executable}\n" + '''
+import os, signal, sys, time
+from pathlib import Path
+# A child that ignores TERM must still be stopped after wrapper cancellation.
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(str(os.getpid()))
+while True:
+    time.sleep(1)
+''')
+        command = [sys.executable, str(SCRIPT), "simulator", "--output", str(output),
+                   "--executable", str(self.simulator), "--", str(pid_file)]
+        return command, pid_file
+
+    def wait_for_simulator(self, pid_file):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if pid_file.exists() and pid_file.read_text().strip():
+                return int(pid_file.read_text())
+            time.sleep(0.02)
+        self.fail("Simulator did not start")
+
+    def assert_simulator_reaped(self, pid):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.02)
+        # Avoid leaving a runaway process if the regression returns.
+        os.kill(pid, signal.SIGKILL)
+        self.fail(f"Simulator {pid} survived or was not reaped")
+
+    def test_wrapper_termination_kills_and_reaps_simulator(self):
+        for number in (signal.SIGTERM, signal.SIGKILL):
+            with self.subTest(signal=number):
+                command, pid_file = self.sleeping_simulator_command(
+                    self.root / f"cancel-{number}"
+                )
+                wrapper = subprocess.Popen(command, env=self.env,
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    pid = self.wait_for_simulator(pid_file)
+                    wrapper.send_signal(number)
+                    self.assertEqual(wrapper.wait(timeout=5), -number)
+                    self.assert_simulator_reaped(pid)
+                finally:
+                    if wrapper.poll() is None:
+                        wrapper.kill()
+                    wrapper.wait()
+
+    def test_caller_subprocess_timeout_kills_and_reaps_simulator(self):
+        command, pid_file = self.sleeping_simulator_command(self.root / "caller-timeout")
+        with self.assertRaises(subprocess.TimeoutExpired):
+            subprocess.run(command, env=self.env, capture_output=True, timeout=2)
+        self.assert_simulator_reaped(self.wait_for_simulator(pid_file))
+
     def test_workflow_retains_evidence_even_when_smoke_fails(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text()
         self.assertIn("scripts/smoke_evidence.py\n", workflow)

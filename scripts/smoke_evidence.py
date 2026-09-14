@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import select
 import signal
 import subprocess
 import sys
@@ -113,6 +114,50 @@ def save_inputs(directory: Path, arguments: list[str]) -> list[str]:
     return replay
 
 
+def supervise_simulator(parent_fd: int, command: list[str]) -> int:
+    # Only the wrapper owns the pipe's write end. EOF detects even SIGKILL,
+    # which cannot be handled by signal forwarding in the wrapper itself.
+    proc = subprocess.Popen(command, start_new_session=True)
+    try:
+        while proc.poll() is None:
+            readable, _, _ = select.select([parent_fd], [], [], 0.1)
+            if readable and not os.read(parent_fd, 1):
+                return -signal.SIGTERM
+        return proc.returncode
+    finally:
+        # The supervisor survives wrapper death and reaps its direct child.
+        # Kill the process group as well so simulator workers cannot linger.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+        os.close(parent_fd)
+
+
+def run_supervised_simulator(command: list[str], stdout, stderr) -> int:
+    read_fd, write_fd = os.pipe()
+    try:
+        supervisor = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "supervise",
+             "--parent-fd", str(read_fd), "--", *command],
+            pass_fds=(read_fd,), stdout=stdout, stderr=stderr,
+            start_new_session=True,
+        )
+        os.close(read_fd)
+        read_fd = None
+        try:
+            return supervisor.wait()
+        finally:
+            os.close(write_fd)
+            write_fd = None
+            supervisor.wait()
+    finally:
+        for descriptor in (read_fd, write_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
 def run_simulator(output: Path, executable: str, arguments: list[str]) -> int:
     output.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix=Path(executable).name + "-", dir=output))
@@ -132,8 +177,7 @@ def run_simulator(output: Path, executable: str, arguments: list[str]) -> int:
         (directory / "capture-error.log").write_text(str(error) + "\n")
     with (directory / "stdout.log").open("wb") as stdout, \
             (directory / "stderr.log").open("wb") as stderr:
-        proc = subprocess.Popen([executable, *arguments], stdout=stdout, stderr=stderr)
-        returncode = proc.wait()
+        returncode = run_supervised_simulator([executable, *arguments], stdout, stderr)
     record.update(status="finished", returncode=returncode, finished_at=time.time())
     write_json(directory / "command.json", record)
     # Forward each stream and preserve the original simulator result.
@@ -165,14 +209,21 @@ def run_simulator(output: Path, executable: str, arguments: list[str]) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("run", "simulator"))
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("mode", choices=("run", "simulator", "supervise"))
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--parent-fd", type=int)
     parser.add_argument("--executable")
     options, command = parser.parse_known_args()
     if not command or command[0] != "--":
         parser.error("pass the command or simulator arguments after --")
     command = command[1:]
-    if options.mode == "run":
+    if options.mode != "supervise" and options.output is None:
+        parser.error("--output is required")
+    if options.mode == "supervise":
+        if options.parent_fd is None or not command:
+            parser.error("supervise requires --parent-fd and a command")
+        returncode = supervise_simulator(options.parent_fd, command)
+    elif options.mode == "run":
         if not command:
             parser.error("a smoke command is required")
         returncode = run_smoke(options.output.resolve(), command)

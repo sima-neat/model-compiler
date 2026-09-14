@@ -620,7 +620,9 @@ and memory information, installed package versions, package and simulator hashes
 installation/activation logs, and complete smoke output. Each MLA simulator
 invocation includes separate stdout/stderr, its original command and exit status,
 and copies of the ELF/data/check inputs taken before SDK temporary-file cleanup.
-A failed invocation also gets a GDB replay with a 120-second limit. A successful
+A supervisor stops the simulator process group and reaps the simulator if its
+wrapper is terminated, including when a caller timeout kills the wrapper with
+SIGKILL. A failed invocation also gets a GDB replay with a 120-second limit. A successful
 replay does not change the original failure. Job failure additionally uploads
 `model-compiler-smoke-work-<arch>-<attempt>` for 7 days, containing the generated
 smoke models and compiler outputs. Abrupt runner loss can still prevent uploading.
