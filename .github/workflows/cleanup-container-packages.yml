@@ -49,7 +49,7 @@ jobs:
             const buildWorkflowFile = 'build.yml';
             const workflowRunPageLimit = 50;
 
-            function branchSlug(branchName) {
+            function legacyBranchSlug(branchName) {
               const hash = require('crypto').createHash('sha256')
                 .update(branchName, 'utf8')
                 .digest('hex')
@@ -68,7 +68,21 @@ jobs:
             }
 
             function packageForBranch(branchName) {
-              return `model-compiler-${branchSlug(branchName)}`;
+              if (branchName === 'main') {
+                return 'model-compiler';
+              }
+              // Use only alphanumeric words separated by single hyphens.
+              // Cap the branch suffix to leave room for the registry, owner and repo.
+              const slug = branchName.toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+/, '')
+                .slice(0, 180)
+                .replace(/-+$/, '') || 'branch';
+              return `model-compiler-${slug}`;
+            }
+
+            function legacyPackageForBranch(branchName) {
+              return `model-compiler-${legacyBranchSlug(branchName)}`;
             }
 
             async function paginate(route, parameters) {
@@ -152,7 +166,10 @@ jobs:
             }
 
             const branches = await paginate('GET /repos/{owner}/{repo}/branches', { owner, repo });
-            const livePackages = new Set(branches.map((branch) => packageForBranch(branch.name)));
+            // Keep the canonical release package and both naming schemes for live branches.
+            const livePackages = new Set(['model-compiler', ...branches.flatMap((branch) => [
+              packageForBranch(branch.name), legacyPackageForBranch(branch.name),
+            ])]);
             core.info(`Found ${branches.length} live branch(es).`);
 
             const candidates = new Map();
@@ -168,6 +185,7 @@ jobs:
             function addCandidate(branchName, commitSha = '') {
               const packageName = packageForBranch(branchName);
               addPackageCandidate(packageName, commitSha);
+              addPackageCandidate(legacyPackageForBranch(branchName), commitSha);
             }
 
             if (requestedBranch) {

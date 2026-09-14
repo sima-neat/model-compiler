@@ -94,7 +94,8 @@ class NotificationTests(unittest.TestCase):
     def test_success_contains_build_summary_link(self):
         payload = N.compose(self.run_data('success'), [], 'C123')
         self.assertEqual(payload['channel'], 'C123')
-        self.assertIn('succeeded', payload['text'])
+        self.assertTrue(payload['text'].startswith('🦉 🟢 Model Compiler daily build succeeded'))
+        self.assertEqual(payload['blocks'][0]['text']['text'], payload['text'])
         self.assertIn('123#summary', json.dumps(payload))
 
     def test_failure_and_cancellation_report_jobs_without_mentions(self):
@@ -107,6 +108,8 @@ class NotificationTests(unittest.TestCase):
             self.assertIn('&lt;!channel&gt;', encoded)
             self.assertNotIn('<!channel>', encoded)
             self.assertIn(conclusion, payload['text'])
+            self.assertTrue(payload['text'].startswith('🦉 🔴 Model Compiler daily build:'))
+            self.assertEqual(payload['blocks'][0]['text']['text'], payload['text'])
 
     def test_non_daily_running_or_missing_channel_rejected(self):
         for change, channel in [({'head_branch': 'develop'}, 'C123'), ({'status': 'in_progress'}, 'C123'), ({}, '')]:
