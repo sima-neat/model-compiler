@@ -86,23 +86,16 @@ jobs:
               return;
             }
 
-            const crypto = require('crypto');
             function packageForBranch(branchName) {
-              const hash = crypto.createHash('sha256')
-                .update(branchName, 'utf8')
-                .digest('hex')
-                .slice(0, 12);
-              let slug = branchName.toLowerCase()
-                .replace(/[^a-z0-9._-]+/g, '-')
-                .replace(/^[^a-z0-9]+/, '')
-                .replace(/[^a-z0-9]+$/, '')
-                .replace(/-{2,}/g, '-')
-                .slice(0, 180)
-                .replace(/[^a-z0-9]+$/, '');
-              if (!slug) {
-                slug = 'branch';
+              if (branchName === 'main') {
+                return 'model-compiler';
               }
-              return `model-compiler-${slug}-${hash}`;
+              const slug = branchName.toLowerCase()
+                .replace(/[^a-z0-9._-]+/g, '-')
+                .replace(/^-+/, '')
+                .replace(/-+$/, '')
+                .replace(/-{2,}/g, '-') || 'branch';
+              return `model-compiler-${slug}`;
             }
 
             const packageName = packageForBranch(branch);

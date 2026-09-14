@@ -501,18 +501,28 @@ a container completion listener on `main`.
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are
-lowercased, characters such as `/` are replaced with `-`, and a stable hash of
-the original branch name prevents normalized-name collisions. For example,
-`fix/container-build` publishes:
+lowercased and characters such as `/` are replaced with `-`, matching the Neat
+SDK convention. The package name is `model-compiler-<branch>`, except that
+`main` uses `model-compiler` without a branch suffix:
 
 ```text
-ghcr.io/sima-neat/model-compiler-fix-container-build-f492aeaada4d:latest
+main                 ghcr.io/sima-neat/model-compiler:latest
+daily                ghcr.io/sima-neat/model-compiler-daily:latest
+develop              ghcr.io/sima-neat/model-compiler-develop:latest
+fix/container-build  ghcr.io/sima-neat/model-compiler-fix-container-build:latest
 ```
 
-The full source commit is also published as an immutable image tag. Deleting a
-branch deletes its branch-scoped package. A daily reconciliation run handles
-any cleanup event that was missed, and the cleanup workflow supports a manual
-dry run.
+The full source commit is also published as an immutable image tag. Branches
+that normalize to the same name (for example, `fix/foo` and `fix-foo`) share a
+package; use distinct normalized branch names when separate images are needed.
+Deleting a branch deletes its package only when no live branch maps to it.
+The canonical `model-compiler` release package is always retained. A daily
+reconciliation run handles missed cleanup events and supports a manual dry run.
+
+Previously published packages with a branch-hash suffix are retained while
+their source branch exists, but new builds publish only to the names above.
+Update pull commands and integrations to the new names to receive new builds.
+Legacy packages become eligible for cleanup after their branch is deleted.
 
 Container builds use architecture-specific Buildx registry caches stored as
 `buildcache-amd64` and `buildcache-arm64` tags in the branch package. A branch
