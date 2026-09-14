@@ -48,10 +48,14 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn("packages: write", text)
 
     def test_package_names_match_sdk_convention_in_publish_and_cleanup(self):
-        branches = ["main", "daily", "develop", "fix/Container-Build", "fix--foo", "///"]
+        branches = ["main", "daily", "develop", "fix/Container-Build", "fix--foo", "///",
+                    "foo_", "foo/_bar", "foo..bar", "foo__bar", "_foo",
+                    "a" * 300, "a" * 179 + "/bar"]
         expected = ["model-compiler", "model-compiler-daily", "model-compiler-develop",
                     "model-compiler-fix-container-build", "model-compiler-fix-foo",
-                    "model-compiler-branch"]
+                    "model-compiler-branch", "model-compiler-foo", "model-compiler-foo-bar",
+                    "model-compiler-foo-bar", "model-compiler-foo-bar", "model-compiler-foo",
+                    "model-compiler-" + "a" * 180, "model-compiler-" + "a" * 179]
         for path in (PUBLISH_WORKFLOW, CLEANUP_WORKFLOW):
             with self.subTest(workflow=path.name):
                 script = path.read_text().split("            function packageForBranch", 1)[1]
@@ -61,7 +65,11 @@ class ContainerWorkflowTests(unittest.TestCase):
                      json.dumps(branches) + ".map(packageForBranch)));"],
                     check=True, capture_output=True, text=True,
                 )
-                self.assertEqual(json.loads(result.stdout), expected)
+                names = json.loads(result.stdout)
+                self.assertEqual(names, expected)
+                for name in names:
+                    self.assertRegex(name, r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+                    self.assertLessEqual(len("ghcr.io/" + "o" * 39 + "/" + name), 255)
 
     def test_cleanup_preserves_live_legacy_and_shared_packages(self):
         script = textwrap.dedent(CLEANUP_WORKFLOW.read_text().split("          script: |\n", 1)[1])

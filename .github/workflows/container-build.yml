@@ -90,11 +90,13 @@ jobs:
               if (branchName === 'main') {
                 return 'model-compiler';
               }
+              // Use only alphanumeric words separated by single hyphens.
+              // Cap the branch suffix to leave room for the registry, owner and repo.
               const slug = branchName.toLowerCase()
-                .replace(/[^a-z0-9._-]+/g, '-')
+                .replace(/[^a-z0-9]+/g, '-')
                 .replace(/^-+/, '')
-                .replace(/-+$/, '')
-                .replace(/-{2,}/g, '-') || 'branch';
+                .slice(0, 180)
+                .replace(/-+$/, '') || 'branch';
               return `model-compiler-${slug}`;
             }
 

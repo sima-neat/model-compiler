@@ -501,8 +501,10 @@ a container completion listener on `main`.
 After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
 the amd64 and arm64 containers from that run's package artifacts and publishes
 a multi-architecture image to a branch-scoped GHCR package. Branch names are
-lowercased and characters such as `/` are replaced with `-`, matching the Neat
-SDK convention. The package name is `model-compiler-<branch>`, except that
+lowercased and runs of non-alphanumeric characters (including `/`, `_`, and
+`.`) become a single `-`. Leading and trailing separators are removed, and
+the branch suffix is limited to 180 characters to keep Docker names valid.
+This follows the Neat SDK repo-and-branch naming convention. The package name is `model-compiler-<branch>`, except that
 `main` uses `model-compiler` without a branch suffix:
 
 ```text
@@ -513,7 +515,7 @@ fix/container-build  ghcr.io/sima-neat/model-compiler-fix-container-build:latest
 ```
 
 The full source commit is also published as an immutable image tag. Branches
-that normalize to the same name (for example, `fix/foo` and `fix-foo`) share a
+that normalize or truncate to the same name (for example, `fix/foo` and `fix-foo`) share a
 package; use distinct normalized branch names when separate images are needed.
 Deleting a branch deletes its package only when no live branch maps to it.
 The canonical `model-compiler` release package is always retained. A daily
