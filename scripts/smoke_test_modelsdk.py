@@ -23,10 +23,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# Snapshot-backed installations can take longer on first access while EBS loads
-# lazily restored blocks. Keep the ordinary smoke-test default short, but let
-# snapshot validation extend it without changing the test itself.
-DEFAULT_TOOL_TIMEOUT = int(os.environ.get("MODELSDK_SMOKE_TOOL_TIMEOUT_SECONDS", "30"))
+# CLI startup can exceed 30 seconds on cold containers or snapshot-backed
+# installations. Keep a bounded timeout and allow environment-specific overrides.
+DEFAULT_TOOL_TIMEOUT = int(os.environ.get("MODELSDK_SMOKE_TOOL_TIMEOUT_SECONDS", "120"))
 DEFAULT_YOLO_URL = "https://huggingface.co/webml/yolov8n/resolve/main/onnx/yolov8n.onnx"
 DEFAULT_WORK_ROOT = Path.home() / "tmp"
 QWEN3_REPO_ID = "Qwen/Qwen3-0.6B"
