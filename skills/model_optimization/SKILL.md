@@ -1,49 +1,59 @@
 ---
 name: sima-model-optimization
-description: Optimize an MLA-compatible source or ONNX graph before quantization and compilation using reviewed structural rewrites and numerical equivalence checks. Use model surgery instead for unsupported operators or output-contract compatibility.
+description: Optimize MLA-compatible graphs for latency, memory, or throughput while preserving model behavior.
 ---
 
 # Optimize Models for SiMa MLA
 
-## Purpose
+Use this skill when performance optimization is requested or compiler evidence
+identifies a relevant bottleneck. Do not invoke it solely because a customer
+asked to compile a model. Use model surgery for incompatibilities or BoxDecode
+output contracts.
 
-Use after the model-surgery audit confirms MLA compatibility. Find structural
-inefficiencies without requiring a full compilation, apply matching patterns
-from `references/optimization_patterns.md`, and preserve model behavior.
+## Compatibility Evidence
+
+The model-surgery operator audit is preliminary screening only. It checks node
+names and precision flags; it does not validate all attributes, shapes, opsets,
+composite fusion, fallback, or placement. Before rewriting:
+
+- inspect applicable `supported_operators.json` constraints;
+- check relevant composite-pattern requirements; and
+- use compiler placement evidence when full MLA residency matters.
+
+Compilation is not required to apply a mathematically proven graph-only rewrite,
+but it is required to confirm placement or a hardware-dependent benefit.
 
 ## Workflow
 
-1. Inspect the source model and ONNX graph, including static shapes, dtypes,
-   opset, initializers, and output contracts.
-2. Confirm that the exact graph passes the `model_surgery` operator audit.
-3. Read `references/optimization_patterns.md` and match patterns using each
-   pattern's conditions and guardrails.
-4. Prefer a source-model change when it is maintainable; otherwise make the
-   smallest equivalent ONNX rewrite.
-5. Validate the optimized graph and report applied patterns, equivalence
-   results, and benefits that still require compilation or measurement.
+1. Establish the requested metric or identified bottleneck and preserve a
+   baseline when measured improvement is required.
+2. Inspect static shapes, dtypes, opset, initializers, output contracts, and
+   available compiler evidence.
+3. Read `references/optimization_patterns.md` and apply only patterns whose
+   match conditions and guards are proven for the graph.
+4. Prefer a maintainable source-model change; otherwise make the smallest
+   equivalent ONNX rewrite.
+5. Validate behavior and report applied patterns, equivalence results, and any
+   benefit that still requires compilation or measurement.
 
 ## Rules
 
 - Full MLA placement does not prove that a graph is optimally represented.
-- Apply an optimization only when all `Match` conditions hold.
-- Preserve externally visible input and output contracts unless the user
-  explicitly requests a contract change.
-- For detection, pose, segmentation, or SuperPoint outputs, preserve the
-  BoxDecode contract in `../model_surgery/references/boxdecode.md`.
-- Do not claim a latency, throughput, or memory improvement from graph structure
-  alone when the benefit depends on compiler scheduling or hardware behavior.
-- Rely on current compiler defaults for automatic layout conversion,
-  tessellation, and any-shape-on-MLA unless a reviewed pattern says otherwise.
+- Preserve public input/output contracts unless the user requests a change.
+- When outputs feed BoxDecode, preserve the contract documented in
+  `../model_surgery/references/boxdecode.md`.
+- Rely on current compiler layout, tessellation, and any-shape defaults unless a
+  reviewed pattern requires otherwise.
+- Do not claim latency, throughput, or memory gains from graph structure alone
+  when the result depends on compiler scheduling or hardware behavior.
 
-## Validation
+## Validation and Completion
 
-At minimum:
+Run the ONNX checker and shape inference when applicable, compare original and
+optimized outputs on representative inputs, state the tolerance or task metric,
+and repeat the preliminary operator/constraint screening.
 
-- run the ONNX checker and shape inference when applicable;
-- compare original and optimized outputs with representative inputs;
-- state the tolerance or task-level metric used;
-- rerun the `model_surgery` operator audit.
-
-Compile or benchmark when the user needs measured performance, when a pattern is
-hardware-dependent, or before presenting an estimated benefit as confirmed.
+A graph-only request delivers the changed graph, preserved contracts, and
+equivalence evidence. A measured-performance request additionally delivers
+baseline and resulting measurements. Clearly label placement or performance as
+unconfirmed when compilation or benchmarking was not requested or available.

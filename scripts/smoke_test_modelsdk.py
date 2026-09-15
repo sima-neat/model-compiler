@@ -308,18 +308,15 @@ def audit_onnx_model(model_path: Path, dtype: str, *, strict: bool) -> None:
     log(f"operator audit returned {proc.returncode}; continuing because --strict-audit was not set")
 
 
-def onnx_io_names(model_path: Path) -> tuple[list[str], list[str]]:
+def onnx_input_names(model_path: Path) -> list[str]:
     import onnx
 
     model = onnx.load(str(model_path))
     initializer_names = {initializer.name for initializer in model.graph.initializer}
     input_names = [value.name for value in model.graph.input if value.name not in initializer_names]
-    output_names = [value.name for value in model.graph.output]
     if not input_names:
         raise SmokeFailure(f"could not determine model inputs: {model_path}")
-    if not output_names:
-        raise SmokeFailure(f"could not determine model outputs: {model_path}")
-    return input_names, output_names
+    return input_names
 
 
 def run_quantize_compile(
@@ -341,7 +338,7 @@ def run_quantize_compile(
                 f"cannot remove existing build directory: {build_dir}. "
                 "Choose a fresh --work-dir or remove the stale directory first."
             ) from exc
-    input_names, output_names = onnx_io_names(model_path)
+    input_names = onnx_input_names(model_path)
     cmd = [
         sys.executable,
         str(helper),
@@ -355,10 +352,6 @@ def run_quantize_compile(
         *input_names,
         "--input_shapes",
         input_shape,
-        "--output_names",
-        *output_names,
-        "--device",
-        "modalix",
         "--build_dir",
         str(build_dir),
     ]

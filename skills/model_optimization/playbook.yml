@@ -1,8 +1,8 @@
 id: sima-model-optimization
 name: Optimize Models for SiMa MLA
-version: 0.0.1
+version: 0.0.2
 agents: [codex, claude]
-description: Pre-compilation model graph optimization using reviewed MLA patterns and numerical validation.
+description: Optimize MLA-compatible graphs for latency, memory, or throughput while preserving model behavior.
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]
