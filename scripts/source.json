@@ -24,39 +24,116 @@
     "binary-packages": {
       "mla/toolchain/mla-toolchain": {
         "version-prefix": "v3.0.0-",
-        "channel": "develop"
+        "channel": "develop",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "mla-toolchain"
+          ],
+          "bitbucket-repository": "sima-ai/mla-toolchain"
+        }
       }
     },
     "python-packages": {
       "mpk-parser": {
-        "version-prefix": "2.1.3.dev0+develop."
+        "version-prefix": "2.1.3.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "vdp",
+            "vdp-mpktool"
+          ],
+          "bitbucket-repository": "sima-ai/vdp-mpktool"
+        }
       },
       "neural-compressor": {
-        "version-prefix": "2.0.0.dev0+develop."
+        "version-prefix": "2.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "swml-neural-compressor"
+          ],
+          "bitbucket-repository": "sima-ai/swml-neural-compressor"
+        }
       },
       "sima-accelerator-mode": {
-        "version-prefix": "2.1.3.dev0+develop."
+        "version-prefix": "2.1.3.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "devkit-inference-examples"
+          ],
+          "bitbucket-repository": "sima-ai/devkit-inference-examples"
+        }
       },
       "sima-ev-transforms": {
-        "version-prefix": "3.0.0.dev0+develop."
+        "version-prefix": "3.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "ev-transforms"
+          ],
+          "bitbucket-repository": "sima-ai/ev-transforms"
+        }
       },
       "sima-frontend": {
-        "version-prefix": "3.0.0.dev0+develop."
+        "version-prefix": "3.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "awesome-front-end"
+          ],
+          "bitbucket-repository": "sima-ai/awesome-front-end"
+        }
       },
       "sima-ml-kernels": {
-        "version-prefix": "3.0.0.dev0+develop."
+        "version-prefix": "3.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "ml_kernels"
+          ],
+          "bitbucket-repository": "sima-ai/ml_kernels"
+        }
       },
       "sima-mlc": {
-        "version-prefix": "3.0.0.dev0+develop."
+        "version-prefix": "3.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "n2a_compiler"
+          ],
+          "bitbucket-repository": "sima-ai/n2a_compiler"
+        }
       },
       "sima-mppe": {
-        "version-prefix": "2.1.0.dev0+develop."
+        "version-prefix": "2.1.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "mppe"
+          ],
+          "bitbucket-repository": "sima-ai/mppe"
+        }
       },
       "sima-tvm": {
-        "version-prefix": "1.4.0.dev0+develop."
+        "version-prefix": "1.4.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "tvm"
+          ],
+          "bitbucket-repository": "sima-ai/tvm"
+        }
       },
       "sima-utils": {
-        "version-prefix": "3.0.0.dev0+develop."
+        "version-prefix": "3.0.0.dev0+develop.",
+        "upstream": {
+          "jenkins-job": [
+            "sima-ai",
+            "sima-utils"
+          ],
+          "bitbucket-repository": "sima-ai/sima-utils"
+        }
       }
     }
   },

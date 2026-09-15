@@ -15,6 +15,7 @@ on:
 permissions:
   actions: write
   contents: write
+  id-token: write
 
 concurrency:
   group: model-compiler-component-updates
@@ -24,6 +25,11 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  resolve-vulcan-config:
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'production' }}
+
   resolve-source:
     name: Resolve develop source commit
     runs-on: ubuntu-24.04
@@ -53,7 +59,8 @@ jobs:
 
   scan:
     name: Scan ARM64 component artifacts
-    needs: resolve-source
+    needs: [resolve-source, resolve-vulcan-config]
+    environment: ${{ vars.VULCAN_ENV || 'production' }}
     runs-on:
       - self-hosted
       - macOS
@@ -88,6 +95,66 @@ jobs:
             --source-json scripts/source.json \
             --target-arch aarch64 --newest-only \
             --output scan-aarch64.json
+
+      - name: Prepare private upstream comparison
+        env:
+          BASELINE_SHA: ${{ needs.resolve-source.outputs.sha }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRIVATE_DIR}"
+          chmod 700 "${PRIVATE_DIR}"
+          python3 _component-updater/scripts/update_component_versions.py merge \
+            --source-json scripts/source.json --report scan-aarch64.json \
+            --output "${PRIVATE_DIR}/resolved.json" --summary "${PRIVATE_DIR}/versions.md"
+
+      - name: Configure private Vulcan history access
+        if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+          aws-region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+
+      - name: Install private history client
+        if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true'
+        run: python3 -m pip install awscli
+
+      - name: Restore private upstream history
+        if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true'
+        env:
+          HISTORY_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+          HISTORY_KMS_KEY: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 _component-updater/scripts/private_changelog_cache.py download \
+            --bucket "${HISTORY_BUCKET}" --directory "${PRIVATE_DIR}/history" --kms-key "${HISTORY_KMS_KEY}"
+
+      - name: Collect private upstream changes
+        env:
+          JENKINS_USERNAME: ${{ secrets.JENKINS_USERNAME }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+          BASELINE_SHA: ${{ needs.resolve-source.outputs.sha }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 _component-updater/scripts/upstream_changes.py \
+            --base scripts/source.json --updated "${PRIVATE_DIR}/resolved.json" \
+            --base-sha "${BASELINE_SHA}" --cache "${PRIVATE_DIR}/history" --output "${PRIVATE_DIR}/report"
+
+      - name: Retain private upstream history
+        if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true' && !inputs.dry_run
+        env:
+          HISTORY_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
+          HISTORY_KMS_KEY: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 _component-updater/scripts/private_changelog_cache.py upload \
+            --bucket "${HISTORY_BUCKET}" --directory "${PRIVATE_DIR}/history" --kms-key "${HISTORY_KMS_KEY}"
+
+      - name: Remove private upstream files
+        if: always()
+        env:
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+        run: rm -rf -- "${PRIVATE_DIR}"
 
       - name: Upload scan report
         uses: actions/upload-artifact@v7

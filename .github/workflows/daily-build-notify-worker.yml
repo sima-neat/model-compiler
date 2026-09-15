@@ -6,38 +6,63 @@ on:
 permissions:
   actions: read
   contents: read
+  id-token: write
 
 jobs:
-  notify:
+  resolve-vulcan-config:
     if: github.event.workflow_run.head_repository.full_name == github.repository
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'production' }}
+
+  notify:
+    if: ${{ always() && github.event.workflow_run.head_repository.full_name == github.repository }}
+    needs: resolve-vulcan-config
     runs-on: ubuntu-24.04
+    environment: ${{ vars.VULCAN_ENV || 'production' }}
     timeout-minutes: 5
     steps:
       - name: Checkout trusted notification code
         uses: actions/checkout@v5
         with:
           ref: develop
-          sparse-checkout: scripts/daily_build_notification.py
-          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts
 
-      - name: Compose daily build result
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Configure private history access
+        id: history-access
+        if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true' && needs.resolve-vulcan-config.result == 'success'
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.resolve-vulcan-config.outputs.artifact_publisher_role_arn }}
+          aws-region: ${{ needs.resolve-vulcan-config.outputs.aws_region }}
+
+      - name: Notify completed daily build with private changes
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          CHANNEL_ID: ${{ vars.SLACK_VULCAN_EVENT_CHANNEL_ID }}
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_VULCAN_EVENT_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          HISTORY_BUCKET: ${{ steps.history-access.outcome == 'success' && needs.resolve-vulcan-config.outputs.artifact_bucket || '' }}
+          PRIVATE_DIR: ${{ runner.temp }}/completion-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
+          mkdir -p "${PRIVATE_DIR}"
+          chmod 700 "${PRIVATE_DIR}"
           gh api --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?filter=latest&per_page=100" \
-            > "${RUNNER_TEMP}/jobs.json"
-          python3 scripts/daily_build_notification.py \
-            --event "${GITHUB_EVENT_PATH}" --jobs "${RUNNER_TEMP}/jobs.json" \
-            --channel "${CHANNEL_ID}" --output "${RUNNER_TEMP}/slack-payload.json"
+            > "${PRIVATE_DIR}/jobs.json"
+          python3 scripts/notify_completed_build.py \
+            --event "${GITHUB_EVENT_PATH}" --jobs "${PRIVATE_DIR}/jobs.json" \
+            --directory "${PRIVATE_DIR}"
 
-      - name: Notify neat-vulcan-events
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        with:
-          errors: true
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload-file-path: ${{ runner.temp }}/slack-payload.json
+      - name: Remove private notification files
+        if: always()
+        env:
+          PRIVATE_DIR: ${{ runner.temp }}/completion-${{ github.run_id }}-${{ github.run_attempt }}
+        run: rm -rf -- "${PRIVATE_DIR}"
