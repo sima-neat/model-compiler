@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 
-def compose(run: dict, jobs: list[dict], channel: str) -> dict:
+def compose(run: dict, jobs: list[dict], channel: str, changes: str | None = None) -> dict:
     if not channel:
         raise ValueError("SLACK_VULCAN_EVENT_CHANNEL_ID must be configured")
     if run.get("head_branch") != "daily" or run.get("status") != "completed":
@@ -31,6 +31,8 @@ def compose(run: dict, jobs: list[dict], channel: str) -> dict:
         lines = [f"• {escape(job['name'][:160])}: {escape(job['conclusion'])}" for job in failed[:10]]
         sections.append({"type": "section", "text": {"type": "mrkdwn", "text":
             "*Failed or cancelled jobs*\n" + ("\n".join(lines) or "See the build log for details.")}})
+    sections.append({"type": "section", "text": {"type": "mrkdwn", "text":
+        changes or "Upstream change details are unavailable for this build."}})
     return {"channel": channel, "text": text, "blocks": sections,
             "unfurl_links": False, "unfurl_media": False}
 

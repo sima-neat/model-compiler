@@ -123,7 +123,7 @@ class ChangesTests(unittest.TestCase):
 
     def test_workflow_does_not_publish_private_report(self):
         workflow = (ROOT/'.github/workflows/update-components-worker.yml').read_text()
-        self.assertIn('Send private changeset attachment to Slack', workflow)
+        self.assertNotIn('Send private changeset attachment to Slack', workflow)
         self.assertIn('Remove private upstream files', workflow)
         self.assertNotIn('path: upstream', workflow)
         self.assertNotIn('upstream-changes.md" >>', workflow)

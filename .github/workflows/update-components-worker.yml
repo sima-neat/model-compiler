@@ -150,18 +150,6 @@ jobs:
           python3 _component-updater/scripts/private_changelog_cache.py upload \
             --bucket "${HISTORY_BUCKET}" --directory "${PRIVATE_DIR}/history" --kms-key "${HISTORY_KMS_KEY}"
 
-      - name: Send private changeset attachment to Slack
-        if: ${{ !inputs.dry_run }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ vars.SLACK_VULCAN_EVENT_CHANNEL_ID }}
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python3 _component-updater/scripts/send_upstream_changes.py \
-            --report "${PRIVATE_DIR}/report/upstream-changes.json" \
-            --attachment "${PRIVATE_DIR}/report/upstream-changes.md" --run-url "${RUN_URL}"
-
       - name: Remove private upstream files
         if: always()
         env:
