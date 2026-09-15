@@ -36,7 +36,7 @@ def snippet(report, limit=1600):
     return text if len(text) <= limit else text[:limit - 40] + '\n… See attached report for all changes.'
 
 
-def send(report, attachment, channel, token, run_url, api=slack_api, upload=None):
+def send(report, attachment, channel, token, run_url, api=slack_api, upload=None, thread_ts=None):
     if not token or not channel:
         raise ValueError('Slack token and channel must be configured')
     data = attachment.read_bytes()
@@ -50,11 +50,15 @@ def send(report, attachment, channel, token, run_url, api=slack_api, upload=None
             except (HTTPError, URLError, OSError):
                 raise RuntimeError('Slack file upload failed; private response omitted') from None
     upload(reservation['upload_url'], data)
-    api('files.completeUploadExternal', {
+    completion = {
         'files': [{'id': reservation['file_id'], 'title': 'Model Compiler upstream changes'}],
         'channel_id': channel,
         'initial_comment': snippet(report) + f'\n<{run_url}|Component resolution workflow>\nCandidate resolution; this is not a successful build notification.',
-    }, token)
+    }
+    if thread_ts:
+        completion['thread_ts'] = thread_ts
+        completion['initial_comment'] = 'Detailed upstream changes for this completed build.'
+    api('files.completeUploadExternal', completion, token)
 
 
 def main():
