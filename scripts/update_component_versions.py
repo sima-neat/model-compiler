@@ -172,8 +172,19 @@ def update_policy(doc: dict[str, Any]) -> dict[tuple[str, str], tuple[str, str |
         if not isinstance(entries, dict):
             raise UpdateError(f"component-updates.{section} must be an object")
         for name, entry in entries.items():
-            if not isinstance(entry, dict) or set(entry) not in ({"version-prefix"}, {"version-prefix", "channel"}):
+            if not isinstance(entry, dict) or ("version-prefix" not in entry or set(entry) - {"version-prefix", "channel", "upstream"}):
                 raise UpdateError(f"{name}: expected version-prefix and optional binary channel")
+            if "upstream" in entry:
+                upstream = entry["upstream"]
+                if (not isinstance(upstream, dict)
+                        or set(upstream) != {"jenkins-job", "bitbucket-repository"}
+                        or not isinstance(upstream["jenkins-job"], list)
+                        or not upstream["jenkins-job"]
+                        or any(not isinstance(p, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", p) or p in (".", "..")
+                               for p in upstream["jenkins-job"])
+                        or not isinstance(upstream["bitbucket-repository"], str)
+                        or not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+", upstream["bitbucket-repository"])):
+                    raise UpdateError(f"{name}: invalid upstream mapping")
             prefix = entry["version-prefix"]
             channel = entry.get("channel")
             if "channel" in entry:
