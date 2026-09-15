@@ -26,12 +26,7 @@ class SmokeTestModelsdkTests(unittest.TestCase):
             model_path = root / "model.onnx"
             model_path.write_bytes(b"onnx")
 
-            with (
-                mock.patch.object(
-                    MODULE, "onnx_input_names", return_value=["input"]
-                ),
-                mock.patch.object(MODULE, "run") as run,
-            ):
+            with mock.patch.object(MODULE, "run") as run:
                 MODULE.run_quantize_compile(
                     model_path,
                     root / "build",
@@ -41,6 +36,7 @@ class SmokeTestModelsdkTests(unittest.TestCase):
                 )
 
         command = run.call_args.args[0]
+        self.assertNotIn("--input_names", command)
         self.assertNotIn("--output_names", command)
         self.assertNotIn("--device", command)
         self.assertIn("--build_dir", command)

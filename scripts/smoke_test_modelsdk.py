@@ -308,17 +308,6 @@ def audit_onnx_model(model_path: Path, dtype: str, *, strict: bool) -> None:
     log(f"operator audit returned {proc.returncode}; continuing because --strict-audit was not set")
 
 
-def onnx_input_names(model_path: Path) -> list[str]:
-    import onnx
-
-    model = onnx.load(str(model_path))
-    initializer_names = {initializer.name for initializer in model.graph.initializer}
-    input_names = [value.name for value in model.graph.input if value.name not in initializer_names]
-    if not input_names:
-        raise SmokeFailure(f"could not determine model inputs: {model_path}")
-    return input_names
-
-
 def run_quantize_compile(
     model_path: Path,
     build_dir: Path,
@@ -338,7 +327,6 @@ def run_quantize_compile(
                 f"cannot remove existing build directory: {build_dir}. "
                 "Choose a fresh --work-dir or remove the stale directory first."
             ) from exc
-    input_names = onnx_input_names(model_path)
     cmd = [
         sys.executable,
         str(helper),
@@ -348,8 +336,6 @@ def run_quantize_compile(
         "onnx",
         "--model_layout",
         "NCHW",
-        "--input_names",
-        *input_names,
         "--input_shapes",
         input_shape,
         "--build_dir",

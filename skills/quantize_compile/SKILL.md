@@ -40,7 +40,9 @@ been inspected.
 
 ## Commands
 
-Static ONNX inputs are inferred from the model:
+ONNX input names are inferred from the model. Do not pass `--input_names` for
+ONNX; runtime inputs use the order stored in the graph, excluding initializers.
+Static shapes are inferred in that same order:
 
 ```bash
 python3 skills/quantize_compile/scripts/quantize_compile.py \
@@ -61,8 +63,9 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
   --build_dir ./build
 ```
 
-Use `--input_shapes` for dynamic ONNX inputs. Calibration options include
-`--real_data`, `--dataset_images`, `--num_calib_samples`, and `--calib_method`.
+For dynamic ONNX, pass one `--input_shapes` value per runtime input in graph
+order. Calibration options include `--real_data`, `--dataset_images`,
+`--num_calib_samples`, and `--calib_method`.
 Precision options are `--bf16-weights` and `--bf16-activations`; workflow
 options include `--verify`, `--analyse-error`, and `--no-compile`.
 

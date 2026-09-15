@@ -1,6 +1,6 @@
 id: sima-model-quantize-compile
 name: Quantize and Compile Models for SiMa Modalix
-version: 0.1.3
+version: 0.1.4
 agents: [codex, claude]
 description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including calibration and verification.
 compatibility:

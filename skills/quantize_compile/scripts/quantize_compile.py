@@ -67,33 +67,6 @@ def build_quantization_manifest(*, bf16_activations, bf16_weights):
     }
 
 
-def order_onnx_model_inputs(model_inputs, requested_names):
-    """Return runtime inputs in CLI order, validating an exact name match."""
-    inputs_by_name = {model_input.name: model_input for model_input in model_inputs}
-    input_names = list(requested_names) if requested_names else list(inputs_by_name)
-    duplicate_names = sorted(
-        {name for name in input_names if input_names.count(name) > 1}
-    )
-    unknown_names = sorted(set(input_names) - set(inputs_by_name))
-    missing_names = sorted(set(inputs_by_name) - set(input_names))
-
-    if duplicate_names or unknown_names or missing_names:
-        details = []
-        if duplicate_names:
-            details.append(f"duplicate: {duplicate_names}")
-        if unknown_names:
-            details.append(f"unknown: {unknown_names}")
-        if missing_names:
-            details.append(f"missing: {missing_names}")
-        raise ValueError(
-            "--input_names must list each ONNX runtime input exactly once ("
-            + "; ".join(details)
-            + ")."
-        )
-
-    return [inputs_by_name[name] for name in input_names]
-
-
 class ModelProcessor:
     def __init__(self, args):
         self.args = args
@@ -103,6 +76,11 @@ class ModelProcessor:
         )
 
         if args.model_format == "onnx":
+            if args.input_names:
+                raise ValueError(
+                    "--input_names is only valid for PyTorch models. "
+                    "ONNX inputs use the order stored in the graph."
+                )
             model_proto = onnx.load(args.model_path)
             initializer_names = {
                 initializer.name for initializer in model_proto.graph.initializer
@@ -111,7 +89,6 @@ class ModelProcessor:
                 model_input for model_input in model_proto.graph.input
                 if model_input.name not in initializer_names
             ]
-            model_inputs = order_onnx_model_inputs(model_inputs, args.input_names)
             self.input_names = [model_input.name for model_input in model_inputs]
 
             if self.input_shapes is None:
@@ -287,7 +264,6 @@ class ModelProcessor:
             source = onnx_source(
                 model_path,
                 shape_dict=shape_dict,
-                input_names=self.args.input_names,
                 layout=self.args.model_layout,
             )
         else:
@@ -399,8 +375,16 @@ def main():
         help="Source format",
     )
     parser.add_argument("--model_layout", default="NCHW", choices=["NCHW", "NHWC"], help="Input tensor layout")
-    parser.add_argument("--input_names", nargs="+", help="Input names (required for PyTorch)")
-    parser.add_argument("--input_shapes", nargs="+", help="Input shapes (required for PyTorch or dynamic ONNX)")
+    parser.add_argument(
+        "--input_names",
+        nargs="+",
+        help="Input names (PyTorch only; ONNX uses graph order)",
+    )
+    parser.add_argument(
+        "--input_shapes",
+        nargs="+",
+        help="Input shapes (required for PyTorch or dynamic ONNX; ONNX uses graph order)",
+    )
     
     # Workflow Flags
     parser.add_argument("--build_dir", default="./build", help="Target directory for artifacts")

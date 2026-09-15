@@ -1,6 +1,7 @@
 import ast
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,8 +28,24 @@ def load_manifest_builder():
     return load_function("build_quantization_manifest")
 
 
-def load_input_orderer():
-    return load_function("order_onnx_model_inputs")
+def load_method(class_name, method_name):
+    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"), filename=str(SCRIPT))
+    class_node = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    method = next(
+        node
+        for node in class_node.body
+        if isinstance(node, ast.FunctionDef) and node.name == method_name
+    )
+    namespace = {}
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), str(SCRIPT), "exec"),
+        namespace,
+    )
+    return namespace[method_name]
 
 
 def calls_to(method_name):
@@ -88,31 +105,15 @@ class QuantizationManifestTests(unittest.TestCase):
 
 
 class SDKDefaultTests(unittest.TestCase):
-    def test_onnx_static_shapes_follow_requested_input_order(self):
-        class ModelInput:
-            def __init__(self, name):
-                self.name = name
-
-        image = ModelInput("image")
-        scale = ModelInput("scale")
-
-        ordered = load_input_orderer()([image, scale], ["scale", "image"])
-
-        self.assertEqual(
-            [model_input.name for model_input in ordered], ["scale", "image"]
+    def test_onnx_rejects_explicit_input_names(self):
+        args = SimpleNamespace(
+            input_shapes=None,
+            model_format="onnx",
+            input_names=["image"],
         )
 
-    def test_onnx_input_names_must_match_runtime_inputs_exactly(self):
-        class ModelInput:
-            def __init__(self, name):
-                self.name = name
-
-        model_inputs = [ModelInput("image"), ModelInput("scale")]
-
-        with self.assertRaisesRegex(ValueError, "duplicate.*missing"):
-            load_input_orderer()(model_inputs, ["image", "image"])
-        with self.assertRaisesRegex(ValueError, "unknown.*missing"):
-            load_input_orderer()(model_inputs, ["image", "offset"])
+        with self.assertRaisesRegex(ValueError, "only valid for PyTorch"):
+            load_method("ModelProcessor", "__init__")(SimpleNamespace(), args)
 
     def test_reference_cli_exposes_supported_model_formats(self):
         self.assertEqual(argument_choices("--model_format"), ["onnx", "pytorch"])
@@ -135,6 +136,7 @@ class SDKDefaultTests(unittest.TestCase):
         self.assertEqual(len(onnx_calls), 1)
         keyword_names = {keyword.arg for keyword in onnx_calls[0].keywords}
         self.assertNotIn("dtype_dict", keyword_names)
+        self.assertNotIn("input_names", keyword_names)
         self.assertNotIn("output_names", keyword_names)
 
     def test_output_names_are_not_a_cli_option(self):
