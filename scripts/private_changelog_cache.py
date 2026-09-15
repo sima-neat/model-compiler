@@ -32,7 +32,7 @@ def sync(mode, bucket, directory, kms_key):
             raise ValueError()
     except (ValueError, KeyError, TypeError):
         raise RuntimeError('Private build-records prefix must deny all CloudFront reads') from None
-    remote = f's3://{bucket}/model-compiler/build-records/' 
+    remote = f's3://{bucket}/model-compiler/build-records/'
     source, target = (remote, str(directory)) if mode == 'download' else (str(directory), remote)
     flags = ['--sse', 'aws:kms', '--sse-kms-key-id', kms_key] if mode == 'upload' else []
     result = subprocess.run(['aws', 's3', 'sync', source, target, '--exclude', '*', '--include', '*.json', '--only-show-errors', *flags],
