@@ -34,7 +34,7 @@
     "neural-compressor": "2.0.0.dev0+master.3",
     "sima-accelerator-mode": "2.1.3.dev0+master.17",
     "sima-ev-transforms": "2.1.3.dev0+master.18",
-    "sima-frontend": "2.1.3.dev0+master.392",
+    "sima-frontend": "2.1.3.dev0+master.393",
     "sima-ml-kernels": "2.1.3.dev0+master.45",
     "sima-mlc": "2.1.3.dev0+master.187",
     "sima-mppe": "2.1.0.dev0+master.25",
@@ -96,7 +96,7 @@
     }
   ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "2.1.3.dev0+master.392" },
+    { "name": "sima-frontend", "version": "2.1.3.dev0+master.393" },
     { "name": "mpk_parser", "version": "2.1.3.dev0+master.38" },
     { "name": "sima-mppe", "version": "2.1.0.dev0+master.25" },
     { "name": "onnxoptimizer", "version": "0.3.13" },
