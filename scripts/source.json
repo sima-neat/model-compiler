@@ -151,9 +151,9 @@
     "neural-compressor": "2.0.0.dev0+develop.9",
     "sima-accelerator-mode": "2.1.3.dev0+develop.88",
     "sima-ev-transforms": "3.0.0.dev0+develop.67",
-    "sima-frontend": "3.0.0.dev0+develop.2273",
-    "sima-ml-kernels": "3.0.0.dev0+develop.262",
-    "sima-mlc": "3.0.0.dev0+develop.1102",
+    "sima-frontend": "3.0.0.dev0+develop.2276",
+    "sima-ml-kernels": "3.0.0.dev0+develop.263",
+    "sima-mlc": "3.0.0.dev0+develop.1109",
     "sima-mppe": "2.1.0.dev0+develop.96",
     "sima-tvm": "1.4.0.dev0+develop.101",
     "sima-utils": "3.0.0.dev0+develop.132"
@@ -213,7 +213,7 @@
     }
   ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "3.0.0.dev0+develop.2273" },
+    { "name": "sima-frontend", "version": "3.0.0.dev0+develop.2276" },
     { "name": "mpk_parser", "version": "2.1.3.dev0+develop.128" },
     { "name": "sima-mppe", "version": "2.1.0.dev0+develop.96" },
     { "name": "onnxoptimizer", "version": "0.3.13" },
@@ -230,7 +230,7 @@
   "binary-packages": [
     {
       "name": "mla/toolchain/mla-toolchain",
-      "version": "v3.0.0-3613-develop.457",
+      "version": "v3.0.0-3616-develop.460",
       "extension": ".zip"
     }
   ]
