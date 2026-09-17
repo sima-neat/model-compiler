@@ -65,6 +65,16 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual([c.args[0] for c in api.call_args_list], ['chat.postMessage', 'chat.update'])
         self.assertIn('could not be uploaded', api.call_args.args[1]['blocks'][-1]['text']['text'])
 
+    def test_safe_slack_attachment_failure_preserves_operation(self):
+        api = Mock(return_value={'ts': '1'})
+        error = N.SlackOperationError(
+            'files.getUploadURLExternal: missing_scope (needed: files:write)')
+        with tempfile.TemporaryDirectory() as temp, self.assertRaisesRegex(
+                N.SlackOperationError, 'attachment upload: files[.]getUploadURLExternal'):
+            N.notify(self.run_data('success'), [], 'C123', 'token', Path(temp), self.report(), api,
+                     Mock(side_effect=error))
+        self.assertEqual([c.args[0] for c in api.call_args_list], ['chat.postMessage', 'chat.update'])
+
     def test_exact_commit_parent_and_manifest_select_private_record(self):
         updated, base = {'version': 2}, {'version': 1}
         report = {**self.report(), 'resolved_digest': digest(updated), 'baseline_digest': digest(base)}

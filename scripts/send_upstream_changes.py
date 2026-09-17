@@ -8,16 +8,32 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+class SlackOperationError(RuntimeError):
+    """A safe-to-log Slack operation failure without response contents."""
+
+
+def _safe_slack_value(value, fallback):
+    value = str(value or '')
+    return value if value and all(c.isalnum() or c in '._:-,' for c in value) else fallback
+
+
 def slack_api(method, payload, token):
     request = Request('https://slack.com/api/' + method, data=json.dumps(payload).encode(),
                       headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
     try:
         with urlopen(request, timeout=30) as response:
             result = json.load(response)
-    except (HTTPError, URLError, OSError, ValueError):
-        raise RuntimeError('Slack request failed; private response omitted') from None
+    except HTTPError as exc:
+        raise SlackOperationError(f'{method}: HTTP {exc.code}') from None
+    except (URLError, OSError, ValueError):
+        raise SlackOperationError(f'{method}: transport or response error') from None
     if not result.get('ok'):
-        raise RuntimeError('Slack API rejected the request; check bot scopes and channel membership')
+        error = _safe_slack_value(result.get('error'), 'unknown_error')
+        detail = f'{method}: {error}'
+        if error == 'missing_scope':
+            needed = _safe_slack_value(result.get('needed'), 'unknown')
+            detail += f' (needed: {needed})'
+        raise SlackOperationError(detail)
     return result
 
 
@@ -50,8 +66,10 @@ def send(report, attachment, channel, token, run_url, api=slack_api, upload=None
             try:
                 with urlopen(request, timeout=60) as response:
                     response.read()
-            except (HTTPError, URLError, OSError):
-                raise RuntimeError('Slack file upload failed; private response omitted') from None
+            except HTTPError as exc:
+                raise SlackOperationError(f'file upload: HTTP {exc.code}') from None
+            except (URLError, OSError):
+                raise SlackOperationError('file upload: transport error') from None
     upload(reservation['upload_url'], data)
     completion = {
         'files': [{'id': reservation['file_id'], 'title': 'Model Compiler upstream changes'}],
@@ -76,6 +94,8 @@ def main():
             return
         send(report, args.attachment,
              os.environ.get('SLACK_CHANNEL_ID'), os.environ.get('SLACK_BOT_TOKEN'), args.run_url)
+    except SlackOperationError as exc:
+        raise SystemExit(f'Private Slack notification failed at {exc}; private response omitted.') from None
     except (RuntimeError, ValueError, OSError, KeyError):
         raise SystemExit('Private Slack notification failed; verify credentials, files:write scope, and channel access.') from None
 

@@ -597,7 +597,10 @@ reported separately.
 Completed `daily` Build runs report success or failure (including cancellation)
 to `neat-vulcan-events`, using the organization's `SLACK_BOT_TOKEN` secret and
 `SLACK_VULCAN_EVENT_CHANNEL_ID` variable. Notifications link to the build and its
-component tables. The completion listener must exist on default branch `main`;
+component tables. The Slack bot must have `chat:write` to post the result and
+`files:write` to attach the private upstream-change report. Scope changes require
+reinstalling the Slack app and updating `SLACK_BOT_TOKEN` if Slack issues a new
+bot token. The completion listener must exist on default branch `main`;
 it calls the protected develop worker and executes trusted notification code
 from develop, never code from a build artifact. Feature-branch and develop builds do not send these notifications.
 

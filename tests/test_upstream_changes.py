@@ -137,6 +137,21 @@ class ChangesTests(unittest.TestCase):
             '• `sima-mlc`: develop.1102 → *develop.1109*', text)
         self.assertIn('\n  Add packed inverse', text)
 
+    def test_slack_api_reports_missing_scope_without_response_contents(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        with patch.object(S, 'urlopen', return_value=response), \
+                patch.object(S.json, 'load', return_value={
+                    'ok': False, 'error': 'missing_scope', 'needed': 'files:write',
+                    'provided': 'chat:write', 'private': 'must not appear',
+                }), self.assertRaisesRegex(
+                    S.SlackOperationError,
+                    r'files[.]getUploadURLExternal: missing_scope [(]needed: files:write[)]') as raised:
+            S.slack_api('files.getUploadURLExternal', {}, 'secret')
+        self.assertNotIn('provided', str(raised.exception))
+        self.assertNotIn('private', str(raised.exception))
+
     def test_workflow_does_not_publish_private_report(self):
         workflow = (ROOT/'.github/workflows/update-components-worker.yml').read_text()
         self.assertNotIn('Send private changeset attachment to Slack', workflow)
