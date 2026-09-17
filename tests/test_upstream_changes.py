@@ -121,6 +121,22 @@ class ChangesTests(unittest.TestCase):
             self.assertEqual(api.call_args.args[1]['files'][0]['id'], 'F123')
             self.assertEqual(api.call_args.args[1]['channel_id'], 'C123')
 
+    def test_slack_snippet_formats_and_separates_components(self):
+        report = {'baseline_sha': 'a'*40, 'components': [
+            {'name': 'sima-frontend', 'previous': 'develop.2273', 'updated': 'develop.2276',
+             'commits': [], 'warnings': []},
+            {'name': 'sima-mlc', 'previous': 'develop.1102', 'updated': 'develop.1109',
+             'commits': [{'subject': 'Add packed inverse'}], 'warnings': []},
+        ]}
+
+        text = S.snippet(report)
+
+        self.assertIn('• `sima-frontend`: develop.2273 → *develop.2276*', text)
+        self.assertIn(
+            '• `sima-frontend`: develop.2273 → *develop.2276*\n\n'
+            '• `sima-mlc`: develop.1102 → *develop.1109*', text)
+        self.assertIn('\n  Add packed inverse', text)
+
     def test_workflow_does_not_publish_private_report(self):
         workflow = (ROOT/'.github/workflows/update-components-worker.yml').read_text()
         self.assertNotIn('Send private changeset attachment to Slack', workflow)

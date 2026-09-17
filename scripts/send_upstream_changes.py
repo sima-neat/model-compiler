@@ -25,8 +25,11 @@ def snippet(report, limit=1600):
     def escape(text):
         return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', ' ').replace('\r', ' ')
     lines = ['*Resolved upstream changes versus develop*', f'Baseline: `{report["baseline_sha"][:12]}`']
-    for row in report['components']:
-        lines.append(f'• {escape(row["name"])}: {escape(row["previous"])} → {escape(row["updated"])}')
+    for index, row in enumerate(report['components']):
+        if index:
+            lines.append('')
+        lines.append(
+            f'• `{escape(row["name"])}`: {escape(row["previous"])} → *{escape(row["updated"])}*')
         lines.extend('  ' + escape(c['subject'])[:240] for c in row['commits'][:2])
         if row['warnings']:
             lines.append('  Incomplete evidence — see attached report.')
