@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from daily_build_notification import compose
-from send_upstream_changes import send, slack_api, snippet
+from send_upstream_changes import SlackOperationError, send, slack_api, snippet
 from upstream_changes import comparison_key, markdown, validate
 
 
@@ -62,11 +62,13 @@ def notify(run, jobs, channel, token, directory, report=None, api=slack_api, att
         url = f'https://github.com/{run["repository"]["full_name"]}/actions/runs/{run["id"]}'
         try:
             attach(report, attachment, channel, token, url, thread_ts=posted['ts'])
-        except (RuntimeError, ValueError, OSError, KeyError):
+        except (RuntimeError, ValueError, OSError, KeyError) as exc:
             # Keep the build result and excerpt, and make attachment failure visible.
             payload['blocks'][-1]['text']['text'] = changes.replace(
                 'Full report attached in this message’s thread.', 'Full report attachment could not be uploaded.')
             api('chat.update', {**payload, 'ts': posted['ts']}, token)
+            if isinstance(exc, SlackOperationError):
+                raise SlackOperationError(f'attachment upload: {exc}') from None
             raise RuntimeError('Build notification posted, but private attachment failed') from None
 
 
@@ -90,6 +92,8 @@ def main():
             pass
     try:
         notify(run, jobs, os.environ['SLACK_CHANNEL_ID'], os.environ['SLACK_BOT_TOKEN'], args.directory, report)
+    except SlackOperationError as exc:
+        raise SystemExit(f'Build Slack notification failed at {exc}; private response omitted.') from None
     except (ValueError, RuntimeError, KeyError, OSError):
         raise SystemExit('Build Slack notification failed; private contents omitted from logs') from None
 
