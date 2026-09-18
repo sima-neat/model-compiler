@@ -17,6 +17,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.work_dir = Path(self.temp_dir.name)
         self.call_count = 0
+        # Keep Git fallback detection independent of the checkout running tests.
         self.helper = self.work_dir / HELPER.name
         shutil.copy2(HELPER, self.helper)
         self.cli_log = self.work_dir / "sima-cli.log"
@@ -79,6 +80,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             }
         )
         for name, value in (
+            ("GITHUB_HEAD_REF", None),
             ("GITHUB_REF_NAME", github_ref_name),
             ("GITHUB_REF_TYPE", github_ref_type),
             ("FAKE_SIMA_CLI_FAIL_TARGET", fail_target),
