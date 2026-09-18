@@ -1,5 +1,7 @@
 # Model Compiler Bundle Builder
 
+**Documentation:** [English](docs/guides/index.md) | [한국어](docs/i18n/ko/guides/index.md) | [日本語](docs/i18n/ja/guides/index.md) | [繁體中文](docs/i18n/zh-Hant/guides/index.md) | [Українська](docs/i18n/uk/guides/index.md)
+
 This repository builds a distributable Model Compiler bundle for `sima-cli`.
 
 The bundle contains:
@@ -97,27 +99,66 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Daily Component Update` workflow checks `scripts/source.json` every
-day at 00:00 UTC. The current version is the update policy: for example,
-`2.1.3.dev0+master.390` can advance only within
-`2.1.3.dev0+master.*`, and `v2.1.3560-develop.409` can advance only within
-`v2.1.3560-develop.*`. Changing a base version or channel remains a manual
-manifest change.
+The `Daily Component Update` workflow checks `develop`'s `scripts/source.json`
+every four hours (00:17, 04:17, 08:17, 12:17, 16:17, and 20:17 UTC).
+A small `Daily Component Update` wrapper on the default branch calls the
+updater workflow on `develop`; updater scripts and the manifest are checked out
+from the same resolved `develop` commit. GitHub may delay scheduled runs.
+Exact versions remain the build inputs. The optional
+`component-updates` block explicitly lists packages managed by automation:
 
-The private macOS/ARM64 runner validates available artifacts and acts as the
-authoritative scanner because Artifactory publishes matching component
-versions for ARM64 and amd64. Changed manifests refresh the stable
-`automation/component-updates` branch from the tested `develop` commit. The
-ordinary Build workflow still packages and tests both architectures. A
-successful Build run for that exact branch commit creates or updates one pull
-request back to `develop`.
+```json
+"component-updates": {
+  "python-packages": {
+    "sima-frontend": {"version-prefix": "3.0.0.dev0+develop."}
+  },
+  "binary-packages": {
+    "mla/toolchain/mla-toolchain": {
+      "version-prefix": "v3.0.0-",
+      "channel": "develop"
+    }
+  }
+}
+```
 
-Manual dry runs are available through `workflow_dispatch`. Branch pushes use
-the `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY` secrets so the
-push triggers the Build workflow. GitHub executes scheduled and
-`workflow_run` workflows from the repository default branch, so both
-automation workflow files must be present on `main` before unattended runs
-and automatic PR creation become active.
+The scanner chooses the greatest numeric build suffix in that exact prefix.
+A prefix may differ from the current pin, explicitly authorizing the initial
+base/channel transition. Subsequent runs advance only within that prefix.
+Editing an exact pin does not change the configured prefix. Different components
+may use different base versions. Package names are normalized, and matching
+pins in `dependency_overrides` and `python-packages` update together.
+URL/file-pinned packages are excluded. Conflicting duplicate pins are rejected.
+
+Only listed components are managed when the block is present; an empty block
+manages none. Older manifests without the block retain pin-derived discovery.
+The supplied policy manages ten Python packages and the MLA toolchain. Moving
+LLiMa snap references are not included. MLA uses `version-prefix` for the release
+and `channel` for the branch: `v3.0.0-` plus `develop` matches
+`v3.0.0-3609-develop.453`. Discovery orders the numeric revision first, then the
+numeric channel build, allowing both to advance within 3.0.0 develop. Other
+releases, PRs, and commit-only archives are excluded. An explicit policy allows
+migration from a legacy 2.1 pin. Legacy binary prefixes ending in `.` retain
+their existing suffix-only behavior. Architecture scans select only matching
+`x86` or `aarch64` Ubuntu ZIPs; merging two scans requires a common version.
+
+The private macOS/ARM64 runner checks Python 3.12 ARM64 or universal wheels.
+A changed candidate refreshes `daily` from the scanned `develop` commit using
+an explicit force-with-lease. Identical existing candidates
+leave the branch untouched. A new develop commit refreshes daily even if no
+package pins changed, so code and bundle-version changes are included. GitHub App credentials trigger the ordinary Build,
+which packages, installs, and smoke-tests both architectures. These tests gate
+cross-component compatibility; individual artifact availability does not.
+A successful current manifest-only updater commit opens or refreshes one PR
+from `daily` to `develop`, with old/new versions, prefixes and the Build link.
+
+Manual dry runs are available through `workflow_dispatch`. The optional
+`source_ref` input can select a feature-branch manifest only with `dry_run=true`;
+normal updates always read `develop`. Artifactory access
+uses the private runner's existing netrc credentials. Pushes use
+`NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
+GitHub executes scheduled and `workflow_run` workflows from the default branch:
+deploy the workflow and helper changes to `main`, and the policy to `develop`,
+before unattended updates can use the new configuration.
 
 ## Building a Bundle
 
@@ -254,6 +295,11 @@ Use `model-compiler-amd64.zip` for an amd64 target. Alternatively, install
 through `metadata.json` with `sima-cli`, which extracts the same archive into a
 temporary directory and runs this installer automatically.
 
+Native dependency builds (including `llama_cpp_python`) use host `gcc`/`g++`
+and their default matching C++ headers. The installer clears inherited SDK
+compiler flags and compiler include/library search overrides for these builds;
+it does not select a version from `/usr/include/c++`.
+
 The installer performs these steps:
 1. Read `source.json`.
 2. Install required Ubuntu system packages from `system_dependencies.ubuntu`.
@@ -375,6 +421,116 @@ the generated MPK archive when those files are present.
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
 
+## Local Model Compiler Containers
+
+After creating a bundle, install it into an Ubuntu 24.04 container with:
+
+```bash
+# x86_64 host and bundle
+./scripts/build_modelsdk_container.sh \
+  --bundle-dir dist/amd64/package \
+  --target-arch amd64 \
+  --image model-compiler:local \
+  --smoke-test
+
+# ARM64 host and bundle
+./scripts/build_modelsdk_container.sh \
+  --bundle-dir dist/arm64/package \
+  --target-arch arm64 \
+  --image model-compiler:arm64-local \
+  --smoke-test
+```
+
+The bundle directory must already contain `install_modelsdk_wheels.sh`,
+`source.json`, `manifest.txt`, and the downloaded wheel and binary artifacts.
+The container helper does not build or download the bundle. It passes the local
+directory to BuildKit as a temporary build context, so package credentials and
+the multi-gigabyte bundle are not copied into an image layer.
+
+For example, on `macstudio`, download and extract the official ARM64 bundle
+before invoking the container helper:
+
+```bash
+mkdir -p model-compiler-arm64 && cd model-compiler-arm64
+sima-cli neat download model-compiler/arm64
+unzip -q model-compiler-arm64.zip -d bundle
+```
+
+Open an interactive shell:
+
+```bash
+docker run --rm -it -v "$PWD:/workspace" model-compiler:local
+```
+
+The container starts Bash as a login shell. pyenv is initialized automatically,
+and the Model Compiler virtual environment is active without running
+`activate-model-compiler` manually. The same environment is applied to direct
+container commands. The prompt includes the image version, for example
+`[model-compiler feature/container:deadbee]`. Development builds use
+`branch:short-git-hash`; an exact official release tag such as `v2.1.3` is used
+on a tagged commit. `/etc/sdk-release` records that version, the SDK and Python
+versions, the target architecture, the source branch and commit, the UTC image
+build time, and component versions resolved from the bundle's `source.json`.
+The source manifest is also preserved at
+`/usr/local/share/model-compiler/source.json` for detailed inspection.
+
+Run a compile smoke test and keep its artifacts on the host:
+
+```bash
+mkdir -p modelsdk-smoke
+docker run --rm \
+  -v "$PWD/modelsdk-smoke:/workspace/modelsdk-smoke" \
+  model-compiler:local \
+  python /opt/model-compiler-tests/scripts/smoke_test_modelsdk.py \
+    --tier resnet-compile \
+    --work-dir /workspace/modelsdk-smoke
+```
+
+Build natively on a matching host when possible: `linux/amd64` on `ll2` and
+`linux/arm64` on `macstudio`.
+
+## Branch Container Images
+
+For `daily`, the `Build` workflow directly builds and smoke-tests amd64 and
+arm64 container images after both package installation tests pass. It reuses
+the same run’s package artifacts and publishes the multi-architecture GHCR
+image before the Build run completes, so daily success notifications and PR
+validation include container publication. This direct path does not require
+a container completion listener on `main`.
+
+After the `Build` workflow succeeds for a pushed branch, GitHub Actions builds
+the amd64 and arm64 containers from that run's package artifacts and publishes
+a multi-architecture image to a branch-scoped GHCR package. Branch names are
+lowercased and runs of non-alphanumeric characters (including `/`, `_`, and
+`.`) become a single `-`. Leading and trailing separators are removed, and
+the branch suffix is limited to 180 characters to keep Docker names valid.
+This follows the Neat SDK repo-and-branch naming convention. The package name is `model-compiler-<branch>`, except that
+`main` uses `model-compiler` without a branch suffix:
+
+```text
+main                 ghcr.io/sima-neat/model-compiler:latest
+daily                ghcr.io/sima-neat/model-compiler-daily:latest
+develop              ghcr.io/sima-neat/model-compiler-develop:latest
+fix/container-build  ghcr.io/sima-neat/model-compiler-fix-container-build:latest
+```
+
+The full source commit is also published as an immutable image tag. Branches
+that normalize or truncate to the same name (for example, `fix/foo` and `fix-foo`) share a
+package; use distinct normalized branch names when separate images are needed.
+Deleting a branch deletes its package only when no live branch maps to it.
+The canonical `model-compiler` release package is always retained. A daily
+reconciliation run handles missed cleanup events and supports a manual dry run.
+
+Previously published packages with a branch-hash suffix are retained while
+their source branch exists, but new builds publish only to the names above.
+Update pull commands and integrations to the new names to receive new builds.
+Legacy packages become eligible for cleanup after their branch is deleted.
+
+Container builds use architecture-specific Buildx registry caches stored as
+`buildcache-amd64` and `buildcache-arm64` tags in the branch package. A branch
+also imports the matching `develop` cache when available. Deleting the branch
+package therefore removes both its images and its build caches.
+
 On ARM systems, activation enables the JAX compilation path with the NEON CPU
 ISA by default. Use `--no-jax` as a compatibility or debugging fallback:
 
@@ -426,3 +582,68 @@ This repository currently focuses on:
 
 If you add more extensions later, use the existing extension-style install root
 under `sdk-extensions/`.
+
+
+### Build component metadata and daily notifications
+
+Every architecture's Build summary lists the actual selected SiMa component
+versions, including MLA, and an expandable table of all other bundled packages.
+The inventory is derived from downloaded artifact filenames, not just requested
+pins. `component-versions.json` and `component-versions.md` are included in the
+build artifacts; the same inventory is stored in `metadata.json` and
+`metadata-offline.json` under `component-versions`. LLiMa's resolved commit is
+reported separately.
+
+Completed `daily` Build runs report success or failure (including cancellation)
+to `neat-vulcan-events`, using the organization's `SLACK_BOT_TOKEN` secret and
+`SLACK_VULCAN_EVENT_CHANNEL_ID` variable. Notifications link to the build and its
+component tables. The Slack bot must have `chat:write` to post the result and
+`files:write` to attach the private upstream-change report. Scope changes require
+reinstalling the Slack app and updating `SLACK_BOT_TOKEN` if Slack issues a new
+bot token. The completion listener must exist on default branch `main`;
+it calls the protected develop worker and executes trusted notification code
+from develop, never code from a build artifact. Feature-branch and develop builds do not send these notifications.
+
+The periodic updater only rebuilds when the resolved candidate or develop
+commit changes. To repeat validation of an unchanged candidate, manually run
+Build on `daily`. The test-only `codex/daily-component-updates-e2e` branch is no
+longer the publication target.
+
+The three default-branch entry points (`update-components.yml`,
+`daily-build-notify.yml`, and `open-component-update-pr.yml`) are kept in one
+isolated commit: merge into develop first, then cherry-pick that commit onto
+main. Each entry point calls its corresponding `*-worker.yml@develop`. Worker
+logic and helper scripts are maintained only on develop for this rollout.
+
+### CI smoke-test evidence
+
+Package-install tests upload `model-compiler-smoke-evidence-<arch>-<attempt>`
+on both success and failure, retained for 14 days. The artifact contains host CPU
+and memory information, installed package versions, package and simulator hashes,
+installation/activation logs, and complete smoke output. Each MLA simulator
+invocation includes separate stdout/stderr, its original command and exit status,
+and copies of the ELF/data/check inputs taken before SDK temporary-file cleanup.
+A supervisor stops the simulator process group and reaps the simulator if its
+wrapper is terminated, including when a caller timeout kills the wrapper with
+SIGKILL. A failed invocation also gets a GDB replay with a 120-second limit. A successful
+replay does not change the original failure. Job failure additionally uploads
+`model-compiler-smoke-work-<arch>-<attempt>` for 7 days, containing the generated
+smoke models and compiler outputs. Abrupt runner loss can still prevent uploading.
+
+After extracting the evidence on a host with the matching compiler installed:
+
+```bash
+# replay.sh uses the captured absolute simulator path by default.
+MODELSDK_SIMULATOR="$(command -v mla-msim)" sh path/to/failed-invocation/replay.sh
+```
+
+Choose the invocation directory whose `command.json` reports the failure (the
+artifact also includes successful invocations and preflight `--help` calls).
+The wrapper is enabled only in CI or when explicitly requested; normal compiler
+activation and compilation are unchanged. To collect the same evidence locally:
+
+```bash
+python scripts/smoke_evidence.py run --output ./debug-evidence/resnet -- \
+  python scripts/smoke_test_modelsdk.py --tier resnet-compile-precisions --verbose \
+    --work-dir ./debug-results/resnet
+```

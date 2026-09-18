@@ -1,0 +1,9 @@
+.git
+.github
+.codex
+.vscode
+__pycache__
+*.py[cod]
+dist
+modelsdk-smoke
+tests

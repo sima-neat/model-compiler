@@ -1,0 +1,38 @@
+{
+  "ja": {
+    "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
+    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/index.md": "2181d2cb90f39092459bb49ff5c28c749c77d3601b7b1ad8f84d0adfd996e685",
+    "docs/guides/model-compatibility.md": "1a5f8ee6034e020c3c23b28b3b04c9584aa5b259af2ecfba01403e29818cf41e",
+    "docs/guides/model-compilation.md": "aca1bef1f31133b243b14dbad0d274532110afeaa36a01e430167dbbb5d752c9",
+    "docs/guides/quantization.md": "636b543dbdb520761b343e5e1c77062876992ef2835911f718f4b19064971ada",
+    "docs/guides/validate-accuracy-performance.md": "5def805a758d212000c5b9fb3d471c06d827f84418a6dad8f4743aa3f75e65e8"
+  },
+  "ko": {
+    "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
+    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/index.md": "2181d2cb90f39092459bb49ff5c28c749c77d3601b7b1ad8f84d0adfd996e685",
+    "docs/guides/model-compatibility.md": "1a5f8ee6034e020c3c23b28b3b04c9584aa5b259af2ecfba01403e29818cf41e",
+    "docs/guides/model-compilation.md": "aca1bef1f31133b243b14dbad0d274532110afeaa36a01e430167dbbb5d752c9",
+    "docs/guides/quantization.md": "636b543dbdb520761b343e5e1c77062876992ef2835911f718f4b19064971ada",
+    "docs/guides/validate-accuracy-performance.md": "5def805a758d212000c5b9fb3d471c06d827f84418a6dad8f4743aa3f75e65e8"
+  },
+  "uk": {
+    "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
+    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/index.md": "2181d2cb90f39092459bb49ff5c28c749c77d3601b7b1ad8f84d0adfd996e685",
+    "docs/guides/model-compatibility.md": "1a5f8ee6034e020c3c23b28b3b04c9584aa5b259af2ecfba01403e29818cf41e",
+    "docs/guides/model-compilation.md": "aca1bef1f31133b243b14dbad0d274532110afeaa36a01e430167dbbb5d752c9",
+    "docs/guides/quantization.md": "636b543dbdb520761b343e5e1c77062876992ef2835911f718f4b19064971ada",
+    "docs/guides/validate-accuracy-performance.md": "5def805a758d212000c5b9fb3d471c06d827f84418a6dad8f4743aa3f75e65e8"
+  },
+  "zh-Hant": {
+    "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
+    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/index.md": "2181d2cb90f39092459bb49ff5c28c749c77d3601b7b1ad8f84d0adfd996e685",
+    "docs/guides/model-compatibility.md": "1a5f8ee6034e020c3c23b28b3b04c9584aa5b259af2ecfba01403e29818cf41e",
+    "docs/guides/model-compilation.md": "aca1bef1f31133b243b14dbad0d274532110afeaa36a01e430167dbbb5d752c9",
+    "docs/guides/quantization.md": "636b543dbdb520761b343e5e1c77062876992ef2835911f718f4b19064971ada",
+    "docs/guides/validate-accuracy-performance.md": "5def805a758d212000c5b9fb3d471c06d827f84418a6dad8f4743aa3f75e65e8"
+  }
+}

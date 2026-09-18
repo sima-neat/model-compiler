@@ -218,7 +218,7 @@ The output is a `.tar.gz` archive that contains the compiled MLA programs, an
 **[Compilation](./model-compilation.md)** for archive contents, batch sizing,
 and tessellation options.
 
-## Full script
+## Full script {#full-script}
 
 The complete annotated program is below. It is also available in the Model
 Compiler examples package as `resnet50-ptq/compile.py`, and in the
