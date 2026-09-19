@@ -3,9 +3,9 @@
 
 skills/model_surgery/data/supported_operators.json is the only maintained
 operator-support source. It supplies support flags, 5D support, ONNX opsets,
-engineering constraints, customer-facing constraint copy, and implementation
-notes. Keep those fields together so the model-surgery guard and published
-documentation cannot silently disagree.
+hardware/software constraints, and implementation notes. The same constraint
+field feeds the model-surgery guard and published documentation so they cannot
+silently disagree.
 
 Run from the repo root:  python3 scripts/build_supported_operators_md.py
 """
@@ -38,7 +38,7 @@ def main() -> int:
     support_doc = json.loads(SUPPORT_DB.read_text())
     operators = support_doc.get("operators", {})
     names = sorted(operators, key=str.lower)
-    rows: list[tuple[str, str, str, str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str]] = []
 
     for name in names:
         entry = operators[name]
@@ -46,7 +46,6 @@ def main() -> int:
         bf16 = norm_flag(entry.get("bfloat16"))
         fived = norm_flag(entry.get("fived"))
         constraints = (entry.get("sima_hw_sw_constraints") or "").strip()
-        customer_constraints = (entry.get("customer_constraints") or "").strip()
 
         # ONNX opset — short, numeric only (skip placeholder values like "x").
         opset = ""
@@ -54,25 +53,7 @@ def main() -> int:
             raw = str(entry["onnx-opset-version"]).strip()
             opset = raw if raw.isdigit() else ""
 
-        rows.append((name, int8, bf16, fived, opset or UNK,
-                     constraints, customer_constraints))
-
-    # Customer copy must live beside every engineering constraint. Validate the
-    # invariant before writing so incomplete entries cannot reach the docs.
-    stale: list[str] = []
-    for name, *_flags, engineering, customer in rows:
-        if engineering and not customer:
-            stale.append(f"{name}: engineering constraint has no customer-facing copy")
-        elif customer and not engineering:
-            stale.append(f"{name}: customer-facing copy has no engineering constraint")
-
-    if stale:
-        print(f"{len(stale)} incomplete constraint(s) in {SUPPORT_DB.relative_to(REPO_ROOT)}:")
-        for s in stale:
-            print(f"  - {s}")
-        print("\nUpdate both constraint fields in the same operator entry, then re-run.")
-        print("Nothing written — the page would otherwise publish stale wording.")
-        return 1
+        rows.append((name, int8, bf16, fived, opset or UNK, constraints))
 
     # Payload for the OperatorTable component in the core docs site. The
     # constraint text rides along so the table's search box matches on it, even
@@ -80,8 +61,8 @@ def main() -> int:
     payload = json.dumps(
         [
             {"name": name, "int8": int8, "bf16": bf16, "fived": fived,
-             "opset": opset, "constraint": customer}
-            for name, int8, bf16, fived, opset, _engineering, customer in rows
+             "opset": opset, "constraint": constraints}
+            for name, int8, bf16, fived, opset, constraints in rows
         ],
         ensure_ascii=False,
         separators=(",", ":"),
@@ -121,7 +102,7 @@ def main() -> int:
         "",
     ]
 
-    constrained = [(name, customer) for name, *_rest, customer in rows if customer]
+    constrained = [(name, constraints) for name, *_rest, constraints in rows if constraints]
     if constrained:
         lines += [
             "## Constraints",
@@ -132,8 +113,9 @@ def main() -> int:
             "model.",
             "",
         ]
-        for name, customer in constrained:
-            lines.append(f"- **{name}** — {customer}")
+        for name, constraints in constrained:
+            rendered_constraints = constraints.replace("\n", "<br />")
+            lines.append(f"- **{name}** — {rendered_constraints}")
         lines.append("")
 
     OUT.write_text("\n".join(lines), encoding="utf-8")

@@ -7,9 +7,8 @@ documentation. Ordinary model audits and rewrites do not require it.
   the guard and generated customer documentation.
 - Keys must match canonical ONNX `node.op_type` names. Record multi-node MLA
   patterns, such as RMSNorm through opset 22, in `composite_patterns.md` instead.
-- Keep engineering and customer constraints aligned in
-  `sima_hw_sw_constraints` and `customer_constraints`; record 5D support in
-  `fived` and precision support in `int8` and `bfloat16`.
+- Record hardware and software constraints in `sima_hw_sw_constraints`, 5D
+  support in `fived`, and precision support in `int8` and `bfloat16`.
 - Document all attribute, shape, opset, dtype, constant-input, and fallback
   conditions needed to interpret the support entry safely.
 

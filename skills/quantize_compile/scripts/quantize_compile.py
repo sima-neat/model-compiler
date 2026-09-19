@@ -28,7 +28,7 @@ from onnxsim import simplify
 # SiMa Model Compiler Imports
 from afe.apis.defines import (
     default_quantization, quantization_scheme,
-    CalibrationMethod, bfloat16_scheme,
+    RequantizationMode, CalibrationMethod, bfloat16_scheme,
     InputName
 )
 from afe.load.importers.general_importer import onnx_source, pytorch_source
@@ -275,6 +275,11 @@ class ModelProcessor:
         # Step 2: Quantization
         logger.info("Initializing quantization...")
         calib_data = self.get_calibration_data()
+        rq_mode = (
+            RequantizationMode.sima
+            if self.args.requant_mode == "sima"
+            else RequantizationMode.tflite
+        )
         calib_method = CalibrationMethod.from_str(self.args.calib_method)
 
         if self.args.bf16_activations or self.args.bf16_weights: # if weights are bf16, activations must be too
@@ -294,6 +299,7 @@ class ModelProcessor:
 
         quant_config = default_quantization.with_activation_quantization(act_scheme) \
                                    .with_weight_quantization(weight_scheme) \
+                                   .with_requantization_mode(rq_mode) \
                                    .with_calibration(calib_method)
 
         # Derive model name from the source file
@@ -397,6 +403,12 @@ def main():
     parser.add_argument("--bf16-weights", action="store_true", help="Use BFloat16 for weights")
     parser.add_argument("--bf16-activations", action="store_true", help="Use BFloat16 for activations")
     parser.add_argument("--calib_method", default="mse", help="Calibration method (mse, entropy, etc.)")
+    parser.add_argument(
+        "--requant_mode",
+        default="sima",
+        choices=["sima", "tflite"],
+        help="INT8 requantization mode (sima is faster; tflite may improve accuracy)",
+    )
     
     # Calibration Data
     parser.add_argument("--real_data", action="store_true", help="Use images for calibration")

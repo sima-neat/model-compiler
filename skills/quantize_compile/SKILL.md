@@ -6,8 +6,8 @@ description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, inclu
 # Quantize and Compile Models for SiMa Modalix
 
 Use `scripts/quantize_compile.py` for the standard local workflow. AFE selects
-the Gen2 Modalix target and current layout, tessellation, any-shape-on-MLA,
-requantization, and verification defaults. Gen1 is not supported.
+the Gen2 Modalix target and current layout, tessellation, any-shape-on-MLA, and
+verification defaults. Gen1 is not supported.
 
 ## Environment
 
@@ -68,6 +68,10 @@ order. Calibration options include `--real_data`, `--dataset_images`,
 `--num_calib_samples`, and `--calib_method`.
 Precision options are `--bf16-weights` and `--bf16-activations`; workflow
 options include `--verify`, `--analyse-error`, and `--no-compile`.
+
+INT8 quantization defaults to `--requant_mode sima` for faster quantization.
+If the resulting accuracy is insufficient, retry with
+`--requant_mode tflite`; it is slower but may improve accuracy.
 
 ## Memory Errors
 

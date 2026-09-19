@@ -75,6 +75,20 @@ def argument_choices(option_name):
     return ast.literal_eval(choices)
 
 
+def argument_default(option_name):
+    call = next(
+        call
+        for call in calls_to("add_argument")
+        if call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == option_name
+    )
+    default = next(
+        keyword.value for keyword in call.keywords if keyword.arg == "default"
+    )
+    return ast.literal_eval(default)
+
+
 def argument_names():
     return [
         call.args[0].value
@@ -163,8 +177,12 @@ class SDKDefaultTests(unittest.TestCase):
         keyword_names = {keyword.arg for keyword in compile_calls[0].keywords}
         self.assertNotIn("tessellate_parameters", keyword_names)
 
-    def test_quantization_config_inherits_requantization_default(self):
-        self.assertEqual(calls_to("with_requantization_mode"), [])
+    def test_reference_cli_exposes_requantization_modes(self):
+        self.assertEqual(argument_choices("--requant_mode"), ["sima", "tflite"])
+        self.assertEqual(argument_default("--requant_mode"), "sima")
+
+    def test_quantization_config_sets_selected_requantization_mode(self):
+        self.assertEqual(len(calls_to("with_requantization_mode")), 1)
 
 
 if __name__ == "__main__":
