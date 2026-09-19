@@ -1,0 +1,12 @@
+id: sima-model-optimization
+name: Optimize Models for SiMa MLA
+version: 0.0.2
+agents: [codex, claude]
+description: Optimize MLA-compatible graphs for latency, memory, or throughput while preserving model behavior.
+compatibility:
+  env_types: [host, sdk]
+  env_subtypes: [linux, palette]
+  min_cli_version: 2.1.2
+runtime:
+  requires:
+    - python3
