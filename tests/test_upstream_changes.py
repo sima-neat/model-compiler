@@ -1,10 +1,12 @@
 import importlib.util
+import io
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -120,6 +122,56 @@ class ChangesTests(unittest.TestCase):
             upload.assert_called_once_with('https://upload.invalid', b'private details')
             self.assertEqual(api.call_args.args[1]['files'][0]['id'], 'F123')
             self.assertEqual(api.call_args.args[1]['channel_id'], 'C123')
+
+    def test_slack_upload_http_contract(self):
+        report = {'baseline_sha': 'a' * 40, 'components': []}
+        content = 'Private changes: café → next\n'
+        requests = []
+
+        def respond(request, timeout):
+            requests.append(request)
+            if request.full_url.endswith('files.getUploadURLExternal'):
+                self.assertEqual(request.get_header('Content-type'),
+                                 'application/x-www-form-urlencoded')
+                self.assertEqual(parse_qs(request.data.decode()), {
+                    'filename': ['upstream-changes.md'],
+                    'length': [str(len(content.encode()))],
+                })
+                return io.BytesIO(json.dumps({'ok': True, 'upload_url': 'https://upload.invalid',
+                                             'file_id': 'F123'}).encode())
+            if request.full_url == 'https://upload.invalid':
+                self.assertEqual(request.data, content.encode())
+                self.assertIsNone(request.get_header('Authorization'))
+                return io.BytesIO(b'OK')
+            self.assertTrue(request.full_url.endswith('files.completeUploadExternal'))
+            self.assertEqual(request.get_header('Content-type'),
+                             'application/x-www-form-urlencoded')
+            fields = parse_qs(request.data.decode())
+            self.assertEqual(json.loads(fields['files'][0]),
+                             [{'id': 'F123', 'title': 'Model Compiler upstream changes'}])
+            self.assertEqual(fields['channel_id'], ['C123'])
+            self.assertEqual(fields['thread_ts'], ['123.456'])
+            return io.BytesIO(b'{"ok": true}')
+
+        with tempfile.TemporaryDirectory() as temp, patch.object(S, 'urlopen', side_effect=respond):
+            attachment = Path(temp) / 'report.md'
+            attachment.write_bytes(content.encode())
+            S.send(report, attachment, 'C123', 'secret', 'https://github.com/example/run',
+                   thread_ts='123.456')
+        self.assertEqual(len(requests), 3)
+        for request in (requests[0], requests[2]):
+            self.assertEqual(request.get_header('Authorization'), 'Bearer secret')
+
+    def test_slack_chat_methods_keep_json_blocks(self):
+        payload = {'channel': 'C123', 'blocks': [{'type': 'section',
+                   'text': {'type': 'mrkdwn', 'text': 'Changes & details'}}]}
+        for method in ('chat.postMessage', 'chat.update'):
+            with self.subTest(method=method), patch.object(
+                    S, 'urlopen', return_value=io.BytesIO(b'{"ok": true}')) as opened:
+                S.slack_api(method, payload, 'secret')
+                request = opened.call_args.args[0]
+                self.assertEqual(request.get_header('Content-type'), 'application/json')
+                self.assertEqual(json.loads(request.data), payload)
 
     def test_slack_snippet_formats_and_separates_components(self):
         report = {'baseline_sha': 'a'*40, 'components': [
