@@ -1,125 +1,93 @@
 ---
 name: sima-model-quantize-compile
-description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for MLSoC or Modalix.
+description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including calibration and verification.
 ---
 
-# Quantize and Compile Standard ONNX Models for SiMa
+# Quantize and Compile Models for SiMa Modalix
 
-## Purpose
-Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa (`mlsoc` or `modalix`).
+Use `scripts/quantize_compile.py` for the standard local workflow. AFE selects
+the Gen2 Modalix target and current layout, tessellation, any-shape-on-MLA, and
+verification defaults. Gen1 is not supported.
 
-## Target Devices
+## Environment
 
-- `--device mlsoc` selects `gen1_target` for MLSoC on legacy SDKs that still expose it.
-- `--device modalix` selects `gen2_target` for Modalix.
+Activate the Model Compiler environment:
 
-## Use When
-- You have an ONNX model and need SiMa quantized/compiled artifacts.
-- You want a default, repeatable flow for Codex or Claude agents.
-
-## Prerequisites
-- you must activate the Model Compiler virtual environment first:
 ```bash
 activate-model-compiler
 ```
-- Ensure `sima-frontend` installed (provides `afe` modules).
-- Python deps: `onnx`, `onnxsim`, `torch`, `numpy`, `Pillow` must be available in the environment.
 
-If required deps are missing:
-```bash
-sima-cli login
-# amd64 host
-sima-cli install tools/model-compiler/amd64
-# arm64 host
-sima-cli install tools/model-compiler/arm64
-```
+If it is unavailable, install the package for the host architecture with
+`sima-cli install tools/model-compiler/<amd64|arm64>`.
 
-## Default Workflow
-1. Run operator audit first (required gate before quantize/compile; use `model_surgery` policy).
-2. Validate model path and input/output interface.
-3. If model has symbolic dimensions, staticify/simplify it with `model_surgery` helper.
-4. Run quantization (with ONNX simplification enabled by default).
-5. Compile for target device.
-6. Optionally run verification (`--verify`).
+## Workflow
 
-## Pre-Compile Audit (Required)
-Run graph compatibility audit before quantization/compilation, following
-`skills/model_surgery/SKILL.md` target/dtype policy.
+1. Validate the source path, format, and input/output contract.
+2. If outputs will feed SiMa BoxDecode, read
+   `../model_surgery/references/boxdecode.md` before changing the graph.
+3. For ONNX, resolve symbolic dimensions before compilation and run the
+   model-surgery operator audit. Treat its result as preliminary screening:
+   inspect applicable constraints and do not claim MLA placement from the audit.
+4. Use model surgery when an incompatibility or BoxDecode contract change must
+   be addressed.
+5. Use model optimization only when performance work is requested or a relevant
+   bottleneck has been identified. Validate and re-screen any changed graph.
+6. Quantize and compile for Modalix. Run verification when requested.
 
-Typical command:
-```bash
-python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
-  --model /abs/path/model.onnx \
-  --dtype int8
-```
+For PyTorch without an exported ONNX graph, the ONNX operator audit does not
+apply. Do not claim compatibility before AFE import and compiler placement have
+been inspected.
 
-## Default Command
+## Commands
+
+ONNX input names are inferred from the model. Do not pass `--input_names` for
+ONNX; runtime inputs use the order stored in the graph, excluding initializers.
+Static shapes are inferred in that same order:
+
 ```bash
 python3 skills/quantize_compile/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
   --model_format onnx \
-  --device modalix \
   --build_dir ./build
 ```
 
-## Recommended Reproducible Command
+PyTorch requires explicit names, shapes, and NCHW layout:
+
 ```bash
 python3 skills/quantize_compile/scripts/quantize_compile.py \
-  --model_path /abs/path/model.onnx \
-  --model_format onnx \
+  --model_path /abs/path/model.pt \
+  --model_format pytorch \
+  --model_layout NCHW \
   --input_names input \
   --input_shapes 1,3,224,224 \
-  --output_names output \
-  --device modalix \
-  --build_dir ./build \
-  --real_data \
-  --dataset_images /abs/path/calib_images \
-  --num_calib_samples 50 \
-  --calib_method mse \
-  --requant_mode sima \
-  --verify
+  --build_dir ./build
 ```
 
-## Key Flags
-- `--device {modalix|mlsoc}`
-- `--input_names --input_shapes --output_names`
-- `--real_data --dataset_images --num_calib_samples`
-- `--bf16-weights --bf16-activations`
-- `--calib_method --requant_mode`
-- `--verify`, `--analyse-error`
-- `--no-compile` for quantize-only runs
+For dynamic ONNX, pass one `--input_shapes` value per runtime input in graph
+order. Calibration options include `--real_data`, `--dataset_images`,
+`--num_calib_samples`, and `--calib_method`.
+Precision options are `--bf16-weights` and `--bf16-activations`; workflow
+options include `--verify`, `--analyse-error`, and `--no-compile`.
+
+INT8 quantization defaults to `--requant_mode sima` for faster quantization.
+If the resulting accuracy is insufficient, retry with
+`--requant_mode tflite`; it is slower but may improve accuracy.
 
 ## Memory Errors
 
-If model compilation runs out of host memory, reports an out-of-memory error,
-or is killed under memory pressure, first reduce MLA simulator parallelism:
+If compilation is killed or runs out of host memory, lower MLA simulator
+parallelism and retry the same command:
 
 ```bash
 export SIMA_MLA_SIM_PARALLEL=<lower-thread-count>
 ```
 
-Then rerun the same compilation command. Lower values reduce peak memory but
-may increase compilation time; do not prescribe `1` by default.
+Lower values reduce peak memory but can increase compilation time. Do not
+prescribe `1` by default.
 
-## Output
-Artifacts are written to:
-- `<build_dir>/<model_basename>/`
+## Completion
 
-## Notes
-- Auto-shape detection may fail on dynamic ONNX inputs; pass explicit `--input_shapes`.
-- For symbolic/dynamic ONNX dimensions, run:
-```bash
-python3 skills/model_surgery/scripts/onnx_static_simplify.py \
-  --input /abs/path/model.onnx \
-  --output /abs/path/model.static.sim.onnx \
-  --replace batch=1
-```
-- `--mla-tesselation` exists for advanced MLA direct mode (argument spelling is `tesselation` in the script).
-
-
-### SDK target compatibility
-
-Modalix (`--device modalix`, the default) uses the SDK Gen2 target and works
-without the deprecated Gen1 API. MLSoC (`--device mlsoc`) requires an older SDK
-that still exposes `gen1_target`; newer SDKs report an unsupported-target error.
-Selecting MLSoC never silently substitutes Modalix hardware.
+A compilation request is complete when the requested artifacts exist under
+`<build_dir>/<model_basename>/` and requested verification has run. Report any
+unverified accuracy, unresolved compatibility constraint, fallback placement,
+or unmeasured performance claim instead of presenting it as confirmed.
