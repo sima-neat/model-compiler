@@ -17,8 +17,10 @@ the graph across compute units automatically. **Only the parts that run on the
 MLA are quantized**.
 
 :::note Quantization-aware training (QAT)
-This page covers post-training quantization (PTQ). Quantization-aware training
-uses a separate workflow and is not covered in this guide.
+This page covers post-training quantization (PTQ). If you can retrain a PyTorch
+model, use [Quantization-Aware Training](/compile-a-model/quantization-aware-training/)
+to simulate INT8 effects during fine-tuning and export a standard QDQ ONNX
+model. Return to this guide to import and compile the exported model.
 :::
 
 ## Default quantization

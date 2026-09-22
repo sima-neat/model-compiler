@@ -14,6 +14,7 @@ sidebar_label: "概要"
     <ul class="overview-link-list compile-workflow-list">
       <li><a class="overview-link-card" href="/tools/model-zoo/"><strong>事前にコンパイルされたモデルを使用する</strong><span>適切なモデルがすでに存在する場合は、Model Zooの成果物から開始する</span></a></li>
       <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>Vision / ONNXモデルをコンパイルする</strong><span>Model Compilerを使用して、準備、量子化、コンパイル、および検証を行う。最初のモデルのウォークスルーから開始する</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/quantization-aware-training/"><strong>量子化を考慮して学習する</strong><span>INT8の効果をシミュレートしながらPyTorchモデルを微調整し、コンパイル用の標準QDQ ONNXモデルをエクスポートします。</span></a></li>
       <li><a class="overview-link-card" href="/genai-llima/"><strong>GenAI / LLiMaモデルをコンパイルする</strong><span>LLMやその他の生成モデルには、LLiMaツールチェーンを使用する</span></a></li>
     </ul>
   </section>
