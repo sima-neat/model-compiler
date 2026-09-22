@@ -12,7 +12,7 @@ SiMa.ai シリコンは、機械学習アクセラレータ（MLA）上で **INT
 前処理および後処理関数は、APUおよびCVU上で実行されます。畳み込みやプーリングなどのモデルレイヤーは、MLA上で実行されます。量子化器は、グラフを計算ユニット間で自動的に分割します。**MLA上で実行される部分のみが量子化されます**。
 
 :::note 量子化を考慮した学習（QAT）
-このページでは、学習後の量子化（PTQ）について説明します。PyTorchモデルを再学習できる場合は、[量子化を考慮した学習](/compile-a-model/quantization-aware-training/)を使用して、微調整中にINT8の効果をシミュレートし、標準QDQ ONNXモデルをエクスポートします。エクスポートしたモデルをインポートしてコンパイルするには、このガイドに戻ってください。
+学習後の量子化（PTQ）については、以下のデフォルト量子化の各節を参照してください。PyTorchモデルを再学習できる場合は、[量子化を考慮した学習](/compile-a-model/quantization-aware-training/)を使用して、微調整中にINT8の効果をシミュレートし、標準QDQ ONNXモデルをエクスポートします。その後、[QAT ONNXからコンパイル済みモデルへ](#qat-onnx-to-compiled-model)に進んでください。
 :::
 
 ## デフォルトの量子化
@@ -30,6 +30,12 @@ quant_model = loaded_net.quantize(
 ```
 
 チャンネル等化は、チャンネル間で重みの分布を均一にするためのオプションの事前処理ステップです。これを有効にするには、`QuantizationParams.with_channel_equalization` を使用します。
+
+### QATエクスポート {#qat-onnx-to-compiled-model}
+
+[QDQ ONNXモデルを通常どおり読み込み](./compile-your-first-model.md)、上記の `LoadedNet.quantize` と、[コンパイル](./model-compilation.md)で説明する `Model.compile` を使用してください。AFEはエクスポートされたQDQのスケールとゼロポイントを読み取るため、内部フラグ `is_quantized=True` は設定しないでください。
+
+`calibration_data` は引き続き必要ですが、QDQで指定された範囲はサンプルから再推定されないため、ランダムなダミー入力で十分です。入力名、データ型、有効な値、SDKのレイアウト（4D画像ではNHWC）を合わせてください。QDQヒントなしで量子化する領域には代表的なキャリブレーションデータを、精度検証には実際の評価データを使用してください。
 
 ## 量子化方式
 

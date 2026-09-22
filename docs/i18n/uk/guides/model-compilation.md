@@ -7,6 +7,8 @@ sidebar_position: 6
 
 Використовуйте `Model.compile`, щоб перетворити **квантовану** модель у двійковий формат, який працюватиме на SiMa MLSoC.
 
+Починаєте з експорту QAT QDQ ONNX? Спершу виконайте кроки з розділу [Від QAT ONNX до скомпільованої моделі](./quantization.md#qat-onnx-to-compiled-model). Наведений нижче `Model.load` призначений для збереженої моделі компілятора, а не для файлу ONNX.
+
 ```python
 from afe.apis.model import Model
 

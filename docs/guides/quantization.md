@@ -17,10 +17,11 @@ the graph across compute units automatically. **Only the parts that run on the
 MLA are quantized**.
 
 :::note Quantization-aware training (QAT)
-This page covers post-training quantization (PTQ). If you can retrain a PyTorch
-model, use [Quantization-Aware Training](/compile-a-model/quantization-aware-training/)
+For post-training quantization (PTQ), follow the default quantization sections
+below. If you can retrain a PyTorch model, use
+[Quantization-Aware Training](/compile-a-model/quantization-aware-training/)
 to simulate INT8 effects during fine-tuning and export a standard QDQ ONNX
-model. Return to this guide to import and compile the exported model.
+model. Then follow [QAT ONNX to compiled model](#qat-onnx-to-compiled-model).
 :::
 
 ## Default quantization
@@ -41,6 +42,19 @@ quant_model = loaded_net.quantize(
 Channel equalization is an optional preprocessing step that equalizes weight
 distributions across channels. Enable it with
 `QuantizationParams.with_channel_equalization`.
+
+### QAT exports {#qat-onnx-to-compiled-model}
+
+[Load the QDQ ONNX model normally](./compile-your-first-model.md),
+then use `LoadedNet.quantize` above and `Model.compile` as described in
+[Compilation](./model-compilation.md). AFE reads the exported QDQ scales and
+zero points; do not set internal `is_quantized=True`.
+
+`calibration_data` is still required, but random placeholders suffice for
+QDQ-covered ranges: those ranges are not re-estimated from the samples.
+Match input names, dtypes, valid values, and SDK layout (NHWC for 4D images).
+Use representative calibration data for regions being quantized without QDQ
+hints, and real evaluation data for accuracy checks.
 
 ## Quantization schemes
 

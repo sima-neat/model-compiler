@@ -8,6 +8,10 @@ sidebar_position: 6
 Use `Model.compile` to convert a **quantized** model into a binary format that
 runs on the SiMa MLSoC.
 
+Starting from a QAT QDQ ONNX export? First follow
+[QAT ONNX to compiled model](./quantization.md#qat-onnx-to-compiled-model).
+`Model.load` below is for a saved compiler model, not an ONNX file.
+
 ```python
 from afe.apis.model import Model
 

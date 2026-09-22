@@ -1,6 +1,6 @@
 ---
 name: sima-model-quantize-compile
-description: Use when quantizing and compiling a standard ONNX model for the SiMa platform, including dependency bootstrap via sima-cli, optional real-data calibration, verification, and compilation for MLSoC or Modalix.
+description: Use when quantizing and compiling ONNX models, including QAT QDQ exports, for the SiMa platform, with dependency bootstrap via sima-cli, calibration, verification, and compilation for MLSoC or Modalix.
 ---
 
 # Quantize and Compile Standard ONNX Models for SiMa
@@ -62,7 +62,17 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
   --build_dir ./build
 ```
 
+### QAT QDQ exports
+
+Use the default command with INT8 settings and the normal `load_model()`
+path. Preserve QDQ hints; do not set internal `is_quantized=True`.
+Omit `--real_data` to supply random calibration placeholders: AFE retains
+QDQ scales and zero points instead of re-estimating those ranges. Inputs must
+match the model's interface and valid domain. Regions quantized without QDQ
+hints need representative calibration data; accuracy checks need real data.
+
 ## Recommended Reproducible Command
+
 ```bash
 python3 skills/quantize_compile/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
@@ -123,3 +133,8 @@ Modalix (`--device modalix`, the default) uses the SDK Gen2 target and works
 without the deprecated Gen1 API. MLSoC (`--device mlsoc`) requires an older SDK
 that still exposes `gen1_target`; newer SDKs report an unsupported-target error.
 Selecting MLSoC never silently substitutes Modalix hardware.
+
+## References
+
+- [QAT ONNX import and compilation](https://github.com/sima-neat/model-compiler/blob/main/docs/guides/quantization.md#qat-onnx-to-compiled-model)
+- [Quantize-and-compile helper source](https://github.com/sima-neat/model-compiler/blob/main/skills/quantize_compile/scripts/quantize_compile.py)

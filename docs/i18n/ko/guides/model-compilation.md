@@ -7,6 +7,8 @@ sidebar_position: 6
 
 `Model.compile`을 사용하여 **양자화된** 모델을 SiMa MLSoC에서 실행할 수 있는 이진 형식으로 변환합니다.
 
+QAT QDQ ONNX 내보내기 파일로 시작한다면 먼저 [QAT ONNX에서 컴파일된 모델로](./quantization.md#qat-onnx-to-compiled-model)를 따르세요. 아래의 `Model.load`는 ONNX 파일이 아닌 저장된 컴파일러 모델용입니다.
+
 ```python
 from afe.apis.model import Model
 

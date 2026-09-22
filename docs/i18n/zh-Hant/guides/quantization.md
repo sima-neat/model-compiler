@@ -11,7 +11,7 @@ SiMa.ai 矽晶片在機器學習加速器 (MLA) 上執行 **INT8** 和 **BF16**�
 預處理和後處理函數在 APU 和 CVU 上執行。模型層（例如卷積和池化）在 MLA 上執行。量化器會自動將圖劃分到不同的運算單元。**只有在 MLA 上執行的部分才會進行量化**。
 
 :::note 考量量化的訓練 (QAT)
-本頁介紹訓練後量化 (PTQ)。如果可以重新訓練 PyTorch 模型，請使用[量化感知訓練](/compile-a-model/quantization-aware-training/)在微調期間模擬 INT8 效果，並匯出標準 QDQ ONNX 模型。接著返回本指南以匯入並編譯匯出的模型。
+訓練後量化 (PTQ) 請依照下方的預設量化章節操作。如果可以重新訓練 PyTorch 模型，請使用[量化感知訓練](/compile-a-model/quantization-aware-training/)在微調期間模擬 INT8 效果，並匯出標準 QDQ ONNX 模型。接著依照[從 QAT ONNX 到編譯後的模型](#qat-onnx-to-compiled-model)操作。
 :::
 
 ## 預設量化
@@ -30,6 +30,12 @@ quant_model = loaded_net.quantize(
 
 通道均等化是一種可選的預處理步驟，用於使不同通道上的權重分佈保持一致。請透過以下方式啟用：
 `QuantizationParams.with_channel_equalization`.
+
+### QAT 匯出 {#qat-onnx-to-compiled-model}
+
+[以一般方式載入 QDQ ONNX 模型](./compile-your-first-model.md)，接著使用上方的 `LoadedNet.quantize`，以及[編譯](./model-compilation.md)中說明的 `Model.compile`。AFE 會讀取匯出的 QDQ 縮放因子和零點；不要設定內部旗標 `is_quantized=True`。
+
+仍須提供 `calibration_data`，但 QDQ 涵蓋的範圍不會根據樣本重新估計，因此使用隨機佔位輸入即可。請符合輸入名稱、資料型別、有效值及 SDK 佈局（4D 影像使用 NHWC）。沒有 QDQ 提示而需要量化的區域仍須使用具代表性的校準資料；準確度檢查則須使用真實評估資料。
 
 ## 量化方案
 
