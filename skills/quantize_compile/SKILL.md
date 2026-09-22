@@ -6,7 +6,7 @@ description: Use when quantizing and compiling ONNX models, including QAT QDQ ex
 # Quantize and Compile Standard ONNX Models for SiMa
 
 ## Purpose
-Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile standard ONNX models for SiMa (`mlsoc` or `modalix`).
+Use `skills/quantize_compile/scripts/quantize_compile.py` to quantize and compile FP32 4D image ONNX models for SiMa (`mlsoc` or `modalix`).
 
 ## Target Devices
 
@@ -54,6 +54,11 @@ python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
 ```
 
 ## Default Command
+
+This helper supports FP32 4D image inputs. For non-image or mixed-dtype models,
+use the import API with matching input names, shapes, dtypes, and calibration
+layout instead of this command.
+
 ```bash
 python3 skills/quantize_compile/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
@@ -64,8 +69,10 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 
 ### QAT QDQ exports
 
-Use the default command with INT8 settings and the normal `load_model()`
-path. Preserve QDQ hints; do not set internal `is_quantized=True`.
+For FP32 4D image QAT exports, use the default command with INT8 settings.
+For non-image or mixed-dtype exports, use the import API as noted above.
+Use the normal `load_model()` path and preserve QDQ hints; do not set internal
+`is_quantized=True`.
 Omit `--real_data` to supply random calibration placeholders: AFE retains
 QDQ scales and zero points instead of re-estimating those ranges. Inputs must
 match the model's interface and valid domain. Regions quantized without QDQ
