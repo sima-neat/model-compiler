@@ -1,11 +1,13 @@
 ---
 title: "編譯"
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # 編譯
 
 使用 `Model.compile` 將一個**量化**後的模型轉換為二進位格式，以便在 SiMa MLSoC 上執行。
+
+如果從 QAT QDQ ONNX 匯出檔開始，請先依照[從 QAT ONNX 到編譯後的模型](./quantization.md#qat-onnx-to-compiled-model)操作。下方的 `Model.load` 用於已儲存的編譯器模型，而非 ONNX 檔案。
 
 ```python
 from afe.apis.model import Model

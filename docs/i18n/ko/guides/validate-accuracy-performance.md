@@ -1,6 +1,6 @@
 ---
 title: "정확성과 성능을 검증합니다."
-sidebar_position: 6
+sidebar_position: 7
 ---
 
 # 정확성과 성능을 검증합니다.

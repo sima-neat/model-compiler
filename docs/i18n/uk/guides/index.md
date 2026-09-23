@@ -14,6 +14,7 @@ sidebar_label: "Огляд"
     <ul class="overview-link-list compile-workflow-list">
       <li><a class="overview-link-card" href="/tools/model-zoo/"><strong>Використовуйте попередньо скомпільовану модель</strong><span>Почніть з артефакту Model Zoo, якщо вже існує відповідна модель.</span></a></li>
       <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>Скомпілюйте модель для обробки зображень / ONNX модель</strong><span>Підготуйте, квантуйте, скомпілюйте та перевірте за допомогою Model Compiler. Почніть з першого покрокового керівництва.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/quantization-aware-training/"><strong>Навчайте з урахуванням квантування</strong><span>Тонко налаштуйте модель PyTorch із симуляцією ефектів INT8, а потім експортуйте стандартну модель QDQ ONNX для компіляції.</span></a></li>
       <li><a class="overview-link-card" href="/genai-llima/"><strong>Скомпілюйте модель GenAI / LLiMa модель</strong><span>Використовуйте набір інструментів LLiMa для великих мовних моделей (LLM) та інших генеративних моделей.</span></a></li>
     </ul>
   </section>

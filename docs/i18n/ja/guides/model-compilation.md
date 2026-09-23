@@ -1,11 +1,13 @@
 ---
 title: "コンパイル"
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # コンパイル
 
 `Model.compile` を使用して、量子化された**モデル**を、SiMa MLSoC で実行可能なバイナリ形式に変換します。
+
+QAT QDQ ONNXエクスポートから始める場合は、まず[QAT ONNXからコンパイル済みモデルへ](./quantization.md#qat-onnx-to-compiled-model)を参照してください。以下の `Model.load` は保存済みのコンパイラ用モデルを読み込むものであり、ONNXファイル用ではありません。
 
 ```python
 from afe.apis.model import Model
