@@ -17,6 +17,7 @@ compile, and validate accuracy and performance.
     <ul class="overview-link-list compile-workflow-list">
       <li><a class="overview-link-card" href="/tools/model-zoo/"><strong>Use a precompiled model</strong><span>Start with a Model Zoo artifact when a suitable model already exists.</span></a></li>
       <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>Compile a vision / ONNX model</strong><span>Prepare, quantize, compile, and validate with the Model Compiler. Start with the first-model walkthrough.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/quantization-aware-training/"><strong>Train with quantization-aware training</strong><span>Fine-tune a PyTorch model with simulated INT8 effects, then export a standard QDQ ONNX model for compilation.</span></a></li>
       <li><a class="overview-link-card" href="/genai-llima/"><strong>Compile a GenAI / LLiMa model</strong><span>Use the LLiMa toolchain for LLMs and other generative models.</span></a></li>
     </ul>
   </section>

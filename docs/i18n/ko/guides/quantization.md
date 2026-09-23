@@ -12,7 +12,7 @@ SiMa.ai 실리콘은 머신 러닝 가속기(MLA)에서 **INT8** 및 **BF16**으
 전처리 및 후처리 함수는 APU 및 CVU에서 실행됩니다. 컨볼루션 및 풀링과 같은 모델 레이어는 MLA에서 실행됩니다. 양자화기는 그래프를 컴퓨팅 장치에 걸쳐 자동으로 분할합니다. **MLA에서 실행되는 부분만 양자화됩니다**.
 
 :::note 양자화를 고려한 훈련(QAT)
-이 페이지에서는 학습 후 양자화(PTQ)에 대해 설명합니다. 양자화를 고려한 학습은 별도의 워크플로를 사용하며, 이 가이드에서는 다루지 않습니다.
+학습 후 양자화(PTQ)는 아래의 기본 양자화 섹션을 따르세요. PyTorch 모델을 다시 훈련할 수 있다면 [양자화 인식 학습](/compile-a-model/quantization-aware-training/)을 사용하여 미세 조정 중에 INT8 효과를 시뮬레이션하고 표준 QDQ ONNX 모델을 내보냅니다. 그런 다음 [QAT ONNX에서 컴파일된 모델로](#qat-onnx-to-compiled-model)를 따르세요.
 :::
 
 ## 기본 양자화
@@ -31,6 +31,12 @@ quant_model = loaded_net.quantize(
 
 채널 이퀄라이제이션은 채널 간의 가중치 분포를 균등하게 조정하는 선택적인 전처리 단계입니다. 다음을 사용하여 활성화할 수 있습니다.
 `QuantizationParams.with_channel_equalization`.
+
+### QAT 내보내기 {#qat-onnx-to-compiled-model}
+
+[QDQ ONNX 모델을 일반적인 방법으로 불러온](./compile-your-first-model.md) 다음, 위의 `LoadedNet.quantize`와 [컴파일](./model-compilation.md)에서 설명하는 `Model.compile`을 사용하세요. AFE는 내보낸 QDQ의 스케일과 영점을 읽으므로 내부 플래그 `is_quantized=True`를 설정하지 마세요.
+
+`calibration_data`는 여전히 필요하지만, QDQ로 지정된 범위는 샘플에서 다시 추정하지 않으므로 무작위 더미 입력으로 충분합니다. 입력 이름, 데이터 타입, 유효한 값, SDK 레이아웃(4D 이미지는 NHWC)을 맞추세요. QDQ 힌트 없이 양자화하는 영역에는 대표적인 보정 데이터를, 정확도 검증에는 실제 평가 데이터를 사용하세요.
 
 ## 양자화 방식
 
