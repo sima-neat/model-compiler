@@ -42,7 +42,7 @@ jobs:
               - self-hosted
               - Linux
               - X64
-              - issue-triage
+              - bridge
           - arch: arm64
             target_arch: aarch64
             runner:
