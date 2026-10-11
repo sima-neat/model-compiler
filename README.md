@@ -389,6 +389,9 @@ python scripts/smoke_test_modelsdk.py --tier resnet-quantize
 # Same as resnet-quantize, but also runs the compile step.
 python scripts/smoke_test_modelsdk.py --tier resnet-compile
 
+# Download Qwen3-0.6B and run native graph generation, quantization, and compilation.
+python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
+
 # Download YOLOv8n ONNX, simplify/audit it, and run quantize+compile.
 python scripts/smoke_test_modelsdk.py --tier yolo
 
@@ -413,10 +416,11 @@ avoids collisions with stale files from previous smoke-test runs.
 If an explicit `--work-dir` exists but is not writable, the runner falls back
 to a per-user sibling such as `~/tmp/modelsdk-smoke-$USER`.
 
-The `all`, `resnet-compile`, and `yolo` tiers also collect lightweight
-compiled-artifact metrics. They report package counts/sizes and run MLA
-toolchain checks such as `mla-size` and `mla-readelf` on ELF files packaged in
-the generated MPK archive when those files are present.
+The `all`, `resnet-compile`, `llima-qwen3-compile`, and `yolo` tiers also check
+their compiled artifacts. The LLiMa tier requires floating-point and quantized
+Model SDK files plus MPK archives with MLA ELF files. The other compile tiers
+report package counts and sizes and run tools such as `mla-size` and
+`mla-readelf` on packaged ELF files.
 
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.
