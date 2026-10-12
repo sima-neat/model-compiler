@@ -13,6 +13,15 @@ CLEANUP_WORKFLOW = ROOT / ".github" / "workflows" / "cleanup-container-packages.
 
 
 class ContainerWorkflowTests(unittest.TestCase):
+    def test_build_runs_model_surgery_tests_with_required_dependencies(self):
+        text = BUILD_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('"onnx==1.17.0"', text)
+        self.assertIn('"pytest==9.0.3"', text)
+        self.assertIn(
+            "python3 -m pytest -q tests/test_model_surgery_guard.py", text
+        )
+
     def test_publish_runs_only_after_successful_branch_build(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 

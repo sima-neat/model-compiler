@@ -1,30 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the operator-support table in docs/guides/model-compatibility.md by
-merging two operator sources.
+"""Generate docs/guides/model-compatibility.md from the canonical operator DB.
 
-Sources:
-  1. scripts/data/onnx_operators.json
-     The published docs.sima.ai operator table. Customer-facing source of truth
-     for the precision/5D support flags (INT8 / INT16 / BF16 / 5D).
-  2. skills/model_surgery/data/supported_operators.json
-     The model-surgery operator database. Supplies the extra detail the
-     published table lacks: ONNX opset, attributes, and implementation notes.
-
-Merge rules:
-  - Union of operators across both sources.
-  - Support flags (INT8/INT16/BF16/5D): the published table wins. For operators
-    that exist only in the model-sdk DB, fall back to its int8/bfloat16 values;
-    INT16/5D are reported unknown.
-  - Constraints: model-sdk `sima_hw_sw_constraints`, else published
-    `constraints` for the operators it leaves empty. The engineering wording is
-    not published directly — scripts/data/constraint_copy.json holds the
-    customer-facing sentence for each operator, together with the engineering
-    text it was written from. If that text changes, the copy is stale and this
-    script fails rather than publishing wording that no longer matches.
-  - Notes column: model-sdk `notes`, prefixed with the ONNX opset when known.
-  - Support-flag conflicts between the two sources (e.g. one says INT8=Y, the
-    other INT8=N) are printed to stdout and embedded as an HTML comment at the
-    top of the generated page for human review.
+skills/model_surgery/data/supported_operators.json is the only maintained
+operator-support source. It supplies support flags, 5D support, ONNX opsets,
+hardware/software constraints, and implementation notes. The same constraint
+field feeds the model-surgery guard and published documentation so they cannot
+silently disagree.
 
 Run from the repo root:  python3 scripts/build_supported_operators_md.py
 """
@@ -35,9 +16,7 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PUBLISHED = REPO_ROOT / "scripts" / "data" / "onnx_operators.json"
-MODEL_SDK = REPO_ROOT / "skills" / "model_surgery" / "data" / "supported_operators.json"
-COPY = REPO_ROOT / "scripts" / "data" / "constraint_copy.json"
+SUPPORT_DB = REPO_ROOT / "skills" / "model_surgery" / "data" / "supported_operators.json"
 OUT = REPO_ROOT / "docs" / "guides" / "model-compatibility.md"
 
 YES, NO, UNK = "✅", "❌", "—"
@@ -55,82 +34,26 @@ def norm_flag(value) -> str:
     return UNK
 
 
-def fived_from_spatial(spatial) -> str:
-    """Derive 5D support from the model-sdk `spatial_dimensions` string."""
-    if not spatial:
-        return UNK
-    s = str(spatial).lower()
-    if "5d" in s or "any" in s:
-        return YES
-    return UNK
-
-
 def main() -> int:
-    published = {row["operator"]: row for row in json.loads(PUBLISHED.read_text())}
-    sdk_doc = json.loads(MODEL_SDK.read_text())
-    sdk = sdk_doc.get("operators", {})
-    copy = json.loads(COPY.read_text()).get("constraints", {})
-
-    names = sorted(set(published) | set(sdk), key=str.lower)
-    conflicts: list[str] = []
-    rows: list[tuple[str, str, str, str, str, str, str]] = []
+    support_doc = json.loads(SUPPORT_DB.read_text())
+    operators = support_doc.get("operators", {})
+    names = sorted(operators, key=str.lower)
+    rows: list[tuple[str, str, str, str, str, str]] = []
 
     for name in names:
-        p = published.get(name)
-        m = sdk.get(name)
-
-        # Support flags — published wins; fall back to model-sdk where absent.
-        if p:
-            int8 = norm_flag(p.get("int8"))
-            bf16, fived = norm_flag(p.get("bfloat16")), norm_flag(p.get("fived"))
-        else:
-            int8 = norm_flag(m.get("int8"))
-            bf16, fived = norm_flag(m.get("bfloat16")), fived_from_spatial(m.get("spatial_dimensions"))
-
-        # Conflict detection on overlapping flags.
-        if p and m:
-            for flag, pv, mv in (("INT8", p.get("int8"), m.get("int8")),
-                                 ("BF16", p.get("bfloat16"), m.get("bfloat16"))):
-                if norm_flag(pv) != UNK and norm_flag(mv) != UNK and norm_flag(pv) != norm_flag(mv):
-                    conflicts.append(f"{name}: {flag} published={pv!r} model-sdk={mv!r} (kept published)")
-
-        # Constraints — the operator support database first, else the published
-        # table for the operators it leaves empty.
-        constraints = ""
-        if m and m.get("sima_hw_sw_constraints"):
-            constraints = m["sima_hw_sw_constraints"]
-        elif p and p.get("constraints"):
-            constraints = p["constraints"]
+        entry = operators[name]
+        int8 = norm_flag(entry.get("int8"))
+        bf16 = norm_flag(entry.get("bfloat16"))
+        fived = norm_flag(entry.get("fived"))
+        constraints = (entry.get("sima_hw_sw_constraints") or "").strip()
 
         # ONNX opset — short, numeric only (skip placeholder values like "x").
         opset = ""
-        if m and m.get("onnx-opset-version"):
-            raw = str(m["onnx-opset-version"]).strip()
+        if entry.get("onnx-opset-version"):
+            raw = str(entry["onnx-opset-version"]).strip()
             opset = raw if raw.isdigit() else ""
 
-        constraints = (constraints or "").strip()
         rows.append((name, int8, bf16, fived, opset or UNK, constraints))
-
-    # Constraint copy is checked before anything is emitted — the curated
-    # sentences feed both the list below the table and the table's search index.
-    constrained = [(name, c) for (name, *_rest, c) in rows if c]
-    stale: list[str] = []
-    for name, c in constrained:
-        entry = copy.get(name)
-        if entry is None:
-            stale.append(f"{name}: no customer-facing copy in {COPY.name}")
-        elif entry.get("source", "").strip() != c:
-            stale.append(f"{name}: constraint changed since the copy was written")
-    orphans = sorted(set(copy) - {name for name, _ in constrained})
-    stale += [f"{o}: copy exists but the operator no longer has a constraint" for o in orphans]
-
-    if stale:
-        print(f"{len(stale)} constraint(s) out of sync with {COPY.relative_to(REPO_ROOT)}:")
-        for s in stale:
-            print(f"  - {s}")
-        print("\nUpdate the 'copy' and 'source' fields together, then re-run.")
-        print("Nothing written — the page would otherwise publish stale wording.")
-        return 1
 
     # Payload for the OperatorTable component in the core docs site. The
     # constraint text rides along so the table's search box matches on it, even
@@ -138,8 +61,8 @@ def main() -> int:
     payload = json.dumps(
         [
             {"name": name, "int8": int8, "bf16": bf16, "fived": fived,
-             "opset": opset, "constraint": copy.get(name, {}).get("copy", "")}
-            for name, int8, bf16, fived, opset, _c in rows
+             "opset": opset, "constraint": constraints}
+            for name, int8, bf16, fived, opset, constraints in rows
         ],
         ensure_ascii=False,
         separators=(",", ":"),
@@ -153,10 +76,6 @@ def main() -> int:
         "",
         "<!-- AUTO-GENERATED by scripts/build_supported_operators_md.py. Do not edit by hand. -->",
     ]
-    if conflicts:
-        lines.append("<!-- Support-flag conflicts (published table kept):")
-        lines.extend(f"     - {c}" for c in conflicts)
-        lines.append("-->")
     lines += [
         "",
         "# Model compatibility",
@@ -183,6 +102,7 @@ def main() -> int:
         "",
     ]
 
+    constrained = [(name, constraints) for name, *_rest, constraints in rows if constraints]
     if constrained:
         lines += [
             "## Constraints",
@@ -193,16 +113,14 @@ def main() -> int:
             "model.",
             "",
         ]
-        for name, c in constrained:
-            lines.append(f"- **{name}** — {copy[name]['copy']}")
+        for name, constraints in constrained:
+            rendered_constraints = constraints.replace("\n", "<br />")
+            lines.append(f"- **{name}** — {rendered_constraints}")
         lines.append("")
 
     OUT.write_text("\n".join(lines), encoding="utf-8")
-    print(f"Wrote {OUT.relative_to(REPO_ROOT)} ({len(rows)} operators).")
-    if conflicts:
-        print(f"\n{len(conflicts)} support-flag conflict(s) (published kept):")
-        for c in conflicts:
-            print(f"  - {c}")
+    display_path = OUT.relative_to(REPO_ROOT) if OUT.is_relative_to(REPO_ROOT) else OUT
+    print(f"Wrote {display_path} ({len(rows)} operators).")
     return 0
 
 

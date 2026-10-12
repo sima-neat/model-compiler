@@ -20,6 +20,27 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SmokeTestModelsdkTests(unittest.TestCase):
+    def test_quantize_compile_command_uses_current_reference_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model_path = root / "model.onnx"
+            model_path.write_bytes(b"onnx")
+
+            with mock.patch.object(MODULE, "run") as run:
+                MODULE.run_quantize_compile(
+                    model_path,
+                    root / "build",
+                    input_shape="1,3,224,224",
+                    compile_model=True,
+                    dtype="int8",
+                )
+
+        command = run.call_args.args[0]
+        self.assertNotIn("--input_names", command)
+        self.assertNotIn("--output_names", command)
+        self.assertNotIn("--device", command)
+        self.assertIn("--build_dir", command)
+
     def test_yolo_smoke_validates_compiled_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             work_dir = Path(directory)
