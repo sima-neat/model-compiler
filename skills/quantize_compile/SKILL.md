@@ -1,6 +1,6 @@
 ---
 name: sima-model-quantize-compile
-description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including calibration and verification.
+description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including QAT QDQ exports, calibration, and verification.
 ---
 
 # Quantize and Compile Models for SiMa Modalix
@@ -40,6 +40,10 @@ been inspected.
 
 ## Commands
 
+This helper supports FP32 4D image inputs. For non-image or mixed-dtype models,
+use the import API with matching input names, shapes, dtypes, and calibration
+layout instead of this command.
+
 ONNX input names are inferred from the model. Do not pass `--input_names` for
 ONNX; runtime inputs use the order stored in the graph, excluding initializers.
 Static shapes are inferred in that same order:
@@ -73,6 +77,17 @@ INT8 quantization defaults to `--requant_mode sima` for faster quantization.
 If the resulting accuracy is insufficient, retry with
 `--requant_mode tflite`; it is slower but may improve accuracy.
 
+### QAT QDQ exports
+
+For FP32 4D image QAT exports, use the default ONNX command with INT8 settings.
+For non-image or mixed-dtype exports, use the import API as noted above.
+Use the normal `load_model()` path and preserve QDQ hints; do not set internal
+`is_quantized=True`.
+Omit `--real_data` to supply random calibration placeholders: AFE retains
+QDQ scales and zero points instead of re-estimating those ranges. Inputs must
+match the model's interface and valid domain. Regions quantized without QDQ
+hints need representative calibration data; accuracy checks need real data.
+
 ## Memory Errors
 
 If compilation is killed or runs out of host memory, lower MLA simulator
@@ -91,3 +106,8 @@ A compilation request is complete when the requested artifacts exist under
 `<build_dir>/<model_basename>/` and requested verification has run. Report any
 unverified accuracy, unresolved compatibility constraint, fallback placement,
 or unmeasured performance claim instead of presenting it as confirmed.
+
+## References
+
+- [QAT ONNX import and compilation](../../docs/guides/quantization.md#qat-onnx-to-compiled-model)
+- [Quantize-and-compile helper source](scripts/quantize_compile.py)

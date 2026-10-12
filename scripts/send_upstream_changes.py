@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
@@ -18,8 +19,18 @@ def _safe_slack_value(value, fallback):
 
 
 def slack_api(method, payload, token):
-    request = Request('https://slack.com/api/' + method, data=json.dumps(payload).encode(),
-                      headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+    if method in ('files.getUploadURLExternal', 'files.completeUploadExternal'):
+        # Match Slack's SDK: file methods use form parameters, with the files
+        # array serialized as JSON inside the completion form.
+        fields = {key: json.dumps(value) if isinstance(value, (list, dict)) else value
+                  for key, value in payload.items() if value is not None}
+        data = urlencode(fields).encode()
+        content_type = 'application/x-www-form-urlencoded'
+    else:
+        data = json.dumps(payload).encode()
+        content_type = 'application/json'
+    request = Request('https://slack.com/api/' + method, data=data,
+                      headers={'Authorization': 'Bearer ' + token, 'Content-Type': content_type})
     try:
         with urlopen(request, timeout=30) as response:
             result = json.load(response)
