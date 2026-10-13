@@ -212,6 +212,8 @@ buildx_cmd+=(
 "${buildx_cmd[@]}"
 
 if [[ "${SMOKE_TEST}" == "1" ]]; then
+  docker run --rm --entrypoint bash "${IMAGE}" -c \
+    'printf "int model_compiler_a65_probe = 0;\n" | aarch64-linux-gnu-g++ -shared -fPIC -x c++ - -o /tmp/model-compiler-a65-probe.so && aarch64-linux-gnu-readelf -h /tmp/model-compiler-a65-probe.so | grep -q "Machine:.*AArch64"'
   docker run --rm "${IMAGE}" \
     python /opt/model-compiler-tests/scripts/smoke_test_modelsdk.py --tier basic
 fi
