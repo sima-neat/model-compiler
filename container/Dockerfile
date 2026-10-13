@@ -44,11 +44,14 @@ RUN --mount=type=bind,from=modelsdk_bundle,source=.,target=/tmp/modelsdk-bundle,
         bash /tmp/modelsdk-bundle/install_modelsdk_wheels.sh \
     && test -x "${MODEL_COMPILER_HOME}/bin/python"
 
-# Minimal Ubuntu does not include GLib, while the compiler's EV transforms use
-# libgthread at runtime. This dependency is normally already present on a full
-# Ubuntu workstation but must be explicit in the container.
+# Minimal Ubuntu does not include all of the compiler's runtime dependencies.
+# EV transforms use libgthread, and A65 segments require an AArch64 C++
+# compiler even when Model Compiler itself runs in an amd64 container.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libglib2.0-0 \
+    && apt-get install --yes --no-install-recommends \
+        binutils \
+        g++-aarch64-linux-gnu \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Keep volatile build metadata below the bundle installation layers so a new
