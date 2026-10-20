@@ -134,8 +134,8 @@ class BranchEndToEndTests(unittest.TestCase):
     def run_git(self, cwd, *args):
         return subprocess.check_output(['git', *args], cwd=cwd, stderr=subprocess.DEVNULL, text=True).strip()
 
-    def refresh(self, expected=0):
-        result = subprocess.run(['bash', str(ROOT/'scripts/refresh_daily_branch.sh')], cwd=self.repo, env={**os.environ, 'SOURCE_SHA': self.sha}, capture_output=True, text=True)
+    def refresh(self, expected=0, branch="daily"):
+        result = subprocess.run(['bash', str(ROOT/'scripts/refresh_daily_branch.sh')], cwd=self.repo, env={**os.environ, 'SOURCE_SHA': self.sha, 'DAILY_BRANCH': branch}, capture_output=True, text=True)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
@@ -168,6 +168,23 @@ class BranchEndToEndTests(unittest.TestCase):
         self.refresh()
         self.assertEqual(self.run_git(self.repo, 'rev-parse', 'HEAD^'), self.sha)
         self.assertNotEqual(first, self.run_git(self.repo, 'rev-parse', 'HEAD'))
+
+    def test_master_is_independent_and_idempotent(self):
+        self.refresh()
+        daily = self.run_git(self.repo, 'rev-parse', 'HEAD')
+        self.run_git(self.repo, 'checkout', '--detach', self.sha)
+        (self.repo/'scripts/source.json').write_text('{"version": "master"}\n')
+        self.refresh(branch='daily-master')
+        master = self.run_git(self.repo, 'rev-parse', 'HEAD')
+        self.assertNotEqual(daily, master)
+        self.assertIn(daily, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily'))
+        self.run_git(self.repo, 'checkout', '--detach', self.sha)
+        (self.repo/'scripts/source.json').write_text('{"version": "master"}\n')
+        self.refresh(branch='daily-master')
+        self.assertIn(master, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily-master'))
+
+    def test_non_daily_target_rejected(self):
+        self.refresh(expected=1, branch='develop')
 
     def test_app_auth_replaces_checkout_header(self):
         import threading

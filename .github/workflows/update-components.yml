@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Report available updates without changing daily
+        description: Report available updates without changing daily or daily-master
         type: boolean
         default: false
       source_ref:
@@ -23,6 +23,15 @@ jobs:
   update:
     uses: sima-neat/model-compiler/.github/workflows/update-components-worker.yml@develop
     with:
+      dry_run: ${{ inputs.dry_run || false }}
+      source_ref: ${{ inputs.source_ref || 'develop' }}
+    secrets: inherit
+
+  update-master:
+    name: Update daily-master artifacts
+    uses: sima-neat/model-compiler/.github/workflows/update-components-worker.yml@develop
+    with:
+      channel: master
       dry_run: ${{ inputs.dry_run || false }}
       source_ref: ${{ inputs.source_ref || 'develop' }}
     secrets: inherit

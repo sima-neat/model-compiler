@@ -8,7 +8,7 @@ from pathlib import Path
 def compose(run: dict, jobs: list[dict], channel: str, changes: str | None = None) -> dict:
     if not channel:
         raise ValueError("SLACK_VULCAN_EVENT_CHANNEL_ID must be configured")
-    if run.get("head_branch") != "daily" or run.get("status") != "completed":
+    if run.get("head_branch") not in ("daily", "daily-master") or run.get("status") != "completed":
         raise ValueError("Only completed daily builds can be reported")
     repository = run["repository"]["full_name"]
     base_url = f"https://github.com/{repository}/actions/runs/{run['id']}"
@@ -18,7 +18,8 @@ def compose(run: dict, jobs: list[dict], channel: str, changes: str | None = Non
     def escape(value):
         return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    title = "Model Compiler daily build succeeded" if success else f"Model Compiler daily build: {conclusion}"
+    branch = run["head_branch"]
+    title = f"Model Compiler {branch} build succeeded" if success else f"Model Compiler {branch} build: {conclusion}"
     status_icon = "🟢" if success else "🔴"
     text = f"🦉 {status_icon} {title}\n<{base_url}|Build #{run['run_number']}> · commit {run['head_sha'][:12]} · attempt {run.get('run_attempt', 1)}"
     sections = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]

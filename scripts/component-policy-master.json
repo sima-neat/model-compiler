@@ -1,0 +1,40 @@
+{
+  "binary-packages": {
+    "mla/toolchain/mla-toolchain": {
+      "version-prefix": "v3.0.0-",
+      "channel": "master"
+    }
+  },
+  "python-packages": {
+    "mpk-parser": {
+      "version-prefix": "2.1.3.dev0+master."
+    },
+    "neural-compressor": {
+      "version-prefix": "2.0.0.dev0+master."
+    },
+    "sima-accelerator-mode": {
+      "version-prefix": "2.1.3.dev0+master."
+    },
+    "sima-ev-transforms": {
+      "version-prefix": "3.0.0.dev0+master."
+    },
+    "sima-frontend": {
+      "version-prefix": "3.0.0.dev0+master."
+    },
+    "sima-ml-kernels": {
+      "version-prefix": "3.0.0.dev0+master."
+    },
+    "sima-mlc": {
+      "version-prefix": "3.0.0.dev0+master."
+    },
+    "sima-mppe": {
+      "version-prefix": "2.1.0.dev0+master."
+    },
+    "sima-tvm": {
+      "version-prefix": "1.4.0.dev0+master."
+    },
+    "sima-utils": {
+      "version-prefix": "3.0.0.dev0+master."
+    }
+  }
+}

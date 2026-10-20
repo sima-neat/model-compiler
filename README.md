@@ -99,7 +99,7 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Daily Component Update` workflow checks `develop`'s `scripts/source.json`
+The `Daily Component Update` workflow runs two independent jobs from `develop`'s `scripts/source.json`
 every four hours (00:17, 04:17, 08:17, 12:17, 16:17, and 20:17 UTC).
 A small `Daily Component Update` wrapper on the default branch calls the
 updater workflow on `develop`; updater scripts and the manifest are checked out
@@ -148,8 +148,22 @@ leave the branch untouched. A new develop commit refreshes daily even if no
 package pins changed, so code and bundle-version changes are included. GitHub App credentials trigger the ordinary Build,
 which packages, installs, and smoke-tests both architectures. These tests gate
 cross-component compatibility; individual artifact availability does not.
-A successful current manifest-only updater commit opens or refreshes one PR
-from `daily` to `develop`, with old/new versions, prefixes and the Build link.
+`daily` uses the develop artifact policy in `scripts/source.json`; `daily-master`
+uses the reviewed version families in `scripts/component-policy-master.json`.
+Both branches use build scripts from `develop`. Master selects master artifacts
+for all ten managed Python components and the MLA toolchain; third-party pins
+and the existing LLiMa snap policy remain unchanged. Missing compatible master
+artifacts fail the update instead of publishing mixed develop/master pins.
+The master policy must cover the same components as the develop policy.
+
+Both daily branches are disposable generated build channels, refreshed with an
+explicit lease and independent concurrency groups. Do not edit them directly.
+They publish branch-scoped packages and containers through the same Build gates.
+Neither opens a PR back to `develop`; promote desired pins through a separately
+reviewed change when needed. New `develop` code reaches both branches on the next
+scan, so merging daily pins is unnecessary. Build notifications identify the
+channel. An unchanged source commit and resolved manifest do not trigger a new
+build, even though the scan runs every four hours.
 
 Manual dry runs are available through `workflow_dispatch`. The optional
 `source_ref` input can select a feature-branch manifest only with `dry_run=true`;
@@ -157,8 +171,14 @@ normal updates always read `develop`. Artifactory access
 uses the private runner's existing netrc credentials. Pushes use
 `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
 GitHub executes scheduled and `workflow_run` workflows from the default branch:
-deploy the workflow and helper changes to `main`, and the policy to `develop`,
-before unattended updates can use the new configuration.
+merge the implementation PR into `develop`, then sync `update-components.yml`,
+`daily-build-notify.yml`, and `container-build.yml` to `main` to activate both
+scheduled jobs, completion notifications, and the container duplicate-build
+exclusion. The existing default-branch PR wrapper calls the now
+disabled worker on `develop`, so daily-to-develop PR creation stops immediately
+after the implementation merges. Existing open PRs are not closed automatically.
+No daily branch needs to be created manually; the first non-dry run creates it.
+Dry runs exercise both channel policies without pushing either branch.
 
 ## Building a Bundle
 
