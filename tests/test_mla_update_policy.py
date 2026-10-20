@@ -103,5 +103,5 @@ class MlaUpdatePolicyTests(unittest.TestCase):
         for arch in MODULE.SUPPORTED_ARCHES:
             mla = [c for c in MODULE.collect_components(doc, arch) if c.kind == "binary"]
             self.assertEqual(len(mla), 1)
-            self.assertEqual(mla[0].channel, "develop")
+            self.assertEqual(mla[0].channel, "master")
             self.assertEqual(mla[0].version_prefix, "v3.0.0-")

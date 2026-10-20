@@ -27,7 +27,7 @@ class ContainerWorkflowTests(unittest.TestCase):
 
         self.assertIn("workflows: [Build]", text)
         completion_trigger = text.split("  workflow_run:", 1)[1].split("  workflow_call:", 1)[0]
-        self.assertIn("branches-ignore: [daily]", completion_trigger)
+        self.assertIn("branches-ignore: [daily, daily-master]", completion_trigger)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.event == 'push'", text)
         self.assertIn("head_repository.full_name == github.repository", text)
@@ -141,6 +141,7 @@ const github = {
         self.assertIn("source_run_id:", publish_text)
         self.assertIn("daily-containers:", build_text)
         self.assertIn("github.ref_name == 'daily'", build_text)
+        self.assertIn("github.ref_name == 'daily-master'", build_text)
         self.assertIn("- test-package-install", build_text)
         self.assertIn("uses: ./.github/workflows/container-build.yml", build_text)
         self.assertIn("source_run_id: ${{ github.run_id }}", build_text)

@@ -5,6 +5,9 @@ run-name: Check source.json component families for newer builds
 on:
   workflow_call:
     inputs:
+      channel:
+        type: string
+        default: develop
       dry_run:
         type: boolean
         default: false
@@ -18,7 +21,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: model-compiler-component-updates
+  group: model-compiler-component-updates-${{ inputs.channel }}
   cancel-in-progress: false
 
 env:
@@ -40,8 +43,10 @@ jobs:
       - name: Validate source selection
         env:
           SOURCE_REF: ${{ inputs.source_ref || 'develop' }}
+          CHANNEL: ${{ inputs.channel }}
           DRY_RUN: ${{ inputs.dry_run || false }}
         run: |
+          case "${CHANNEL}" in develop|master) ;; *) exit 1 ;; esac
           if [[ "${SOURCE_REF}" != "develop" && "${DRY_RUN}" != "true" ]]; then
             echo "A custom source_ref requires dry_run=true." >&2
             exit 1
@@ -88,6 +93,11 @@ jobs:
       - name: Upgrade pip
         run: python3 -m pip install --upgrade pip
 
+      - name: Apply checked-in component channel policy
+        env:
+          COMPONENT_CHANNEL: ${{ inputs.channel }}
+        run: python3 _component-updater/scripts/component_channel.py prepare --channel "${COMPONENT_CHANNEL}" --source-json scripts/source.json
+
       - name: Scan compatible component builds
         run: |
           set -euo pipefail
@@ -99,14 +109,16 @@ jobs:
       - name: Prepare private upstream comparison
         env:
           BASELINE_SHA: ${{ needs.resolve-source.outputs.sha }}
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ inputs.channel }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           mkdir -p "${PRIVATE_DIR}"
           chmod 700 "${PRIVATE_DIR}"
+          git show HEAD:scripts/source.json > "${PRIVATE_DIR}/baseline.json"
           python3 _component-updater/scripts/update_component_versions.py merge \
             --source-json scripts/source.json --report scan-aarch64.json \
             --output "${PRIVATE_DIR}/resolved.json" --summary "${PRIVATE_DIR}/versions.md"
+          python3 _component-updater/scripts/component_channel.py validate --source-json "${PRIVATE_DIR}/resolved.json"
 
       - name: Configure private Vulcan history access
         if: vars.UPSTREAM_CHANGELOG_ENABLED == 'true'
@@ -124,7 +136,7 @@ jobs:
         env:
           HISTORY_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
           HISTORY_KMS_KEY: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ inputs.channel }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           python3 _component-updater/scripts/private_changelog_cache.py download \
             --bucket "${HISTORY_BUCKET}" --directory "${PRIVATE_DIR}/history" --kms-key "${HISTORY_KMS_KEY}"
@@ -134,10 +146,10 @@ jobs:
           JENKINS_USERNAME: ${{ secrets.JENKINS_USERNAME }}
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
           BASELINE_SHA: ${{ needs.resolve-source.outputs.sha }}
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ inputs.channel }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           python3 _component-updater/scripts/upstream_changes.py \
-            --base scripts/source.json --updated "${PRIVATE_DIR}/resolved.json" \
+            --base "${PRIVATE_DIR}/baseline.json" --updated "${PRIVATE_DIR}/resolved.json" \
             --base-sha "${BASELINE_SHA}" --cache "${PRIVATE_DIR}/history" --output "${PRIVATE_DIR}/report"
 
       - name: Retain private upstream history
@@ -145,7 +157,7 @@ jobs:
         env:
           HISTORY_BUCKET: ${{ needs.resolve-vulcan-config.outputs.artifact_bucket }}
           HISTORY_KMS_KEY: ${{ needs.resolve-vulcan-config.outputs.artifact_kms_key_id }}
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ inputs.channel }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           python3 _component-updater/scripts/private_changelog_cache.py upload \
             --bucket "${HISTORY_BUCKET}" --directory "${PRIVATE_DIR}/history" --kms-key "${HISTORY_KMS_KEY}"
@@ -153,13 +165,13 @@ jobs:
       - name: Remove private upstream files
         if: always()
         env:
-          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          PRIVATE_DIR: ${{ runner.temp }}/upstream-${{ inputs.channel }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: rm -rf -- "${PRIVATE_DIR}"
 
       - name: Upload scan report
         uses: actions/upload-artifact@v7
         with:
-          name: component-scan-aarch64
+          name: component-scan-${{ inputs.channel }}-aarch64
           path: scan-aarch64.json
           if-no-files-found: error
           retention-days: 3
@@ -195,8 +207,13 @@ jobs:
       - name: Download architecture scan reports
         uses: actions/download-artifact@v7
         with:
-          name: component-scan-aarch64
+          name: component-scan-${{ inputs.channel }}-aarch64
           path: _component-scans
+
+      - name: Apply checked-in component channel policy
+        env:
+          COMPONENT_CHANNEL: ${{ inputs.channel }}
+        run: python3 _component-updater/scripts/component_channel.py prepare --channel "${COMPONENT_CHANNEL}" --source-json scripts/source.json
 
       - name: Merge compatible versions
         id: merge
@@ -208,6 +225,7 @@ jobs:
             --output "${RUNNER_TEMP}/source.json" \
             --summary "${RUNNER_TEMP}/component-update-summary.md" \
             --github-output "${GITHUB_OUTPUT}"
+          python3 _component-updater/scripts/component_channel.py validate --source-json "${RUNNER_TEMP}/source.json"
           cp "${RUNNER_TEMP}/source.json" scripts/source.json
           cat "${RUNNER_TEMP}/component-update-summary.md" >> "${GITHUB_STEP_SUMMARY}"
           python3 -m json.tool scripts/source.json >/dev/null
@@ -228,6 +246,7 @@ jobs:
       - name: Refresh stable automation branch
         if: ${{ !inputs.dry_run }}
         env:
+          DAILY_BRANCH: ${{ inputs.channel == 'master' && 'daily-master' || 'daily' }}
           GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
           SOURCE_SHA: ${{ needs.resolve-source.outputs.sha }}
         run: |
