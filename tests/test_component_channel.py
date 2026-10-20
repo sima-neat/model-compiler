@@ -24,6 +24,8 @@ class ChannelTests(unittest.TestCase):
             for name, entry in entries.items():
                 self.assertEqual(entry['upstream'], source['component-updates'][section][name]['upstream'])
                 self.assertNotIn('develop', entry['version-prefix'])
+        C.validate(doc)
+        doc["dependency_overrides"]["sima-utils"] = "3.0.0.dev0+develop.138"
         with self.assertRaisesRegex(UpdateError, 'mixed channel'):
             C.validate(doc)
 
@@ -48,10 +50,22 @@ class ChannelTests(unittest.TestCase):
         with self.assertRaises(UpdateError):
             C.validate(doc)
 
-    def test_develop_is_unchanged(self):
+    def test_develop_policy_transitions_master_pins(self):
+        source = self.source()
+        doc = C.prepare(copy.deepcopy(source), 'develop')
+        self.assertEqual(doc['python-packages'], source['python-packages'])
+        for entry in doc['component-updates']['python-packages'].values():
+            self.assertIn('+develop.', entry['version-prefix'])
+        with self.assertRaisesRegex(UpdateError, 'mixed channel'):
+            C.validate(doc)
+
+    def test_checked_in_manifest_contains_only_resolved_master_pins(self):
         doc = self.source()
-        self.assertEqual(C.prepare(copy.deepcopy(doc), 'develop'), doc)
         C.validate(doc)
+        for arch in C.SUPPORTED_ARCHES:
+            for component in C.collect_components(doc, arch):
+                self.assertIn('master.', component.current)
+
 
 
 if __name__ == '__main__':

@@ -148,13 +148,15 @@ leave the branch untouched. A new develop commit refreshes daily even if no
 package pins changed, so code and bundle-version changes are included. GitHub App credentials trigger the ordinary Build,
 which packages, installs, and smoke-tests both architectures. These tests gate
 cross-component compatibility; individual artifact availability does not.
-`daily` uses the develop artifact policy in `scripts/source.json`; `daily-master`
-uses the reviewed version families in `scripts/component-policy-master.json`.
+`scripts/source.json` pins the verified master artifacts, so ordinary branch and
+PR builds exercise the 3.0 master components. `daily` explicitly applies
+`scripts/component-policy-develop.json`; `daily-master` applies
+`scripts/component-policy-master.json`. Both policies are checked in and reviewed.
 Both branches use build scripts from `develop`. Master selects master artifacts
 for all ten managed Python components and the MLA toolchain; third-party pins
 and the existing LLiMa snap policy remain unchanged. Missing compatible master
 artifacts fail the update instead of publishing mixed develop/master pins.
-The master policy must cover the same components as the develop policy.
+Both channel policies must cover the same managed components as the manifest.
 
 Both daily branches are disposable generated build channels, refreshed with an
 explicit lease and independent concurrency groups. Do not edit them directly.
