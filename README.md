@@ -99,8 +99,10 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Daily Component Update` workflow runs two independent jobs from `develop`'s `scripts/source.json`
-every four hours (00:17, 04:17, 08:17, 12:17, 16:17, and 20:17 UTC).
+`Daily Component Update` checks `daily` every four hours (00:17, 04:17, 08:17,
+12:17, 16:17, and 20:17 UTC). `Daily Master Component Update` checks and builds
+`daily-master` every six hours (00:17, 06:17, 12:17, and 18:17 UTC).
+Both use `develop`'s `scripts/source.json`.
 A small `Daily Component Update` wrapper on the default branch calls the
 updater workflow on `develop`; updater scripts and the manifest are checked out
 from the same resolved `develop` commit. GitHub may delay scheduled runs.
@@ -164,8 +166,12 @@ They publish branch-scoped packages and containers through the same Build gates.
 Neither opens a PR back to `develop`; promote desired pins through a separately
 reviewed change when needed. New `develop` code reaches both branches on the next
 scan, so merging daily pins is unnecessary. Build notifications identify the
-channel. An unchanged source commit and resolved manifest do not trigger a new
-build, even though the scan runs every four hours.
+channel. An unchanged `daily` candidate does not trigger another build.
+The six-hour master workflow explicitly dispatches Build for an unchanged
+`daily-master` candidate; changed candidates trigger Build through their push.
+Slack uses the saved upstream report when available. Without it, the notification
+compares the exact candidate and its parent manifests, reports version changes
+or verified no changes, and identifies missing upstream commit evidence.
 
 Manual dry runs are available through `workflow_dispatch`. The optional
 `source_ref` input can select a feature-branch manifest only with `dry_run=true`;
@@ -173,14 +179,14 @@ normal updates always read `develop`. Artifactory access
 uses the private runner's existing netrc credentials. Pushes use
 `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
 GitHub executes scheduled and `workflow_run` workflows from the default branch:
-merge the implementation PR into `develop`, then sync `update-components.yml`,
+merge the implementation PR into `develop`, then sync `update-components.yml`, `update-master-components.yml`,
 `daily-build-notify.yml`, and `container-build.yml` to `main` to activate both
 scheduled jobs, completion notifications, and the container duplicate-build
 exclusion. The existing default-branch PR wrapper calls the now
 disabled worker on `develop`, so daily-to-develop PR creation stops immediately
 after the implementation merges. Existing open PRs are not closed automatically.
 No daily branch needs to be created manually; the first non-dry run creates it.
-Dry runs exercise both channel policies without pushing either branch.
+Run each workflow with `dry_run=true` to exercise its policy without pushing or building.
 
 ## Building a Bundle
 

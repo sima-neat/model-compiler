@@ -1,0 +1,30 @@
+name: Daily Master Component Update
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report available updates without changing daily-master
+        type: boolean
+        default: false
+      source_ref:
+        description: Manifest ref for dry-run testing only
+        type: string
+        default: develop
+
+permissions:
+  actions: write
+  contents: write
+  id-token: write
+
+jobs:
+  update:
+    uses: sima-neat/model-compiler/.github/workflows/update-components-worker.yml@develop
+    with:
+      channel: master
+      rebuild_unchanged: true
+      dry_run: ${{ inputs.dry_run || false }}
+      source_ref: ${{ inputs.source_ref || 'develop' }}
+    secrets: inherit

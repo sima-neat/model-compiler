@@ -8,6 +8,10 @@ on:
       channel:
         type: string
         default: develop
+      rebuild_unchanged:
+        description: Build even when the automation candidate is unchanged
+        type: boolean
+        default: false
       dry_run:
         type: boolean
         default: false
@@ -244,6 +248,7 @@ jobs:
           private-key: ${{ secrets.NEAT_RELEASES_APP_PRIVATE_KEY }}
 
       - name: Refresh stable automation branch
+        id: refresh
         if: ${{ !inputs.dry_run }}
         env:
           DAILY_BRANCH: ${{ inputs.channel == 'master' && 'daily-master' || 'daily' }}
@@ -262,6 +267,13 @@ jobs:
           export GIT_CONFIG_VALUE_1
           echo "::add-mask::${GIT_CONFIG_VALUE_1}"
           bash _component-updater/scripts/refresh_daily_branch.sh
+
+      - name: Rebuild unchanged scheduled candidate
+        if: ${{ !inputs.dry_run && inputs.rebuild_unchanged && steps.refresh.outputs.changed == 'false' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DAILY_BRANCH: ${{ inputs.channel == 'master' && 'daily-master' || 'daily' }}
+        run: gh workflow run build.yml --repo "${GITHUB_REPOSITORY}" --ref "${DAILY_BRANCH}"
 
       - name: Report no changes
         if: steps.merge.outputs.changed != 'true'

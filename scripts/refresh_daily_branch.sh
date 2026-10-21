@@ -26,6 +26,7 @@ if [[ -n "${expected}" ]]; then
   if [[ "$(git rev-parse "${expected}^")" == "${SOURCE_SHA}" ]] && \
       git show "${expected}:scripts/source.json" | cmp -s - scripts/source.json; then
     echo "${branch} already contains this candidate; leaving it untouched."
+    if [[ -n "${GITHUB_OUTPUT:-}" ]]; then echo "changed=false" >> "${GITHUB_OUTPUT}"; fi
     exit 0
   fi
 fi
@@ -42,3 +43,4 @@ fi
 git commit --allow-empty -m "Update Model Compiler component versions" \
   -m "Component-Updater: ${branch}"
 git push "--force-with-lease=refs/heads/${branch}:${expected}" origin "HEAD:refs/heads/${branch}"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then echo "changed=true" >> "${GITHUB_OUTPUT}"; fi
