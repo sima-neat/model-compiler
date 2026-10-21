@@ -183,6 +183,17 @@ class BranchEndToEndTests(unittest.TestCase):
         self.refresh(branch='daily-master')
         self.assertIn(master, self.run_git(self.repo, 'ls-remote', '--heads', 'origin', 'daily-master'))
 
+    def test_refresh_outputs_distinguish_push_from_unchanged_candidate(self):
+        from unittest.mock import patch
+        output = Path(self.temp.name) / 'outputs'
+        with patch.dict(os.environ, {'GITHUB_OUTPUT': str(output)}):
+            self.refresh(branch='daily-master')
+            self.assertEqual(output.read_text(), 'changed=true\n')
+            self.run_git(self.repo, 'checkout', '--detach', self.sha)
+            output.write_text('')
+            self.refresh(branch='daily-master')
+            self.assertEqual(output.read_text(), 'changed=false\n')
+
     def test_non_daily_target_rejected(self):
         self.refresh(expected=1, branch='develop')
 
