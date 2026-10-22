@@ -4,7 +4,9 @@ on:
   workflow_run:
     workflows: [Build]
     types: [completed]
-    branches: [daily]
+    # Only master artifacts are promoted into develop. The daily channel
+    # remains a standalone build channel and must not create promotion PRs.
+    branches: [daily-master]
 
 permissions:
   actions: read
@@ -15,7 +17,7 @@ jobs:
   open-pr:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     uses: sima-neat/model-compiler/.github/workflows/open-component-update-pr-worker.yml@develop
     secrets: inherit
