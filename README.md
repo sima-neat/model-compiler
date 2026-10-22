@@ -163,9 +163,14 @@ Both channel policies must cover the same managed components as the manifest.
 Both daily branches are disposable generated build channels, refreshed with an
 explicit lease and independent concurrency groups. Do not edit them directly.
 They publish branch-scoped packages and containers through the same Build gates.
-Neither opens a PR back to `develop`; promote desired pins through a separately
-reviewed change when needed. New `develop` code reaches both branches on the next
-scan, so merging daily pins is unnecessary. Build notifications identify the
+After a successful push or dispatched Build, `daily-master` opens or refreshes a
+reviewable PR into `develop` when its manifest differs. Its head is the dedicated
+`automation/promote-daily-master` branch, advanced only to a successfully tested
+SHA, so later pending or failed daily builds cannot change the PR. Promotion requires the
+current tested branch tip to be a manifest-only updater commit based on the
+current `develop`; stale runs and unchanged manifests are skipped. `daily` remains
+a standalone channel. The default-branch PR wrapper must watch `daily-master`
+and calls the promotion worker on `develop`. Build notifications identify the
 channel. An unchanged `daily` candidate does not trigger another build.
 The six-hour master workflow explicitly dispatches Build for an unchanged
 `daily-master` candidate; changed candidates trigger Build through their push.
