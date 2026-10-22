@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: [Build]
     types: [completed]
+    # Only master artifacts are promoted into develop. The daily channel
+    # remains a standalone build channel and must not create promotion PRs.
     branches: [daily-master]
 
 permissions:
