@@ -65,5 +65,63 @@ class PromotionGateTests(unittest.TestCase):
                     self.assertEqual(output.read_text().strip(), f'current={str(case == "valid").lower()}')
 
 
+class PromotionHeadTests(unittest.TestCase):
+    def test_pr_head_moves_only_when_a_tested_sha_is_promoted(self):
+        block = WORKFLOW.read_text().split('      - name: Create or update pull request', 1)[1]
+        script = '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / 'repo'
+            repo.mkdir()
+            remote = root / 'remote.git'
+            subprocess.run(['git', 'init', '--bare', str(remote)], check=True, capture_output=True)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(repo), *args], text=True, stderr=subprocess.DEVNULL).strip()
+            git('init', '-b', 'develop')
+            git('config', 'user.name', 'test')
+            git('config', 'user.email', 'test@example.invalid')
+            git('commit', '--allow-empty', '-m', 'base')
+            base = git('rev-parse', 'HEAD')
+            git('remote', 'add', 'origin', str(remote))
+            git('switch', '-c', 'daily-master')
+            git('commit', '--allow-empty', '-m', 'tested candidate')
+            tested = git('rev-parse', 'HEAD')
+            git('push', 'origin', 'daily-master')
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            gh = bin_dir / 'gh'
+            gh.write_text('#!/bin/sh\nprintf "%s\n" "$*" >> "$GH_CALLS"\n'
+                          'if [ "$2" = list ]; then printf "%s" "$EXISTING_PR"; fi\n')
+            gh.chmod(0o755)
+            calls = root / 'gh-calls'
+            env = dict(os.environ, PATH=f'{bin_dir}:{os.environ["PATH"]}',
+                       GITHUB_REPOSITORY='test/repo', RUNNER_TEMP=str(root),
+                       GH_CALLS=str(calls), EXISTING_PR='')
+            def promote(sha):
+                result = subprocess.run(['bash', '-c', script], cwd=repo,
+                                        env=dict(env, TESTED_SHA=sha), capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            def head():
+                return git('ls-remote', 'origin', 'refs/heads/automation/promote-daily-master').split()[0]
+            promote(tested)
+            self.assertEqual(head(), tested)
+            self.assertIn('pr create --repo test/repo --base develop --head automation/promote-daily-master', calls.read_text())
+            # The scanner replaces its candidate while the next Build is pending
+            # or failed. The open PR must still point to the previous tested SHA.
+            git('reset', '--hard', base)
+            git('commit', '--allow-empty', '-m', 'next candidate')
+            candidate = git('rev-parse', 'HEAD')
+            git('push', '--force', 'origin', 'daily-master')
+            self.assertEqual(head(), tested)
+            # Reprocessing the old successful SHA cannot accidentally push HEAD.
+            env['EXISTING_PR'] = '123'
+            promote(tested)
+            self.assertEqual(head(), tested)
+            # Once the next SHA succeeds, refresh the existing promotion PR.
+            promote(candidate)
+            self.assertEqual(head(), candidate)
+            self.assertIn('pr edit 123 ', calls.read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

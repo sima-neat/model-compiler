@@ -103,10 +103,16 @@ jobs:
       - name: Create or update pull request
         if: steps.verify.outputs.current == 'true'
         env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
-          branch="daily-master"
+          # The updater owns daily-master and may replace it before its next
+          # Build passes. Only this success-gated worker advances the PR head.
+          branch="automation/promote-daily-master"
+          expected="$(git ls-remote --heads origin "refs/heads/${branch}" | cut -f1)"
+          git push "--force-with-lease=refs/heads/${branch}:${expected}" \
+            origin "${TESTED_SHA}:refs/heads/${branch}"
           title="Update Model Compiler master component versions"
           existing="$(
             gh pr list \

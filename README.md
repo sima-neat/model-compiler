@@ -164,7 +164,9 @@ Both daily branches are disposable generated build channels, refreshed with an
 explicit lease and independent concurrency groups. Do not edit them directly.
 They publish branch-scoped packages and containers through the same Build gates.
 After a successful push or dispatched Build, `daily-master` opens or refreshes a
-reviewable PR into `develop` when its manifest differs. Promotion requires the
+reviewable PR into `develop` when its manifest differs. Its head is the dedicated
+`automation/promote-daily-master` branch, advanced only to a successfully tested
+SHA, so later pending or failed daily builds cannot change the PR. Promotion requires the
 current tested branch tip to be a manifest-only updater commit based on the
 current `develop`; stale runs and unchanged manifests are skipped. `daily` remains
 a standalone channel. The default-branch PR wrapper must watch `daily-master`
