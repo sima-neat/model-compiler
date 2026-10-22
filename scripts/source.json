@@ -151,9 +151,9 @@
     "neural-compressor": "2.0.0.dev0+master.4",
     "sima-accelerator-mode": "2.1.3.dev0+master.18",
     "sima-ev-transforms": "3.0.0.dev0+master.19",
-    "sima-frontend": "3.0.0.dev0+master.396",
+    "sima-frontend": "3.0.0.dev0+master.398",
     "sima-ml-kernels": "3.0.0.dev0+master.46",
-    "sima-mlc": "3.0.0.dev0+master.189",
+    "sima-mlc": "3.0.0.dev0+master.190",
     "sima-mppe": "2.1.0.dev0+master.26",
     "sima-tvm": "1.4.0.dev0+master.22",
     "sima-utils": "3.0.0.dev0+master.38"
@@ -213,13 +213,34 @@
     }
   ],
   "python-packages": [
-    { "name": "sima-frontend", "version": "3.0.0.dev0+master.396" },
-    { "name": "mpk_parser", "version": "2.1.3.dev0+master.39" },
-    { "name": "sima-mppe", "version": "2.1.0.dev0+master.26" },
-    { "name": "onnxoptimizer", "version": "0.3.13" },
-    { "name": "pyyaml", "version": "6.0.3" },
-    { "name": "matplotlib", "version": "3.10.9" },
-    { "name": "neural_compressor", "version": "2.0.0.dev0+master.4" },
+    {
+      "name": "sima-frontend",
+      "version": "3.0.0.dev0+master.398"
+    },
+    {
+      "name": "mpk_parser",
+      "version": "2.1.3.dev0+master.39"
+    },
+    {
+      "name": "sima-mppe",
+      "version": "2.1.0.dev0+master.26"
+    },
+    {
+      "name": "onnxoptimizer",
+      "version": "0.3.13"
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3"
+    },
+    {
+      "name": "matplotlib",
+      "version": "3.10.9"
+    },
+    {
+      "name": "neural_compressor",
+      "version": "2.0.0.dev0+master.4"
+    },
     {
       "name": "sima_lmm[sdk]",
       "vulcan": {
