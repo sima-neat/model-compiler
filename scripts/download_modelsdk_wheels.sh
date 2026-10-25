@@ -799,6 +799,39 @@ closure_target_for_summary_entry() {
   fi
 }
 
+build_docopt_resolver_wheel() {
+  # num2words (required by sima_lmm) depends on docopt, whose PyPI release
+  # contains only an sdist. Build this explicit pure-Python exception before
+  # the cross-platform, wheel-only resolver; never allow arbitrary source builds.
+  local build_dir=""
+  local wheel=""
+  build_dir="$(mktemp -d)"
+  register_temp_dir "$build_dir"
+
+  echo "Building pure-Python resolver helper wheel: docopt==0.6.2"
+  PIP_NO_INPUT=1 python3 -m pip wheel \
+    --disable-pip-version-check \
+    --no-deps \
+    "${PIP_INDEX_ARGS[@]}" \
+    --wheel-dir "$build_dir" \
+    "docopt==0.6.2" || return 1
+
+  collect_wheels "$build_dir"
+  if [[ ${#COLLECTED_WHEELS[@]} -ne 1 ]]; then
+    echo "Expected exactly one docopt resolver wheel." >&2
+    return 1
+  fi
+  wheel="${COLLECTED_WHEELS[0]}"
+  case "$(basename "$wheel")" in
+    docopt-0.6.2-py3-none-any.whl|docopt-0.6.2-py2.py3-none-any.whl) ;;
+    *)
+      echo "Refusing non-portable docopt resolver wheel: $(basename "$wheel")" >&2
+      return 1
+      ;;
+  esac
+  cp "$wheel" "$OUTPUT_DIR/"
+}
+
 download_full_dependency_closure() {
   local dep_dir=""
   local dep_log=""
@@ -1348,6 +1381,7 @@ fi
 if [[ "$INCLUDE_DEPENDENCIES" == "1" ]]; then
   download_preload_packages
   download_source_packages
+  build_docopt_resolver_wheel
   download_full_dependency_closure
 fi
 
