@@ -3,3 +3,8 @@ __pycache__/
 .codex
 .vscode/
 examples/**/data/*.pkl
+
+# Investigation findings belong in issues; retain logs as CI artifacts or locally.
+/docs/reports/
+/debug-evidence/
+/debug-results/

@@ -248,28 +248,6 @@ latest_patch_for_minor() {
     | tail -n1
 }
 
-host_cxxflags() {
-  local flags=()
-  local version_dir=""
-  local multiarch=""
-  local dir=""
-
-  for dir in /usr/include/c++/*; do
-    if [[ -d "$dir" ]]; then
-      version_dir="$dir"
-    fi
-  done
-  if [[ -n "$version_dir" ]]; then
-    flags+=("-isystem" "$version_dir")
-    multiarch="$(host_multiarch_triplet)"
-    if [[ -n "$multiarch" && -d "/usr/include/${multiarch}/c++/${version_dir##*/}" ]]; then
-      flags+=("-isystem" "/usr/include/${multiarch}/c++/${version_dir##*/}")
-    fi
-  fi
-
-  printf '%s\n' "${flags[*]}"
-}
-
 run_host_build_env() {
   local cmd=("$@")
   local host_path="/usr/bin:/bin:$PATH"
@@ -277,7 +255,6 @@ run_host_build_env() {
   local host_pkgconfig_libdir="/usr/lib/pkgconfig:/usr/share/pkgconfig"
   local host_include_path="/usr/include"
   local host_library_path="/lib:/usr/lib"
-  local host_cxxflags_value=""
   local host_cmake_args="-DGGML_NATIVE=OFF -DLLAVA_BUILD=OFF"
   local build_parallel_level="${MODELSDK_BUILD_PARALLEL_LEVEL:-}"
   local build_parallel_env=()
@@ -288,7 +265,6 @@ run_host_build_env() {
     host_include_path="/usr/include:/usr/include/${host_multiarch}"
     host_library_path="/lib/${host_multiarch}:/usr/lib/${host_multiarch}:${host_library_path}"
   fi
-  host_cxxflags_value="$(host_cxxflags)"
   if [[ -n "$build_parallel_level" ]]; then
     build_parallel_env=(
       "CMAKE_BUILD_PARALLEL_LEVEL=$build_parallel_level"
@@ -297,7 +273,16 @@ run_host_build_env() {
     )
   fi
 
+  # Let native gcc/g++ select their matching headers and libraries. SDK search
+  # paths can otherwise mix a different libstdc++ version into host builds.
   env \
+    -u CPATH \
+    -u C_INCLUDE_PATH \
+    -u CPLUS_INCLUDE_PATH \
+    -u OBJC_INCLUDE_PATH \
+    -u LIBRARY_PATH \
+    -u GCC_EXEC_PREFIX \
+    -u COMPILER_PATH \
     -u CC \
     -u CXX \
     -u CPP \
@@ -360,7 +345,6 @@ run_host_build_env() {
     PKG_CONFIG_SYSTEM_INCLUDE_PATH="$host_include_path" \
     PKG_CONFIG_SYSTEM_LIBRARY_PATH="$host_library_path" \
     CMAKE_ARGS="$host_cmake_args" \
-    CXXFLAGS="$host_cxxflags_value" \
     "${build_parallel_env[@]}" \
     CC=gcc \
     CXX=g++ \

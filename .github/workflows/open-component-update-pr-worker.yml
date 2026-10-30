@@ -1,0 +1,16 @@
+name: Daily Branch Promotion Disabled
+
+# Compatibility entrypoint for the workflow_run wrapper still on main.
+# Daily manifests are standalone build inputs and are not merged into develop.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  standalone-channels:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain daily branch policy
+        run: echo 'Daily branches are standalone build channels; no component update PR is opened.' >> "${GITHUB_STEP_SUMMARY}"
