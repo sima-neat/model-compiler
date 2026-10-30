@@ -69,7 +69,7 @@ jobs:
   scan:
     name: Scan ARM64 component artifacts
     needs: [resolve-source, resolve-vulcan-config]
-    environment: ${{ vars.VULCAN_ENV || 'production' }}
+    environment: ${{ (vars.VULCAN_ENV || 'production') == 'production' && 'prod' || (vars.VULCAN_ENV || 'production') }}
     runs-on:
       - self-hosted
       - macOS

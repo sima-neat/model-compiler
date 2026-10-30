@@ -19,7 +19,7 @@ jobs:
     if: ${{ always() && github.event.workflow_run.head_repository.full_name == github.repository }}
     needs: resolve-vulcan-config
     runs-on: ubuntu-24.04
-    environment: ${{ vars.VULCAN_ENV || 'production' }}
+    environment: ${{ (vars.VULCAN_ENV || 'production') == 'production' && 'prod' || (vars.VULCAN_ENV || 'production') }}
     timeout-minutes: 5
     steps:
       - name: Checkout trusted notification code
