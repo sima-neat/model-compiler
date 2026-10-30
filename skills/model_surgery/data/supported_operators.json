@@ -228,14 +228,14 @@
       "onnx-opset-version": "13",
       "attributes": "axis: int\nindices is 2nd input",
       "element_wise": null,
-      "tvm_transforms_constraints": "Converted to Take.",
+      "tvm_transforms_constraints": "Converted to Take, then rewritten to StridedSlice when indices is a scalar compile-time constant and Take has an axis.",
       "spatial_dimensions": "1D, 2D",
       "fived": null,
-      "sima_hw_sw_constraints": "Indices must be a constant, and it must be 0D or 1D. (HW)",
-      "business_study": "Non-supported indices.",
-      "int8": "N",
+      "sima_hw_sw_constraints": "indices must be a scalar compile-time constant. The imported Take must have an axis so it can be rewritten to StridedSlice. Runtime or 1D indices and direct Take execution are not supported on MLA. (SW)",
+      "business_study": "Runtime or non-scalar indices.",
+      "int8": "Y",
       "bfloat16": "Y",
-      "notes": "Converted to slice or conv2d."
+      "notes": "Supported through the Take-to-StridedSlice rewrite, not as a native Take operator."
     },
     "Gelu": {
       "onnx-opset-version": "20",
@@ -247,7 +247,7 @@
       "sima_hw_sw_constraints": "approximate = \"none\" (SW)",
       "business_study": null,
       "int8": "Y",
-      "bfloat16": "N",
+      "bfloat16": "Y",
       "notes": "tanh approximation can be added."
     },
     "Gemm": {
@@ -676,7 +676,7 @@
       "sima_hw_sw_constraints": null,
       "business_study": null,
       "int8": "Y",
-      "bfloat16": "N",
+      "bfloat16": "Y",
       "notes": null
     },
     "SpaceToDepth": {

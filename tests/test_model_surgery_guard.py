@@ -162,6 +162,26 @@ def test_real_support_db_describes_new_onnx_operator_precision_constraints():
     assert "Rank-5" in operators["MeanVarianceNormalization"]["sima_hw_sw_constraints"]
 
 
+def test_real_support_db_matches_afe_precision_and_gather_rewrite_support():
+    support_db = guard._load_support_db(SUPPORT_DB_PATH)
+    operators = support_db["operators"]
+
+    for operator in ("Softplus", "Gelu"):
+        assert operators[operator]["int8"] == "Y"
+        assert operators[operator]["bfloat16"] == "Y"
+
+    gather = operators["Gather"]
+    assert gather["int8"] == "Y"
+    assert gather["bfloat16"] == "Y"
+    assert "scalar compile-time constant" in gather["sima_hw_sw_constraints"]
+    assert "1D indices" in gather["sima_hw_sw_constraints"]
+    assert "Take-to-StridedSlice rewrite" in gather["notes"]
+
+    grid_sample = operators["GridSample"]
+    assert grid_sample["int8"] == "N"
+    assert grid_sample["bfloat16"] == "Y"
+
+
 def test_real_support_db_includes_decomposed_mla_onnx_operators():
     support_db = guard._load_support_db(SUPPORT_DB_PATH)
     operators = support_db["operators"]
