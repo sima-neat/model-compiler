@@ -22,14 +22,21 @@ Install and authenticate `sima-cli` first. See the
 instructions.
 
 Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04
-host:
+host. Select the package for the host architecture and the artifact ref you
+want to use:
 
 ```bash
-# amd64 host
-sima-cli install -v 2.0.0 tools/model-compiler/amd64
-# arm64 host
-sima-cli install -v 2.1.2 tools/model-compiler/arm64
+# Current develop compiler
+sima-cli neat install model-compiler/amd64@develop
+sima-cli neat install model-compiler/arm64@develop
+
+# Tagged release; replace v2.1.3.1 with the desired release tag
+sima-cli neat install model-compiler/amd64@v2.1.3.1
+sima-cli neat install model-compiler/arm64@v2.1.3.1
 ```
+
+The `@develop` target resolves to the latest successfully published build from
+the `develop` branch and can briefly lag the branch head while CI is running.
 
 ## Repository Layout
 

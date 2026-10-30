@@ -30,9 +30,13 @@ if ! command -v activate-model-compiler >/dev/null 2>&1 && [[ "${model_compiler_
 Model Compiler is not installed in this environment.
 
 Install Model Compiler first, then retry:
-  sima-cli install tools/model-compiler/arm64
+  # amd64 host
+  sima-cli neat install model-compiler/amd64
+  # arm64 host
+  sima-cli neat install model-compiler/arm64
 
-Use the package/version appropriate for your SDK environment.
+These targets use the latest published main artifact. Append @develop only to
+use the current develop compiler, or append a release tag to pin a release.
 EOF
   exit 1
 fi

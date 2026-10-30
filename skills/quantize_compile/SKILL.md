@@ -18,7 +18,9 @@ activate-model-compiler
 ```
 
 If it is unavailable, install the package for the host architecture with
-`sima-cli install tools/model-compiler/<amd64|arm64>`.
+`sima-cli neat install model-compiler/<amd64|arm64>`. The unqualified target
+uses the latest published main artifact. Append `@develop` only when explicitly
+testing the current develop compiler, or append a release tag to pin a release.
 
 ## Workflow
 
