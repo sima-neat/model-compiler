@@ -31,11 +31,12 @@ Model Compiler is not installed in this environment.
 
 Install Model Compiler first, then retry:
   # amd64 host
-  sima-cli neat install model-compiler/amd64@develop
+  sima-cli neat install model-compiler/amd64
   # arm64 host
-  sima-cli neat install model-compiler/arm64@develop
+  sima-cli neat install model-compiler/arm64
 
-For a release build, replace @develop with the desired release tag.
+These targets use the latest published main artifact. Append @develop only to
+use the current develop compiler, or append a release tag to pin a release.
 EOF
   exit 1
 fi
