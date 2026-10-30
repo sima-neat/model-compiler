@@ -18,7 +18,8 @@ activate-model-compiler
 ```
 
 If it is unavailable, install the package for the host architecture with
-`sima-cli install tools/model-compiler/<amd64|arm64>`.
+`sima-cli neat install model-compiler/<amd64|arm64>@develop`. For a release
+build, replace `develop` with the desired release tag.
 
 ## Workflow
 
