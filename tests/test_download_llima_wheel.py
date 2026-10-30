@@ -23,6 +23,10 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             "set -euo pipefail\n"
             'printf "%s\\n" "$@" >> "${FAKE_SIMA_CLI_LOG:?}"\n'
             'target="${@: -1}"\n'
+            'if [[ "$target" == "--json" ]]; then\n'
+            '  echo \'{"ref":"v0.4.0","resolved_spec":"deadbeef1234"}\'\n'
+            '  exit 0\n'
+            'fi\n'
             'if [[ "$target" == "${FAKE_SIMA_CLI_FAIL_TARGET:-}" ]]; then exit 1; fi\n'
             'shopt -s nullglob\n'
             'wheels=("${FAKE_SIMA_CLI_WHEELS:?}"/*.whl)\n'
@@ -364,7 +368,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
         )["sima_lmm"]
         self.assertEqual(provenance["resolved-commit"], "deadbeef1234")
 
-    def test_immutable_tag_ref_is_forwarded(self):
+    def test_release_tag_resolves_commit_for_unsuffixed_wheel(self):
         manifest = {
             "python-packages": [
                 {"name": "sima_lmm[sdk]", "vulcan": {"ref": "v0.4.0"}}
@@ -373,15 +377,35 @@ class DownloadLlimaWheelTests(unittest.TestCase):
 
         result, output_dir = self.run_helper(
             manifest,
-            wheel_versions=["0.4.0+release.deadbeef1234"],
+            wheel_versions=["0.4.0"],
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assert_cli_target("llima/compiler@v0.4.0")
+        self.assert_cli_target("llima/compiler@v0.4.0:deadbeef1234")
         provenance = json.loads(
             (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
         )["sima_lmm"]
         self.assertEqual(provenance["resolved-commit"], "deadbeef1234")
+
+
+    def test_release_tag_rejects_invalid_resolution_before_download(self):
+        manifest = {
+            "python-packages": [
+                {"name": "sima_lmm[sdk]", "vulcan": {"ref": "v0.6.0"}}
+            ]
+        }
+        original_cli = self.fake_cli.read_text()
+        original_payload = '{"ref":"v0.4.0","resolved_spec":"deadbeef1234"}'
+        for payload in (
+            {"ref": "v0.5.0", "resolved_spec": "deadbeef1234"},
+            {"ref": "v0.6.0", "resolved_spec": "latest"},
+        ):
+            with self.subTest(payload=payload):
+                self.fake_cli.write_text(original_cli.replace(original_payload, json.dumps(payload)))
+                result, _ = self.run_helper(manifest, wheel_versions=["0.6.0"])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("invalid ref or commit", result.stderr)
+                self.assertEqual(self.cli_targets(), ["llima/compiler@v0.6.0"])
 
 
 if __name__ == "__main__":

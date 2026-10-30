@@ -174,11 +174,37 @@ if ! command -v "$SIMA_CLI_BIN" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Release wheels omit the commit suffix; resolve the tag before downloading so
+# provenance still identifies the exact artifact selected by the tag.
+DOWNLOAD_REF="$REF"
+RESOLVED_RELEASE_COMMIT=""
+if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  resolution="$(SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
+    --type wheel "llima/compiler@${REF}" --json)"
+  RESOLVED_RELEASE_COMMIT="$(python3 - "$resolution" "$REF" <<'PYRESOLVE'
+import json
+import re
+import sys
+
+text, expected_ref = sys.argv[1:]
+start = text.find("{")
+if start < 0:
+    raise SystemExit("LLiMa tag resolution did not return JSON")
+payload = json.loads(text[start:])
+commit = str(payload.get("resolved_spec", ""))
+if payload.get("ref") != expected_ref or not re.fullmatch(r"[0-9a-fA-F]{7,40}", commit):
+    raise SystemExit("LLiMa tag resolution returned an invalid ref or commit")
+print(commit)
+PYRESOLVE
+  )"
+  DOWNLOAD_REF="${REF}:${RESOLVED_RELEASE_COMMIT}"
+fi
+
 mkdir -p "$OUTPUT_DIR"
 if ! SIMA_CLI_CHECK_FOR_UPDATE=0 "$SIMA_CLI_BIN" neat install \
     --type wheel \
     --install-dir "$OUTPUT_DIR" \
-    "llima/compiler@${REF}" >&2; then
+    "llima/compiler@${DOWNLOAD_REF}" >&2; then
   if [[ "$SNAP_POLICY" != "1" || "$REF" == "develop" ]] || is_protected_ref "$REF"; then
     echo "Failed to download llima/compiler@${REF}." >&2
     exit 1
@@ -207,7 +233,8 @@ fi
 python3 - \
   "$OUTPUT_DIR/resolved-llima-package.json" \
   "$REF" \
-  "${wheels[0]}" <<'PY'
+  "${wheels[0]}" \
+  "$RESOLVED_RELEASE_COMMIT" <<'PY'
 import json
 import pathlib
 import re
@@ -215,7 +242,7 @@ import sys
 import zipfile
 from email import message_from_bytes
 
-output, requested_ref, wheel_raw = sys.argv[1:]
+output, requested_ref, wheel_raw, release_commit = sys.argv[1:]
 wheel = pathlib.Path(wheel_raw)
 with zipfile.ZipFile(wheel) as archive:
     metadata_name = next(
@@ -226,7 +253,7 @@ with zipfile.ZipFile(wheel) as archive:
 if not version:
     raise SystemExit(f"Wheel version is missing from {wheel}")
 
-explicit_commit = requested_ref.rpartition(":")[2] if ":" in requested_ref else ""
+explicit_commit = requested_ref.rpartition(":")[2] if ":" in requested_ref else release_commit
 if re.fullmatch(r"[0-9a-fA-F]{7,40}", explicit_commit):
     resolved_commit = explicit_commit
 else:
