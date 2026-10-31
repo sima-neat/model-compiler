@@ -13,12 +13,21 @@ CLEANUP_WORKFLOW = ROOT / ".github" / "workflows" / "cleanup-container-packages.
 
 
 class ContainerWorkflowTests(unittest.TestCase):
+    def test_build_runs_model_surgery_tests_with_required_dependencies(self):
+        text = BUILD_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('"onnx==1.17.0"', text)
+        self.assertIn('"pytest==9.0.3"', text)
+        self.assertIn(
+            "python3 -m pytest -q tests/test_model_surgery_guard.py", text
+        )
+
     def test_publish_runs_only_after_successful_branch_build(self):
         text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("workflows: [Build]", text)
         completion_trigger = text.split("  workflow_run:", 1)[1].split("  workflow_call:", 1)[0]
-        self.assertIn("branches-ignore: [daily]", completion_trigger)
+        self.assertIn("branches-ignore: [daily, daily-master]", completion_trigger)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.event == 'push'", text)
         self.assertIn("head_repository.full_name == github.repository", text)
@@ -132,6 +141,7 @@ const github = {
         self.assertIn("source_run_id:", publish_text)
         self.assertIn("daily-containers:", build_text)
         self.assertIn("github.ref_name == 'daily'", build_text)
+        self.assertIn("github.ref_name == 'daily-master'", build_text)
         self.assertIn("- test-package-install", build_text)
         self.assertIn("uses: ./.github/workflows/container-build.yml", build_text)
         self.assertIn("source_run_id: ${{ github.run_id }}", build_text)

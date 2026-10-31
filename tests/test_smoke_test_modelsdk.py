@@ -20,6 +20,27 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SmokeTestModelsdkTests(unittest.TestCase):
+    def test_quantize_compile_command_uses_current_reference_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model_path = root / "model.onnx"
+            model_path.write_bytes(b"onnx")
+
+            with mock.patch.object(MODULE, "run") as run:
+                MODULE.run_quantize_compile(
+                    model_path,
+                    root / "build",
+                    input_shape="1,3,224,224",
+                    compile_model=True,
+                    dtype="int8",
+                )
+
+        command = run.call_args.args[0]
+        self.assertNotIn("--input_names", command)
+        self.assertNotIn("--output_names", command)
+        self.assertNotIn("--device", command)
+        self.assertIn("--build_dir", command)
+
     def test_yolo_smoke_validates_compiled_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             work_dir = Path(directory)
@@ -50,19 +71,90 @@ class SmokeTestModelsdkTests(unittest.TestCase):
             validate.assert_called_once_with("yolov8", payload.artifacts, "int8")
             self.assertEqual(payload.metrics, metrics)
 
-    def test_llima_qwen3_disables_unsupported_onnx_quantization(self):
+    def test_llima_qwen3_uses_native_stages(self):
         command = MODULE.llima_qwen3_compile_command(
             Path("/tmp/compile_config.py"),
             Path("/tmp/output"),
             Path("/tmp/Qwen3-0.6B"),
         )
 
-        self.assertIn("--no-quantize_embeddings", command)
-        self.assertIn("--no-quantize_kv_cache", command)
-        self.assertLess(
-            command.index("/tmp/Qwen3-0.6B"),
-            command.index("--no-quantize_embeddings"),
+        self.assertNotIn("--onnx", command)
+        self.assertNotIn("--quantize", command)
+        self.assertNotIn("--no-quantize_embeddings", command)
+        self.assertNotIn("--no-quantize_kv_cache", command)
+
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(work_dir=directory)
+            metrics = {
+                "fp_sima_files": "1",
+                "quantized_sima_files": "1",
+                "mpk_archives": "1",
+                "mla_elfs": "1",
+            }
+            huggingface_hub = SimpleNamespace(
+                snapshot_download=mock.Mock(
+                    return_value=str(Path(directory) / "Qwen3-0.6B")
+                )
+            )
+            with (
+                mock.patch.dict(sys.modules, {"huggingface_hub": huggingface_hub}),
+                mock.patch.object(MODULE, "run") as run,
+                mock.patch.object(
+                    MODULE, "validate_llima_artifacts", return_value=metrics
+                ) as validate,
+            ):
+                payload = MODULE.smoke_llima_qwen3(args)
+
+        self.assertEqual(
+            [call.args[0][-1] for call in run.call_args_list],
+            ["--source_to_fp", "--fp_to_quant", "--compile"],
         )
+        self.assertTrue(all(call.kwargs == {"timeout": 3600} for call in run.call_args_list))
+        validate.assert_called_once_with(payload.artifacts)
+        self.assertEqual(payload.metrics, metrics)
+
+    def test_llima_artifacts_require_native_stage_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            sdk_dir = output_dir / "sima_files" / "sdk"
+            mpk_dir = output_dir / "sima_files" / "mpk"
+            sdk_dir.mkdir(parents=True)
+            mpk_dir.mkdir(parents=True)
+            fp_model = sdk_dir / "part.fp32.sima"
+            quantized_model = sdk_dir / "part.sima"
+            fp_model.write_bytes(b"fp")
+            quantized_model.write_bytes(b"quantized")
+            elf = output_dir / "part.elf"
+            elf.write_bytes(b"ELF")
+            with tarfile.open(mpk_dir / "part_mpk.tar.gz", "w:gz") as archive:
+                archive.add(elf, arcname="part.elf")
+
+            metrics = MODULE.validate_llima_artifacts(output_dir)
+            self.assertEqual(metrics["fp_sima_files"], "1")
+            self.assertEqual(metrics["quantized_sima_files"], "1")
+            self.assertEqual(metrics["mpk_archives"], "1")
+            self.assertEqual(metrics["mla_elfs"], "1")
+
+            fp_model.unlink()
+            with self.assertRaisesRegex(MODULE.SmokeFailure, "no floating-point"):
+                MODULE.validate_llima_artifacts(output_dir)
+
+    def test_llima_artifacts_require_regular_nonempty_elf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            sdk_dir = output_dir / "sima_files" / "sdk"
+            mpk_dir = output_dir / "sima_files" / "mpk"
+            sdk_dir.mkdir(parents=True)
+            mpk_dir.mkdir(parents=True)
+            (sdk_dir / "part.fp32.sima").write_bytes(b"fp")
+            (sdk_dir / "part.sima").write_bytes(b"quantized")
+            with tarfile.open(mpk_dir / "part_mpk.tar.gz", "w:gz") as archive:
+                empty = tarfile.TarInfo("part.elf")
+                empty.size = 0
+                archive.addfile(empty)
+
+            with self.assertRaisesRegex(MODULE.SmokeFailure, "contains no MLA ELF"):
+                MODULE.validate_llima_artifacts(output_dir)
 
     def test_python_environment_checks_pip_and_pinned_versions(self):
         with (

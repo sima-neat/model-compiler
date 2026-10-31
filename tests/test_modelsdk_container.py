@@ -90,6 +90,8 @@ class ModelCompilerContainerTests(unittest.TestCase):
         self.assertNotIn(".netrc", text)
         self.assertNotIn("build_modelsdk_bundle.sh", text)
         self.assertIn("python3-venv", text)
+        self.assertIn("binutils", text)
+        self.assertIn("g++-aarch64-linux-gnu", text)
         self.assertIn("libglib2.0-0", text)
         self.assertIn("MODEL_COMPILER_VERSION", text)
         self.assertIn("MODEL_COMPILER_BUILD_TIME", text)
@@ -235,6 +237,14 @@ class ModelCompilerContainerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         args = self.docker_log.read_text(encoding="utf-8").splitlines()
         self.assertIn("run", args)
+        self.assertIn("--entrypoint", args)
+        self.assertIn("bash", args)
+        compiler_probe = next(
+            arg for arg in args if "model_compiler_a65_probe" in arg
+        )
+        self.assertIn("aarch64-linux-gnu-g++ -shared -fPIC", compiler_probe)
+        self.assertIn("aarch64-linux-gnu-readelf", compiler_probe)
+        self.assertIn('grep -q "Machine:.*AArch64"', compiler_probe)
         self.assertTrue(any(arg.endswith("/smoke_test_modelsdk.py") for arg in args))
         self.assertIn("basic", args)
 

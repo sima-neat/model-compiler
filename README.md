@@ -22,14 +22,21 @@ Install and authenticate `sima-cli` first. See the
 instructions.
 
 Then install Model Compiler inside the Neat SDK or on an Ubuntu 22.04/24.04
-host:
+host. Select the package for the host architecture and the artifact ref you
+want to use:
 
 ```bash
-# amd64 host
-sima-cli install -v 2.0.0 tools/model-compiler/amd64
-# arm64 host
-sima-cli install -v 2.1.2 tools/model-compiler/arm64
+# Current develop compiler
+sima-cli neat install model-compiler/amd64@develop
+sima-cli neat install model-compiler/arm64@develop
+
+# Tagged release; replace v2.1.3.1 with the desired release tag
+sima-cli neat install model-compiler/amd64@v2.1.3.1
+sima-cli neat install model-compiler/arm64@v2.1.3.1
 ```
+
+The `@develop` target resolves to the latest successfully published build from
+the `develop` branch and can briefly lag the branch head while CI is running.
 
 ## Repository Layout
 
@@ -99,8 +106,10 @@ resource-constrained machines.
 
 ### Automated component updates
 
-The `Daily Component Update` workflow checks `develop`'s `scripts/source.json`
-every four hours (00:17, 04:17, 08:17, 12:17, 16:17, and 20:17 UTC).
+`Daily Component Update` checks `daily` every four hours (00:17, 04:17, 08:17,
+12:17, 16:17, and 20:17 UTC). `Daily Master Component Update` checks and builds
+`daily-master` every six hours (00:17, 06:17, 12:17, and 18:17 UTC).
+Both use `develop`'s `scripts/source.json`.
 A small `Daily Component Update` wrapper on the default branch calls the
 updater workflow on `develop`; updater scripts and the manifest are checked out
 from the same resolved `develop` commit. GitHub may delay scheduled runs.
@@ -148,8 +157,28 @@ leave the branch untouched. A new develop commit refreshes daily even if no
 package pins changed, so code and bundle-version changes are included. GitHub App credentials trigger the ordinary Build,
 which packages, installs, and smoke-tests both architectures. These tests gate
 cross-component compatibility; individual artifact availability does not.
-A successful current manifest-only updater commit opens or refreshes one PR
-from `daily` to `develop`, with old/new versions, prefixes and the Build link.
+`scripts/source.json` pins the verified master artifacts, so ordinary branch and
+PR builds exercise the 3.0 master components. `daily` explicitly applies
+`scripts/component-policy-develop.json`; `daily-master` applies
+`scripts/component-policy-master.json`. Both policies are checked in and reviewed.
+Both branches use build scripts from `develop`. Master selects master artifacts
+for all ten managed Python components and the MLA toolchain; third-party pins
+and the existing LLiMa snap policy remain unchanged. Missing compatible master
+artifacts fail the update instead of publishing mixed develop/master pins.
+Both channel policies must cover the same managed components as the manifest.
+
+Both daily branches are disposable generated build channels, refreshed with an
+explicit lease and independent concurrency groups. Do not edit them directly.
+They publish branch-scoped packages and containers through the same Build gates.
+Neither opens a PR back to `develop`; promote desired pins through a separately
+reviewed change when needed. New `develop` code reaches both branches on the next
+scan, so merging daily pins is unnecessary. Build notifications identify the
+channel. An unchanged `daily` candidate does not trigger another build.
+The six-hour master workflow explicitly dispatches Build for an unchanged
+`daily-master` candidate; changed candidates trigger Build through their push.
+Slack uses the saved upstream report when available. Without it, the notification
+compares the exact candidate and its parent manifests, reports version changes
+or verified no changes, and identifies missing upstream commit evidence.
 
 Manual dry runs are available through `workflow_dispatch`. The optional
 `source_ref` input can select a feature-branch manifest only with `dry_run=true`;
@@ -157,8 +186,14 @@ normal updates always read `develop`. Artifactory access
 uses the private runner's existing netrc credentials. Pushes use
 `NEAT_RELEASES_APP_ID` and `NEAT_RELEASES_APP_PRIVATE_KEY`.
 GitHub executes scheduled and `workflow_run` workflows from the default branch:
-deploy the workflow and helper changes to `main`, and the policy to `develop`,
-before unattended updates can use the new configuration.
+merge the implementation PR into `develop`, then sync `update-components.yml`, `update-master-components.yml`,
+`daily-build-notify.yml`, and `container-build.yml` to `main` to activate both
+scheduled jobs, completion notifications, and the container duplicate-build
+exclusion. The existing default-branch PR wrapper calls the now
+disabled worker on `develop`, so daily-to-develop PR creation stops immediately
+after the implementation merges. Existing open PRs are not closed automatically.
+No daily branch needs to be created manually; the first non-dry run creates it.
+Run each workflow with `dry_run=true` to exercise its policy without pushing or building.
 
 ## Building a Bundle
 
@@ -389,6 +424,9 @@ python scripts/smoke_test_modelsdk.py --tier resnet-quantize
 # Same as resnet-quantize, but also runs the compile step.
 python scripts/smoke_test_modelsdk.py --tier resnet-compile
 
+# Download Qwen3-0.6B and run native graph generation, quantization, and compilation.
+python scripts/smoke_test_modelsdk.py --tier llima-qwen3-compile
+
 # Download YOLOv8n ONNX, simplify/audit it, and run quantize+compile.
 python scripts/smoke_test_modelsdk.py --tier yolo
 
@@ -413,10 +451,11 @@ avoids collisions with stale files from previous smoke-test runs.
 If an explicit `--work-dir` exists but is not writable, the runner falls back
 to a per-user sibling such as `~/tmp/modelsdk-smoke-$USER`.
 
-The `all`, `resnet-compile`, and `yolo` tiers also collect lightweight
-compiled-artifact metrics. They report package counts/sizes and run MLA
-toolchain checks such as `mla-size` and `mla-readelf` on ELF files packaged in
-the generated MPK archive when those files are present.
+The `all`, `resnet-compile`, `llima-qwen3-compile`, and `yolo` tiers also check
+their compiled artifacts. The LLiMa tier requires floating-point and quantized
+Model SDK files plus MPK archives with MLA ELF files. The other compile tiers
+report package counts and sizes and run tools such as `mla-size` and
+`mla-readelf` on packaged ELF files.
 
 Use `activate-model-compiler` to enter the installed environment and
 `deactivate-model-compiler` to leave it.

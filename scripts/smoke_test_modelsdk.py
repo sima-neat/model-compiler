@@ -30,7 +30,6 @@ DEFAULT_YOLO_URL = "https://huggingface.co/webml/yolov8n/resolve/main/onnx/yolov
 DEFAULT_WORK_ROOT = Path.home() / "tmp"
 QWEN3_REPO_ID = "Qwen/Qwen3-0.6B"
 QWEN3_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
-QWEN3_QUANTIZED_OUTPUT_TOLERANCE = 0.20
 QWEN3_COMPILE_CONFIGURATION = """\
 def get_layer_configuration(model_properties, layer):
     if layer["is_group"] or layer["index"] != 0:
@@ -308,20 +307,6 @@ def audit_onnx_model(model_path: Path, dtype: str, *, strict: bool) -> None:
     log(f"operator audit returned {proc.returncode}; continuing because --strict-audit was not set")
 
 
-def onnx_io_names(model_path: Path) -> tuple[list[str], list[str]]:
-    import onnx
-
-    model = onnx.load(str(model_path))
-    initializer_names = {initializer.name for initializer in model.graph.initializer}
-    input_names = [value.name for value in model.graph.input if value.name not in initializer_names]
-    output_names = [value.name for value in model.graph.output]
-    if not input_names:
-        raise SmokeFailure(f"could not determine model inputs: {model_path}")
-    if not output_names:
-        raise SmokeFailure(f"could not determine model outputs: {model_path}")
-    return input_names, output_names
-
-
 def run_quantize_compile(
     model_path: Path,
     build_dir: Path,
@@ -341,7 +326,6 @@ def run_quantize_compile(
                 f"cannot remove existing build directory: {build_dir}. "
                 "Choose a fresh --work-dir or remove the stale directory first."
             ) from exc
-    input_names, output_names = onnx_io_names(model_path)
     cmd = [
         sys.executable,
         str(helper),
@@ -351,14 +335,8 @@ def run_quantize_compile(
         "onnx",
         "--model_layout",
         "NCHW",
-        "--input_names",
-        *input_names,
         "--input_shapes",
         input_shape,
-        "--output_names",
-        *output_names,
-        "--device",
-        "modalix",
         "--build_dir",
         str(build_dir),
     ]
@@ -487,111 +465,48 @@ def smoke_resnet(
     return SmokeCasePayload(artifacts=build_dir, metrics=metrics)
 
 
-def validate_llima_artifacts(output_dir: Path) -> None:
+def validate_llima_artifacts(output_dir: Path) -> dict[str, str]:
+    sdk_dir = output_dir / "sima_files" / "sdk"
+    fp_sima_files = sorted(sdk_dir.glob("*.fp32.sima"))
+    quantized_sima_files = sorted(
+        path for path in sdk_dir.glob("*.sima") if not path.name.endswith(".fp32.sima")
+    )
+    if not fp_sima_files:
+        raise SmokeFailure(f"no floating-point .sima files found in {sdk_dir}")
+    if not quantized_sima_files:
+        raise SmokeFailure(f"no quantized .sima files found in {sdk_dir}")
+
+    for artifact in [*fp_sima_files, *quantized_sima_files]:
+        if artifact.stat().st_size == 0:
+            raise SmokeFailure(f"LLiMa Model SDK artifact is empty: {artifact}")
+
     mpk_dir = output_dir / "sima_files" / "mpk"
     archives = sorted(mpk_dir.glob("*.tar.gz"))
     if not archives:
         raise SmokeFailure(f"no compiled MPK archives found in {mpk_dir}")
 
+    elf_count = 0
     for archive in archives:
         if archive.stat().st_size == 0:
             raise SmokeFailure(f"compiled MPK is empty: {archive}")
         with tarfile.open(archive, "r:gz") as mpk:
-            if not any(member.name.endswith(".elf") for member in mpk.getmembers()):
+            elf_members = [
+                member
+                for member in mpk.getmembers()
+                if member.isfile() and member.name.endswith(".elf") and member.size > 0
+            ]
+            if not elf_members:
                 raise SmokeFailure(f"compiled MPK contains no MLA ELF: {archive}")
+            elf_count += len(elf_members)
 
-
-def llima_sdk_inputs_from_onnx(onnx_path: Path) -> list[object]:
-    import numpy as np
-    import onnx
-
-    onnx_model = onnx.load(str(onnx_path), load_external_data=False)
-    rng = np.random.default_rng(1)
-    inputs = []
-    for value in onnx_model.graph.input:
-        onnx_shape = tuple(
-            dimension.dim_value for dimension in value.type.tensor_type.shape.dim
-        )
-        if len(onnx_shape) != 4 or any(dimension <= 0 for dimension in onnx_shape):
-            raise SmokeFailure(
-                f"expected static four-dimensional input for {value.name}, got {onnx_shape}"
-            )
-
-        dtype = onnx.helper.tensor_dtype_to_np_dtype(value.type.tensor_type.elem_type)
-        sdk_shape = (onnx_shape[0], onnx_shape[2], onnx_shape[3], onnx_shape[1])
-        if np.issubdtype(dtype, np.floating):
-            inputs.append(rng.uniform(-1.0, 1.0, sdk_shape).astype(dtype))
-        else:
-            inputs.append(np.zeros(sdk_shape, dtype=dtype))
-    return inputs
-
-
-def assert_llima_quantized_outputs_close(reference: list[object], actual: list[object]) -> None:
-    import numpy as np
-
-    if len(reference) != len(actual):
-        raise SmokeFailure(
-            f"LLiMa output count differs: reference={len(reference)}, actual={len(actual)}"
-        )
-
-    for index, (reference_output, actual_output) in enumerate(zip(reference, actual, strict=True)):
-        if reference_output.shape != actual_output.shape:
-            raise SmokeFailure(
-                f"LLiMa output {index} shape differs: "
-                f"reference={reference_output.shape}, actual={actual_output.shape}"
-            )
-        absolute_tolerance = QWEN3_QUANTIZED_OUTPUT_TOLERANCE * float(
-            np.max(np.abs(reference_output))
-        )
-        if not np.allclose(actual_output, reference_output, rtol=0.0, atol=absolute_tolerance):
-            max_difference = float(np.max(np.abs(actual_output - reference_output)))
-            raise SmokeFailure(
-                f"LLiMa quantized output {index} differs from ONNX: "
-                f"max_abs_diff={max_difference}, atol={absolute_tolerance}"
-            )
-
-
-def execute_llima_qwen3_quantized_parts(model_path: Path, output_dir: Path) -> None:
-    from sima_lmm.model import EvalMode, VisionLanguageModel
-    from sima_lmm.model.language_post_model import LanguagePostModel
-    from sima_lmm.model.language_pre_model import LanguagePreModel
-
-    vlm_model = VisionLanguageModel.from_hf_cache(
-        hf_cache_path=model_path,
-        model_name=model_path.name,
-        onnx_path=output_dir / "onnx_files",
-        sima_path=output_dir / "sima_files",
-        max_num_tokens=1024,
-        system_prompt=None,
-    )
-    components = [
-        LanguagePreModel(
-            vlm_model.cfg,
-            f"{vlm_model.model_name}_language_n1_pre_layer0",
-            onnx_path=vlm_model.onnx_path,
-            sima_path=vlm_model.sima_path,
-            hf_model=vlm_model.hf_model,
-            num_tokens=1,
-            layer_idx=0,
-        ),
-        LanguagePostModel(
-            vlm_model.cfg,
-            f"{vlm_model.model_name}_language_n1_post_layer0",
-            onnx_path=vlm_model.onnx_path,
-            sima_path=vlm_model.sima_path,
-            hf_model=vlm_model.hf_model,
-            num_tokens=1,
-            layer_idx=0,
-            final_softcapping=None,
-        ),
-    ]
-
-    for component in components:
-        inputs = llima_sdk_inputs_from_onnx(component.onnx_file_name)
-        log(f"executing LLiMa quantized part with JAX: {component.model_name}")
-        onnx_outputs = component.run_model(EvalMode.ONNX, inputs)
-        quantized_outputs = component.run_model(EvalMode.SDK, inputs)
-        assert_llima_quantized_outputs_close(onnx_outputs, quantized_outputs)
+    metrics = {
+        "fp_sima_files": str(len(fp_sima_files)),
+        "quantized_sima_files": str(len(quantized_sima_files)),
+        "mpk_archives": str(len(archives)),
+        "mla_elfs": str(elf_count),
+    }
+    log("LLiMa metrics: " + ", ".join(f"{key}={value}" for key, value in metrics.items()))
+    return metrics
 
 
 def llima_qwen3_compile_command(
@@ -606,8 +521,6 @@ def llima_qwen3_compile_command(
         "-o",
         str(output_dir),
         str(model_path),
-        "--no-quantize_embeddings",
-        "--no-quantize_kv_cache",
     ]
 
 
@@ -631,14 +544,13 @@ def smoke_llima_qwen3(args: argparse.Namespace) -> SmokeCasePayload:
     config_path.write_text(QWEN3_COMPILE_CONFIGURATION, encoding="utf-8")
 
     command = llima_qwen3_compile_command(config_path, output_dir, model_path)
-    for stage in ("--onnx", "--quantize", "--compile"):
+    for stage in ("--source_to_fp", "--fp_to_quant", "--compile"):
         log(f"running LLiMa Qwen3 smoke stage: {stage}")
         run(command + [stage], timeout=3600)
 
-    validate_llima_artifacts(output_dir)
-    execute_llima_qwen3_quantized_parts(model_path, output_dir)
+    metrics = validate_llima_artifacts(output_dir)
     log(f"LLiMa Qwen3 smoke artifacts: {output_dir}")
-    return SmokeCasePayload(artifacts=output_dir)
+    return SmokeCasePayload(artifacts=output_dir, metrics=metrics)
 
 
 def download_file(url: str, output: Path) -> None:

@@ -8,9 +8,10 @@ import re
 import subprocess
 from pathlib import Path
 
+from update_component_versions import UpdateError
 from daily_build_notification import compose
 from send_upstream_changes import SlackOperationError, send, slack_api, snippet
-from upstream_changes import comparison_key, markdown, validate
+from upstream_changes import comparison_key, components, digest, markdown, validate
 
 
 def github_json(endpoint):
@@ -41,19 +42,43 @@ def load_changes(run, bucket, directory, github=github_json, execute=subprocess.
     updated, base = manifest(sha), manifest(baseline)
     path = directory / 'upstream-changes.json'
     key = 'model-compiler/build-records/' + comparison_key(baseline, updated)
+    if not bucket:
+        return manifest_changes(base, updated, baseline)
     result = execute(['aws', 's3api', 'get-object', '--bucket', bucket, '--key', key, str(path)],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if result.returncode:
-        raise ValueError('Private changeset unavailable')
+        return manifest_changes(base, updated, baseline)
     report = json.loads(path.read_text())
     validate(report, baseline, updated, base)
     return report
 
 
-def notify(run, jobs, channel, token, directory, report=None, api=slack_api, attach=send):
+def manifest_changes(base, updated, baseline):
+    """Report verified version differences without inventing upstream evidence."""
+    before, after = components(base), components(updated)
+    groups = {}
+    for (kind, name, arch), version in after.items():
+        previous = before.get((kind, name, arch))
+        if previous != version:
+            groups.setdefault((name, previous, version), []).append(arch)
+    return {
+        'schema_version': 1, 'baseline_sha': baseline,
+        'baseline_digest': digest(base), 'resolved_digest': digest(updated),
+        'components': [
+            {'name': name, 'previous': previous, 'updated': version,
+             'architectures': arches, 'commits': [],
+             'warnings': ['Saved upstream report unavailable; version change verified from Git manifests, upstream commits not available.']}
+            for (name, previous, version), arches in groups.items()
+        ],
+    }
+
+
+def notify(run, jobs, channel, token, directory, report=None, api=slack_api, attach=send, unavailable_reason=None):
     changes = snippet(report) if report is not None else None
     if report is not None and report['components']:
         changes += '\nFull report attached in this message’s thread.'
+    if report is None and unavailable_reason:
+        changes = "Upstream change details are unavailable: " + unavailable_reason
     payload = compose(run, jobs, channel, changes)
     posted = api('chat.postMessage', payload, token)
     if report is not None and report['components']:
@@ -84,14 +109,15 @@ def main():
         raise SystemExit('Unexpected build repository')
     jobs = [job for page in json.loads(args.jobs.read_text()) for job in page['jobs']]
     report = None
-    if os.environ.get('HISTORY_BUCKET'):
-        try:
-            report = load_changes(run, os.environ['HISTORY_BUCKET'], args.directory)
-        except (ValueError, KeyError, OSError, TypeError):
-            # Build-result notifications must survive absent history and early failures.
-            pass
+    unavailable_reason = None
     try:
-        notify(run, jobs, os.environ['SLACK_CHANNEL_ID'], os.environ['SLACK_BOT_TOKEN'], args.directory, report)
+        report = load_changes(run, os.environ.get('HISTORY_BUCKET', ''), args.directory)
+    except (ValueError, KeyError, OSError, TypeError, UpdateError):
+        # Never expose private API responses, paths, or credentials in diagnostics.
+        unavailable_reason = 'the exact baseline or manifest could not be read, or the saved report failed validation.'
+        print('::warning::Build changeset unavailable: baseline/manifest lookup or report validation failed.')
+    try:
+        notify(run, jobs, os.environ['SLACK_CHANNEL_ID'], os.environ['SLACK_BOT_TOKEN'], args.directory, report, unavailable_reason=unavailable_reason)
     except SlackOperationError as exc:
         raise SystemExit(f'Build Slack notification failed at {exc}; private response omitted.') from None
     except (ValueError, RuntimeError, KeyError, OSError):

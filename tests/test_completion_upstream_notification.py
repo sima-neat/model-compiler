@@ -91,6 +91,39 @@ class CompletionTests(unittest.TestCase):
             actual = N.load_changes(self.run_data('success'), 'private', Path(temp), github, execute)
         self.assertEqual(actual, report)
 
+    def test_daily_master_missing_report_uses_exact_manifest_changes(self):
+        for changed in (True, False):
+            for bucket in ('private', ''):
+                with self.subTest(changed=changed, bucket=bucket), tempfile.TemporaryDirectory() as temp:
+                    base = {'dependency_overrides': {'mpk-parser': '2.1.3.dev0+master.1'}}
+                    updated = {'dependency_overrides': {'mpk-parser': '2.1.3.dev0+master.2' if changed else '2.1.3.dev0+master.1'}}
+                    policy = {'python-packages': {'mpk-parser': {'version-prefix': '2.1.3.dev0+master.'}}}
+                    base['component-updates'] = policy
+                    updated['component-updates'] = policy
+                    def github(endpoint):
+                        if '/commits/' in endpoint:
+                            return {'parents': [{'sha': 'a'*40}]}
+                        doc = updated if endpoint.endswith('b'*40) else base
+                        return {'content': base64.b64encode(json.dumps(doc).encode()).decode()}
+                    execute = Mock(return_value=subprocess.CompletedProcess([], 1))
+                    run = {**self.run_data('success'), 'head_branch': 'daily-master'}
+                    report = N.load_changes(run, bucket, Path(temp), github, execute)
+                    N.validate(report, 'a'*40, updated, base)
+                    api, attach = Mock(return_value={'ts': '1'}), Mock()
+                    N.notify(run, [], 'C123', 'token', Path(temp), report, api, attach)
+                    message = api.call_args.args[1]['blocks'][-1]['text']['text']
+                    if changed:
+                        self.assertIn('master.1', message)
+                        self.assertIn('master.2', message)
+                        self.assertEqual(report['components'][0]['commits'], [])
+                        self.assertIn('upstream commits not available', report['components'][0]['warnings'][0])
+                        attach.assert_called_once()
+                    else:
+                        self.assertIn('No managed component version changes.', message)
+                        attach.assert_not_called()
+                    if not bucket:
+                        execute.assert_not_called()
+
     def test_merge_commit_cannot_guess_a_baseline(self):
         with tempfile.TemporaryDirectory() as temp, self.assertRaises(ValueError):
             N.load_changes(self.run_data('success'), 'private', Path(temp),

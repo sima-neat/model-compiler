@@ -91,6 +91,11 @@ class NotificationTests(unittest.TestCase):
         return {'head_branch': 'daily', 'status': 'completed', 'repository': {'full_name': 'sima-neat/model-compiler'},
                 'id': 123, 'run_number': 4, 'head_sha': 'a'*40, 'run_attempt': 2, 'conclusion': conclusion}
 
+    def test_master_channel_is_named(self):
+        run = self.run_data('success')
+        run['head_branch'] = 'daily-master'
+        self.assertIn('daily-master build succeeded', N.compose(run, [], 'C123')['text'])
+
     def test_success_contains_build_summary_link(self):
         payload = N.compose(self.run_data('success'), [], 'C123')
         self.assertEqual(payload['channel'], 'C123')

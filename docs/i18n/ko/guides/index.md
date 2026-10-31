@@ -14,6 +14,7 @@ sidebar_label: "개요"
     <ul class="overview-link-list compile-workflow-list">
       <li><a class="overview-link-card" href="/tools/model-zoo/"><strong>미리 컴파일된 모델을 사용합니다.</strong><span>적절한 모델이 이미 존재하는 경우 Model Zoo의 아티팩트부터 시작합니다.</span></a></li>
       <li><a class="overview-link-card" href="/compile-a-model/compile-your-first-model/"><strong>비전 / ONNX 모델을 컴파일합니다.</strong><span>Model Compiler를 사용하여 준비, 양자화, 컴파일 및 유효성 검사를 수행합니다. 첫 번째 모델 워크스루부터 시작합니다.</span></a></li>
+      <li><a class="overview-link-card" href="/compile-a-model/quantization-aware-training/"><strong>양자화 인식 학습으로 훈련합니다.</strong><span>시뮬레이션된 INT8 효과로 PyTorch 모델을 미세 조정한 다음 컴파일을 위한 표준 QDQ ONNX 모델을 내보냅니다.</span></a></li>
       <li><a class="overview-link-card" href="/genai-llima/"><strong>GenAI / LLiMa 모델을 컴파일합니다.</strong><span>LLM 및 기타 생성 모델에 대해 LLiMa 도구 체인을 사용합니다.</span></a></li>
     </ul>
   </section>
