@@ -83,6 +83,27 @@ class PinLlimaReleaseTests(unittest.TestCase):
         )
         self.assertEqual(self.source.read_text(encoding="utf-8"), expected)
 
+    def test_pins_current_manifest_without_treating_update_metadata_as_architecture(self):
+        original = (ROOT / "scripts" / "source.json").read_text(encoding="utf-8")
+        self.source.write_text(original, encoding="utf-8")
+        self.write_provenance(version="0.6.0", commit="88bfaffc1bf1")
+
+        pinned = MODULE.pin_release(self.source, self.provenance, "0.6.0")
+
+        self.assertEqual(pinned, "v0.6.0:88bfaffc1bf1")
+        before = json.loads(original)
+        after = json.loads(self.source.read_text(encoding="utf-8"))
+        self.assertEqual(after["component-updates"], before["component-updates"])
+        for package in after["python-packages"]:
+            if package.get("name") == "sima_lmm[sdk]":
+                self.assertEqual(package["vulcan"], {"ref": pinned})
+        expected = original.replace(
+            '{\n        "policy": "snap"\n      }',
+            '{\n        "ref": "v0.6.0:88bfaffc1bf1"\n      }',
+        )
+        self.assertNotEqual(expected, original)
+        self.assertEqual(self.source.read_text(encoding="utf-8"), expected)
+
     def test_rejects_mismatched_wheel_version(self):
         self.write_provenance(version="0.4.1")
 

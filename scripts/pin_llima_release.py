@@ -21,7 +21,10 @@ def _llima_packages(source: dict) -> list[dict]:
         raise ValueError("source manifest must contain a python-packages list")
     package_lists.append(top_level)
 
-    for value in source.values():
+    for name, value in source.items():
+        # Update policy metadata is not an architecture package override.
+        if name == "component-updates":
+            continue
         if not isinstance(value, dict) or "python-packages" not in value:
             continue
         packages = value["python-packages"]
