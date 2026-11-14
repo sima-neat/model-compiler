@@ -66,9 +66,10 @@ current_model_compiler_ref() {
 
 is_protected_ref() {
   case "$1" in
-    develop|main|release-*|release/*) return 0 ;;
-    *) return 1 ;;
+    develop|main) return 0 ;;
   esac
+  # The release workflow uses numbered release lines such as release-3.0.
+  [[ "$1" =~ ^release[-/][0-9]+(\.[0-9]+)+$ ]]
 }
 
 is_model_compiler_tag_build() {
