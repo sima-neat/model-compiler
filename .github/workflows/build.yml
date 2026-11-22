@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - "**"
+      # Promotion only moves an already-tested SHA; do not build/publish it again.
+      - "!automation/promote-daily-master"
     tags:
       - "v*"
   workflow_dispatch:
