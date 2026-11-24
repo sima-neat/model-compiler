@@ -244,7 +244,7 @@
     {
       "name": "sima_lmm[sdk]",
       "vulcan": {
-        "ref": "v0.6.1:1bba98848cca"
+        "ref": "v0.6.2:a5aa79a33322"
       }
     }
   ],
