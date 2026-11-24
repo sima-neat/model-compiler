@@ -1,6 +1,6 @@
 ---
 name: sima-model-quantize-compile
-description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including QAT QDQ exports, calibration, and verification.
+description: Quantize and compile ONNX or PyTorch models that are not LLMs or VLMs (CNNs, detectors, segmentation, vision transformers, audio and other non-LLM models) for SiMa Modalix with the Model Compiler, covering INT8 or BF16 quantization, calibration, QAT QDQ exports, compilation and verification. Use when the user asks to quantize, calibrate, compile or verify such a model for Modalix or the MLA. Not for LLMs or VLMs, including quantize-and-compile or compile-only requests (use `sima-llima-compile-run`); operator audits or unsupported-operator rewrites (use `sima-model-surgery`); performance-only rewrites (use `sima-model-optimization`); triaging compiler failure reports or GitHub issues (use `sima-model-compiler-issue-triage`).
 ---
 
 # Quantize and Compile Models for SiMa Modalix
@@ -31,6 +31,10 @@ uses the latest published main artifact. Append `@develop` only when explicitly
 testing the current develop compiler, or append a release tag to pin a release.
 
 ## Workflow
+
+LLMs and VLMs (Hugging Face or GGUF checkpoints such as Llama, Qwen, Gemma or
+LLaVA) compile with LLiMa, not with this workflow: use the
+`sima-llima-compile-run` skill, also when the request is to quantize and compile.
 
 1. Validate the source path, format, and input/output contract.
 2. If outputs will feed SiMa BoxDecode, read `references/boxdecode.md` in the

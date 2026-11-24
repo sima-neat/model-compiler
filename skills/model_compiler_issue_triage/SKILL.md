@@ -1,6 +1,6 @@
 ---
 name: sima-model-compiler-issue-triage
-description: Use when triaging model-compiler GitHub issues, including install failures, offline package reports, CI/package publishing failures, dependency conflicts, smoke test failures, model surgery reports, and quantize/compile problems.
+description: Triage Model Compiler problem reports (GitHub issues, support tickets or a teammate's failure report) about install, offline packages, CI or publishing, dependency conflicts, smoke tests, model surgery, or quantize and compile failures, by classifying the area and naming the minimum missing evidence to ask for. Use when someone reports a Model Compiler failure or asks which details to collect about one, even before logs or commands are shared. Not for running the compile itself (use `sima-model-quantize-compile`) or auditing or rewriting a model's operators (use `sima-model-surgery`).
 ---
 
 # Model Compiler Issue Triage

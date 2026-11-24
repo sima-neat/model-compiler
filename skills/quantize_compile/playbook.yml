@@ -2,7 +2,7 @@ id: sima-model-quantize-compile
 name: Quantize and Compile Models for SiMa Modalix
 version: 0.1.5
 agents: [codex, claude]
-description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including calibration and verification.
+description: Quantize and compile ONNX or PyTorch models that are not LLMs or VLMs (CNNs, detectors, segmentation, vision transformers, audio and other non-LLM models) for SiMa Modalix with the Model Compiler, covering INT8 or BF16 quantization, calibration, QAT QDQ exports, compilation and verification. Use when the user asks to quantize, calibrate, compile or verify such a model for Modalix or the MLA. Not for LLMs or VLMs, including quantize-and-compile or compile-only requests (use `sima-llima-compile-run`); operator audits or unsupported-operator rewrites (use `sima-model-surgery`); performance-only rewrites (use `sima-model-optimization`); triaging compiler failure reports or GitHub issues (use `sima-model-compiler-issue-triage`).
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]
