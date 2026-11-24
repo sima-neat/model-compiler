@@ -16,7 +16,8 @@ The model-surgery operator audit is preliminary screening only. It checks node
 names and precision flags; it does not validate all attributes, shapes, opsets,
 composite fusion, fallback, or placement. Before rewriting:
 
-- inspect applicable `supported_operators.json` constraints;
+- inspect applicable `supported_operators.json` constraints (see Operator
+  Screening);
 - check relevant composite-pattern requirements; and
 - use compiler placement evidence when full MLA residency matters.
 
@@ -29,12 +30,46 @@ but it is required to confirm placement or a hardware-dependent benefit.
    baseline when measured improvement is required.
 2. Inspect static shapes, dtypes, opset, initializers, output contracts, and
    available compiler evidence.
-3. Read `references/optimization_patterns.md` and apply only patterns whose
+3. Screen the original graph with the operator audit in the
+   `sima-model-surgery` skill (see Operator Screening below) and note the
+   constraints of every operator the rewrite will add or keep.
+4. Read `references/optimization_patterns.md` and apply only patterns whose
    match conditions and guards are proven for the graph.
-4. Prefer a maintainable source-model change; otherwise make the smallest
+5. Prefer a maintainable source-model change; otherwise make the smallest
    equivalent ONNX rewrite.
-5. Validate behavior and report applied patterns, equivalence results, and any
-   benefit that still requires compilation or measurement.
+6. Re-run the audit on the rewritten graph, validate behavior, and report
+   applied patterns, equivalence results, screening results, and any benefit
+   that still requires compilation or measurement.
+
+## Operator Screening
+
+The audit scripts and support database belong to the `sima-model-surgery`
+skill, which is installed next to this one. `<skill-dir>` is the folder that
+holds this SKILL.md, so that skill's files are under
+`<skill-dir>/../sima-model-surgery/`. Activate the Model Compiler environment
+(`activate-model-compiler`) first, then run the commands by full path from the
+user's folder.
+
+Freeze symbolic dimensions before screening, when the graph has any:
+
+```bash
+python3 <skill-dir>/../sima-model-surgery/scripts/onnx_static_simplify.py \
+  --input /abs/path/model.onnx \
+  --output /abs/path/model.static.sim.onnx \
+  --replace batch=1
+```
+
+Audit the graph for INT8, and again with `--dtype bfloat16` when BF16 matters:
+
+```bash
+python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-model \
+  --model /abs/path/model.onnx \
+  --dtype int8
+```
+
+For each operator a rewrite adds or keeps, read its attribute and shape
+constraints with `model_surgery_guard.py query-op --op <Op>` or in that skill's
+`data/supported_operators.json`.
 
 ## Rules
 

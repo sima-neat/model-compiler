@@ -40,12 +40,28 @@ LLaVA) compile with LLiMa, not with this workflow: use the
 2. If outputs will feed SiMa BoxDecode, read `references/boxdecode.md` in the
    `sima-model-surgery` skill before changing the graph.
 3. For ONNX, resolve symbolic dimensions before compilation and run the
-   model-surgery operator audit. Treat its result as preliminary screening:
-   inspect applicable constraints and do not claim MLA placement from the audit.
-4. Use model surgery when an incompatibility or BoxDecode contract change must
-   be addressed.
-5. Use model optimization only when performance work is requested or a relevant
-   bottleneck has been identified. Validate and re-screen any changed graph.
+   operator audit from the `sima-model-surgery` skill. Treat its result as
+   preliminary screening: inspect applicable constraints and do not claim MLA
+   placement from the audit.
+
+   ```bash
+   python3 <skill-dir>/../sima-model-surgery/scripts/onnx_static_simplify.py \
+     --input /abs/path/model.onnx \
+     --output /abs/path/model.static.sim.onnx \
+     --replace batch=1
+   python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-model \
+     --model /abs/path/model.static.sim.onnx \
+     --dtype int8
+   ```
+
+   Skip the simplifier when every dimension is already static, and audit again
+   with `--dtype bfloat16` when BF16 matters. `model_surgery_guard.py query-op
+   --op <Op>` shows one operator's constraints.
+4. Use the `sima-model-surgery` skill when an incompatibility or BoxDecode
+   contract change must be addressed.
+5. Use the `sima-model-optimization` skill only when performance work is
+   requested or a relevant bottleneck has been identified. Validate and
+   re-screen any changed graph.
 6. Quantize and compile for Modalix. Run verification when requested.
 
 For PyTorch without an exported ONNX graph, the ONNX operator audit does not

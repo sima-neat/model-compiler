@@ -6,8 +6,9 @@ description: Audit ONNX models for operators or attribute values the SiMa MLA (M
 # Model Surgery for SiMa MLA
 
 Use this skill to audit an ONNX graph or make the smallest source-model/ONNX
-change required for MLA compatibility or a BoxDecode output contract. Use model
-optimization for performance-only rewrites of an otherwise compatible graph.
+change required for MLA compatibility or a BoxDecode output contract. Use the
+`sima-model-optimization` skill for performance-only rewrites of an otherwise
+compatible graph.
 
 ## Paths
 
