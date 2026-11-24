@@ -1,14 +1,14 @@
 ---
 name: sima-model-optimization
-description: Speed up or shrink ONNX graphs that already run on the SiMa MLA (Modalix), for latency, FPS, throughput or memory, with proven-equivalent rewrites, such as fusing parallel Q/K/V or 1x1 projections, folding Transpose/Reshape/Identity layout no-ops and static Shape chains, replacing reshape shuffles with DepthToSpace, canonicalizing to rank-4 NCHW, packing attention heads, simplifying masks and singleton reductions, keeping RMSNorm fusible, precomputing finite-domain subgraphs such as timestep or RoPE embeddings, and moving large constant embedding or codebook lookups to the host. Use when the user wants lower latency, more throughput or a smaller compiled model with unchanged outputs, or compiler evidence shows a bottleneck, even before the model is shared. Not for unsupported operators, attribute limits or BoxDecode output adaptation (use `sima-model-surgery`), or a plain quantize-and-compile (use `sima-model-quantize-compile`).
+description: Speed up or shrink ONNX models that already run on the SiMa MLA (Modalix) with output-preserving graph rewrites, such as fusing Q/K/V or 1x1 projections, folding Transpose/Reshape chains, DepthToSpace for reshape shuffles, precomputing timestep embeddings and moving large embedding or codebook tables to the host, with BoxDecode outputs kept intact. Use when the user wants lower latency, higher FPS or throughput, or less memory with identical outputs, or compiler evidence shows a graph bottleneck, even before the model is shared. Not for unsupported operators, attribute limits or BoxDecode adaptation (use `sima-model-surgery`); a plain quantize-and-compile (use `sima-model-quantize-compile`); tuning the app or pipeline around the model (use `neat-application-builder`).
 ---
 
 # Optimize Models for SiMa MLA
 
 Use this skill when performance optimization is requested or compiler evidence
 identifies a relevant bottleneck. Do not invoke it solely because a customer
-asked to compile a model. Use model surgery for incompatibilities or BoxDecode
-output contracts.
+asked to compile a model. Use the `sima-model-surgery` skill for
+incompatibilities or BoxDecode output contracts.
 
 ## Compatibility Evidence
 
