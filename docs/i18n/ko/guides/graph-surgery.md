@@ -9,13 +9,16 @@ sidebar_position: 3
 
 그래프 수술은 깨끗하게 컴파일되거나 SiMa 장치에서 효율적으로 실행되기 전에 대상 그래프 변경이 필요한 모델에 대한 고급 단계입니다. 원래 Python 모델 코드에서 해당 변경을 수행하고 모델을 다시 내보내거나, 내보낸 ONNX 그래프를 직접 편집할 수 있습니다.
 
-SDK에는 Codex 및 Claude용으로 미리 빌드된 `sima-model-surgery` 기능이 포함되어 있습니다. 에이전트에게 모델을 검사하도록 요청하면 호환성을 확인하고, 필요한 그래프 편집을 제안하고 적용하며, 결과를 검증하고, 모델을 다른 컴파일 시도에 대비할 수 있습니다. 이 기능은 특히 그래프 수술을 통해 컴파일러 호환성을 개선하고 SiMa 런타임에 대한 모델 출력을 최적화할 수 있는 YOLO 모델에 유용합니다.
+SDK에는 Codex 및 Claude용으로 미리 빌드된 `sima-model-surgery` 기능이 포함되어 있습니다. 에이전트에게 모델을 검사하도록 요청하면 MLA에서 실행할 수 없는 연산자와 속성 값을 확인하고, 동등한 그래프 편집을 제안하고 적용하며, 결과를 검증하고, 모델을 다른 컴파일 시도에 대비할 수 있습니다. 이 기능은 특히 그래프 수술을 통해 호환성 문제를 해결하고 모델 출력을 SiMa BoxDecode에 맞게 조정할 수 있는 YOLO 모델에 유용합니다.
+
+이 기능은 모델이 MLA에서 컴파일되고 실행되도록 모델을 변경합니다. 이미 컴파일되는 모델을 출력 변경 없이 더 빠르게 하거나 더 작게 만들려면 대신 `sima-model-optimization` 기능을 사용하십시오. LLM 및 VLM에는 `sima-llima-compile-run` 기능을 사용하십시오.
 
 예를 들어 다음과 같이 요청할 수 있습니다.
 
 ```text
-Use the sima-model-surgery skill to inspect my YOLO model, optimize unsupported
-graph sections, and validate the modified model.
+Use the sima-model-surgery skill to check which operators in my YOLO model the
+MLA cannot run, rewrite them with supported equivalents, and validate the
+modified model.
 ```
 
 ## 그래프 수술을 이해합니다.

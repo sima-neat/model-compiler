@@ -9,13 +9,16 @@ sidebar_position: 3
 
 グラフ手術は、モデルをクリーンにコンパイルしたり、SiMaデバイス上で効率的に実行するために、特定のグラフ変更が必要な場合の高度なステップです。元のPythonモデルコードでそれらの変更を行い、モデルを再度エクスポートするか、エクスポートされたONNXグラフを直接編集できます。
 
-SDKには、CodexとClaude用の事前に構築された`sima-model-surgery`スキルが付属しています。エージェントにモデルを検査させると、互換性をチェックし、必要なグラフの編集を提案および適用し、結果を検証し、モデルを次のコンパイル試行に備えることができます。このスキルは、特にYOLOモデルで役立ちます。グラフ手術によって、コンパイラの互換性を向上させ、SiMaランタイム用にモデルの出力を最適化できます。
+SDKには、CodexとClaude用の事前に構築された`sima-model-surgery`スキルが付属しています。エージェントにモデルを検査させると、MLAで実行できない演算子や属性値を確認し、等価なグラフの編集を提案および適用し、結果を検証し、モデルを次のコンパイル試行に備えることができます。このスキルは、特にYOLOモデルで役立ちます。グラフ手術によって互換性の問題を解決し、モデルの出力をSiMa BoxDecode用に調整できます。
+
+このスキルは、モデルをMLAでコンパイルおよび実行できるように変更します。すでにコンパイルできるモデルを、出力を変えずに高速化または小型化するには、代わりに`sima-model-optimization`スキルを使用してください。LLMとVLMには、`sima-llima-compile-run`スキルを使用してください。
 
 たとえば、次のように質問します。
 
 ```text
-Use the sima-model-surgery skill to inspect my YOLO model, optimize unsupported
-graph sections, and validate the modified model.
+Use the sima-model-surgery skill to check which operators in my YOLO model the
+MLA cannot run, rewrite them with supported equivalents, and validate the
+modified model.
 ```
 
 ## グラフ手術を理解する

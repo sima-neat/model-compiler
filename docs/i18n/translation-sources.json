@@ -1,7 +1,7 @@
 {
   "ja": {
     "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
-    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/graph-surgery.md": "ba454f4a0de05fb81ac7a216ad09da5d82843a774888fada30da85f7f12b48c1",
     "docs/guides/index.md": "45caa554bb462cf29b2a716c166a243aab50a6870872dd7357ed2c2a54b1867c",
     "docs/guides/model-compatibility.md": "0227c8ce29baabcdace3d41a745ad7fe8933da916e75692a4a37ce3fabbf128b",
     "docs/guides/model-compilation.md": "9503f6b6b1c9743c093d8245fdef712733a54ff2b0b189893e63d23c0241b3d5",
@@ -10,7 +10,7 @@
   },
   "ko": {
     "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
-    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/graph-surgery.md": "ba454f4a0de05fb81ac7a216ad09da5d82843a774888fada30da85f7f12b48c1",
     "docs/guides/index.md": "45caa554bb462cf29b2a716c166a243aab50a6870872dd7357ed2c2a54b1867c",
     "docs/guides/model-compatibility.md": "0227c8ce29baabcdace3d41a745ad7fe8933da916e75692a4a37ce3fabbf128b",
     "docs/guides/model-compilation.md": "9503f6b6b1c9743c093d8245fdef712733a54ff2b0b189893e63d23c0241b3d5",
@@ -19,7 +19,7 @@
   },
   "uk": {
     "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
-    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/graph-surgery.md": "ba454f4a0de05fb81ac7a216ad09da5d82843a774888fada30da85f7f12b48c1",
     "docs/guides/index.md": "45caa554bb462cf29b2a716c166a243aab50a6870872dd7357ed2c2a54b1867c",
     "docs/guides/model-compatibility.md": "0227c8ce29baabcdace3d41a745ad7fe8933da916e75692a4a37ce3fabbf128b",
     "docs/guides/model-compilation.md": "9503f6b6b1c9743c093d8245fdef712733a54ff2b0b189893e63d23c0241b3d5",
@@ -28,7 +28,7 @@
   },
   "zh-Hant": {
     "docs/guides/compile-your-first-model.md": "f7dc84f61ae50acc5baef9d8ba083864bebca0a278b79c90b097ecbafce672b6",
-    "docs/guides/graph-surgery.md": "929a07b04889d34d62a8b76d9b4885ff7b95fe50c92ae5175ebdbbcb1269051b",
+    "docs/guides/graph-surgery.md": "ba454f4a0de05fb81ac7a216ad09da5d82843a774888fada30da85f7f12b48c1",
     "docs/guides/index.md": "45caa554bb462cf29b2a716c166a243aab50a6870872dd7357ed2c2a54b1867c",
     "docs/guides/model-compatibility.md": "0227c8ce29baabcdace3d41a745ad7fe8933da916e75692a4a37ce3fabbf128b",
     "docs/guides/model-compilation.md": "9503f6b6b1c9743c093d8245fdef712733a54ff2b0b189893e63d23c0241b3d5",

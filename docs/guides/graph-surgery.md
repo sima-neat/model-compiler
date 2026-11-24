@@ -16,17 +16,23 @@ can make those changes in the original Python model code and export the model
 again, or you can edit the exported ONNX graph directly.
 
 The SDK ships a prebuilt `sima-model-surgery` skill for Codex and Claude. Ask
-the agent to inspect your model and it can check compatibility, propose and
-apply the needed graph edits, validate the result, and prepare the model for
-another compile attempt. The skill is especially useful for YOLO models, where
-graph surgery can improve compiler compatibility and optimize model outputs for
-the SiMa runtime.
+the agent to inspect your model and it can check which operators and attribute
+values the MLA cannot run, propose and apply equivalent graph edits, validate
+the result, and prepare the model for another compile attempt. The skill is
+especially useful for YOLO models, where graph surgery can fix compatibility
+problems and adapt model outputs for SiMa BoxDecode.
+
+The skill changes a model so that it compiles and runs on the MLA. To make a
+model that already compiles faster or smaller without changing its outputs,
+use the `sima-model-optimization` skill instead. For LLMs and VLMs, use the
+`sima-llima-compile-run` skill.
 
 For example, ask:
 
 ```text
-Use the sima-model-surgery skill to inspect my YOLO model, optimize unsupported
-graph sections, and validate the modified model.
+Use the sima-model-surgery skill to check which operators in my YOLO model the
+MLA cannot run, rewrite them with supported equivalents, and validate the
+modified model.
 ```
 
 ## Understand graph surgery
