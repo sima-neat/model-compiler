@@ -59,11 +59,13 @@ python3 <skill-dir>/../sima-model-surgery/scripts/onnx_static_simplify.py \
   --replace batch=1
 ```
 
-Audit the graph for INT8, and again with `--dtype bfloat16` when BF16 matters:
+Audit the simplified graph for INT8, and again with `--dtype bfloat16` when BF16
+matters. Pass the original model only when every dimension was already static
+and the simplifier was skipped:
 
 ```bash
 python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-model \
-  --model /abs/path/model.onnx \
+  --model /abs/path/model.static.sim.onnx \
   --dtype int8
 ```
 
