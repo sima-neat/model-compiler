@@ -1,6 +1,6 @@
 ---
 name: sima-model-surgery
-description: Audit ONNX models for operators or attribute values the SiMa MLA (Modalix) cannot run, and fix them with equivalent source-model or ONNX graph rewrites (unsupported ConvTranspose strides, pad or resize modes, Pow exponents, Gelu modes, reductions such as ReduceMin), or adapt model outputs for SiMa BoxDecode. The audit checks each operator against the supported-operator database, after freezing dynamic dimensions. Use when the user asks which operators the MLA cannot run, hits an unsupported-operator or attribute error, or needs a compatibility rewrite, even when they state the limit themselves or have not shared the model yet. Not for speed, memory or throughput rewrites of a graph that already compiles (use `sima-model-optimization`), or quantizing and compiling a compatible model (use `sima-model-quantize-compile`).
+description: Check ONNX models for operators the SiMa MLA (Modalix) cannot run and for attribute values outside its limits (ConvTranspose strides, pad or resize modes, Pow exponents, Gelu modes, reductions such as ReduceMin), and fix them with equivalent source-model or ONNX graph rewrites, or adapt model outputs for SiMa BoxDecode. Runs an operator-type audit against the supported-operator database, reads each operator's attribute constraints from it, and freezes dynamic or symbolic dimensions first. Use when the user asks which operators the MLA cannot run, hits an unsupported-operator or attribute error, or needs a compatibility rewrite, even when they state the limit themselves or have not shared the model yet. Not for speed, memory or throughput rewrites of a graph that already compiles (use `sima-model-optimization`), or quantizing and compiling a compatible model (use `sima-model-quantize-compile`).
 ---
 
 # Model Surgery for SiMa MLA
@@ -106,4 +106,5 @@ dimensions.
 - A compilation-support request continues through the quantize/compile workflow
   and delivers its requested artifacts and verification.
 - Requested measured performance work includes baseline and resulting
-  measurements; route performance-only graph changes to model optimization.
+  measurements; route performance-only graph changes to the
+  `sima-model-optimization` skill.
