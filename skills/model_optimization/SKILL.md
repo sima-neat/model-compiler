@@ -30,7 +30,7 @@ but it is required to confirm placement or a hardware-dependent benefit.
    baseline when measured improvement is required.
 2. Inspect static shapes, dtypes, opset, initializers, output contracts, and
    available compiler evidence.
-3. Screen the original graph with the operator audit in the
+3. Screen the unmodified graph (simplified if needed) with the operator audit in the
    `sima-model-surgery` skill (see Operator Screening below) and note the
    constraints of every operator the rewrite will add or keep.
 4. Read `references/optimization_patterns.md` and apply only patterns whose
@@ -59,9 +59,15 @@ python3 <skill-dir>/../sima-model-surgery/scripts/onnx_static_simplify.py \
   --replace batch=1
 ```
 
+Replace `batch` with the model's own symbolic dimension names (one `--replace`
+per name, read from the graph inputs) and check that the output reports
+`Frozen dimensions:` above 0; with 0 the graph is still dynamic. Add
+`--skip-simplify` when `onnxsim` is not installed; it only freezes the
+dimensions.
+
 Audit the simplified graph for INT8, and again with `--dtype bfloat16` when BF16
-matters. Pass the original model only when every dimension was already static
-and the simplifier was skipped:
+matters. Pass `/abs/path/model.onnx` instead only when every dimension was
+already static and the simplifier was not needed:
 
 ```bash
 python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-model \
@@ -70,17 +76,23 @@ python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-m
 ```
 
 For each operator a rewrite adds or keeps, read its attribute and shape
-constraints with `model_surgery_guard.py query-op --op <Op>` or in that skill's
-`data/supported_operators.json`.
+constraints, which the audit does not check:
+
+```bash
+python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py query-op --op <Op>
+```
+
+The same constraints are in that skill's `data/supported_operators.json`. If
+`<skill-dir>/../sima-model-surgery/` does not exist, ask the user to install the
+`sima-model-surgery` skill; do not guess repository paths.
 
 ## Rules
 
 - Full MLA placement does not prove that a graph is optimally represented.
 - Preserve public input/output contracts unless the user requests a change.
 - When outputs feed BoxDecode, preserve the contract documented in
-  `references/boxdecode.md` of the `sima-model-surgery` skill, which is
-  installed next to this one (`<skill-dir>/../sima-model-surgery/`, where
-  `<skill-dir>` is the folder holding this SKILL.md).
+  `references/boxdecode.md` of the `sima-model-surgery` skill
+  (`<skill-dir>/../sima-model-surgery/references/boxdecode.md`).
 - Rely on current compiler layout, tessellation, and any-shape defaults unless a
   reviewed pattern requires otherwise.
 - Do not claim latency, throughput, or memory gains from graph structure alone

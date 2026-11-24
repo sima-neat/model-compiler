@@ -54,9 +54,17 @@ LLaVA) compile with LLiMa, not with this workflow: use the
      --dtype int8
    ```
 
-   Skip the simplifier when every dimension is already static, and audit again
-   with `--dtype bfloat16` when BF16 matters. `model_surgery_guard.py query-op
-   --op <Op>` shows one operator's constraints.
+   Replace `batch` with the model's own symbolic dimension names (one
+   `--replace` per name) and check that the simplifier reports
+   `Frozen dimensions:` above 0; add `--skip-simplify` when `onnxsim` is not
+   installed. Skip the simplifier and audit `/abs/path/model.onnx` when every
+   dimension is already static. Audit again with `--dtype bfloat16` when BF16
+   matters. The audit checks operator types only; read one operator's attribute
+   and shape constraints with:
+
+   ```bash
+   python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py query-op --op <Op>
+   ```
 4. Use the `sima-model-surgery` skill when an incompatibility or BoxDecode
    contract change must be addressed.
 5. Use the `sima-model-optimization` skill only when performance work is

@@ -71,7 +71,8 @@ The audit checks operator names and precision flags. It cannot establish that
 attributes, shapes, opsets, composite patterns, or placement satisfy every MLA
 constraint.
 
-For symbolic dimensions, use the static simplifier before screening:
+For symbolic dimensions, use the static simplifier before screening, then audit
+the `.static.sim.onnx` output:
 
 ```bash
 python3 <skill-dir>/scripts/onnx_static_simplify.py \
@@ -79,6 +80,12 @@ python3 <skill-dir>/scripts/onnx_static_simplify.py \
   --output /abs/path/model.static.sim.onnx \
   --replace batch=1
 ```
+
+Replace `batch` with the model's own symbolic dimension names (one `--replace`
+per name, read from the graph inputs) and check that the output reports
+`Frozen dimensions:` above 0; with 0 the graph is still dynamic. Add
+`--skip-simplify` when `onnxsim` is not installed; it only freezes the
+dimensions.
 
 ## Rewrite Validation
 
