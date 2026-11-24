@@ -9,6 +9,14 @@ Use this skill to audit an ONNX graph or make the smallest source-model/ONNX
 change required for MLA compatibility or a BoxDecode output contract. Use model
 optimization for performance-only rewrites of an otherwise compatible graph.
 
+## Paths
+
+`<skill-dir>` below is the folder that holds this SKILL.md (for example
+`~/.claude/skills/sima-model-surgery` once installed). Files named without it,
+such as `references/boxdecode.md`, are relative to that folder. Run the scripts
+by their full `<skill-dir>/scripts/...` path so the commands work from the
+user's own folder.
+
 ## Environment and Platform
 
 Activate the Model Compiler environment before using the ONNX helpers:
@@ -46,7 +54,7 @@ matters to the request.
 ## Operator Audit
 
 ```bash
-python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
+python3 <skill-dir>/scripts/model_surgery_guard.py audit-model \
   --model /abs/path/model.onnx \
   --dtype int8
 ```
@@ -54,8 +62,8 @@ python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
 Useful queries:
 
 ```bash
-python3 skills/model_surgery/scripts/model_surgery_guard.py query-op --op Gather
-python3 skills/model_surgery/scripts/model_surgery_guard.py list-supported --dtype bfloat16
+python3 <skill-dir>/scripts/model_surgery_guard.py query-op --op Gather
+python3 <skill-dir>/scripts/model_surgery_guard.py list-supported --dtype bfloat16
 ```
 
 The audit checks operator names and precision flags. It cannot establish that
@@ -65,7 +73,7 @@ constraint.
 For symbolic dimensions, use the static simplifier before screening:
 
 ```bash
-python3 skills/model_surgery/scripts/onnx_static_simplify.py \
+python3 <skill-dir>/scripts/onnx_static_simplify.py \
   --input /abs/path/model.onnx \
   --output /abs/path/model.static.sim.onnx \
   --replace batch=1

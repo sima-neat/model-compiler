@@ -9,6 +9,14 @@ Use `scripts/quantize_compile.py` for the standard local workflow. AFE selects
 the Gen2 Modalix target and current layout, tessellation, any-shape-on-MLA, and
 verification defaults. Gen1 is not supported.
 
+## Paths
+
+`<skill-dir>` below is the folder that holds this SKILL.md (for example
+`~/.claude/skills/sima-model-quantize-compile` once installed). Run the helper
+by its full `<skill-dir>/scripts/...` path so the commands work from the user's
+own folder. Other Neat skills are installed next to this one, so the
+`sima-model-surgery` skill's files are under `<skill-dir>/../sima-model-surgery/`.
+
 ## Environment
 
 Activate the Model Compiler environment:
@@ -25,8 +33,8 @@ testing the current develop compiler, or append a release tag to pin a release.
 ## Workflow
 
 1. Validate the source path, format, and input/output contract.
-2. If outputs will feed SiMa BoxDecode, read
-   `../model_surgery/references/boxdecode.md` before changing the graph.
+2. If outputs will feed SiMa BoxDecode, read `references/boxdecode.md` in the
+   `sima-model-surgery` skill before changing the graph.
 3. For ONNX, resolve symbolic dimensions before compilation and run the
    model-surgery operator audit. Treat its result as preliminary screening:
    inspect applicable constraints and do not claim MLA placement from the audit.
@@ -51,7 +59,7 @@ ONNX; runtime inputs use the order stored in the graph, excluding initializers.
 Static shapes are inferred in that same order:
 
 ```bash
-python3 skills/quantize_compile/scripts/quantize_compile.py \
+python3 <skill-dir>/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
   --model_format onnx \
   --build_dir ./build
@@ -60,7 +68,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 PyTorch requires explicit names, shapes, and NCHW layout:
 
 ```bash
-python3 skills/quantize_compile/scripts/quantize_compile.py \
+python3 <skill-dir>/scripts/quantize_compile.py \
   --model_path /abs/path/model.pt \
   --model_format pytorch \
   --model_layout NCHW \
@@ -111,5 +119,6 @@ or unmeasured performance claim instead of presenting it as confirmed.
 
 ## References
 
-- [QAT ONNX import and compilation](../../docs/guides/quantization.md#qat-onnx-to-compiled-model)
-- [Quantize-and-compile helper source](scripts/quantize_compile.py)
+- [QAT ONNX import and compilation](https://github.com/sima-neat/model-compiler/blob/main/docs/guides/quantization.md)
+  (section "QAT exports")
+- Quantize-and-compile helper source: `scripts/quantize_compile.py`

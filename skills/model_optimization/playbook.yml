@@ -1,6 +1,6 @@
 id: sima-model-optimization
 name: Optimize Models for SiMa MLA
-version: 0.0.2
+version: 0.0.3
 agents: [codex, claude]
 description: Optimize MLA-compatible graphs for latency, memory, or throughput while preserving model behavior.
 compatibility:

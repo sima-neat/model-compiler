@@ -1,6 +1,6 @@
 id: sima-model-surgery
 name: General ONNX Model Surgery for SiMa MLA
-version: 0.0.2
+version: 0.0.3
 agents: [codex, claude]
 description: Fix SiMa MLA operator incompatibilities or adapt model outputs for SiMa BoxDecode.
 compatibility:

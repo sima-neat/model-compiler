@@ -76,5 +76,5 @@ Ask for:
 
 ## Related Skills
 
-- Use `skills/model_surgery/SKILL.md` when the issue involves unsupported ONNX operators, graph rewrites, or model compatibility.
-- Use `skills/quantize_compile/SKILL.md` when the issue involves standard quantize/compile commands or generated artifacts.
+- Use the `sima-model-surgery` skill when the issue involves unsupported ONNX operators, graph rewrites, or model compatibility.
+- Use the `sima-model-quantize-compile` skill when the issue involves standard quantize/compile commands or generated artifacts.

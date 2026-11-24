@@ -41,7 +41,9 @@ but it is required to confirm placement or a hardware-dependent benefit.
 - Full MLA placement does not prove that a graph is optimally represented.
 - Preserve public input/output contracts unless the user requests a change.
 - When outputs feed BoxDecode, preserve the contract documented in
-  `../model_surgery/references/boxdecode.md`.
+  `references/boxdecode.md` of the `sima-model-surgery` skill, which is
+  installed next to this one (`<skill-dir>/../sima-model-surgery/`, where
+  `<skill-dir>` is the folder holding this SKILL.md).
 - Rely on current compiler layout, tessellation, and any-shape defaults unless a
   reviewed pattern requires otherwise.
 - Do not claim latency, throughput, or memory gains from graph structure alone

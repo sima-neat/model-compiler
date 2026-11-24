@@ -1,6 +1,6 @@
 id: sima-model-compiler-issue-triage
 name: Model Compiler Issue Triage
-version: 0.1.0
+version: 0.1.1
 agents: [codex, claude]
 description: Triage workflow for model-compiler install, packaging, dependency, CI, model surgery, and quantize/compile issues.
 compatibility:
