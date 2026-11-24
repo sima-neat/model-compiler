@@ -1,0 +1,70 @@
+name: Build tagged Model Compiler SquashFS
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch production ARM64 SquashFS build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.path == '.github/workflows/build.yml' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify the successful build is for a release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" =~ ^v[0-9]+(\.[0-9]+)+([+-][A-Za-z0-9.+-]+)?$ ]] || exit 0
+          # workflow_run supplies the short ref name for both branches and tags.
+          branches="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/$SOURCE_REF")"
+          if jq -e --arg ref "refs/heads/$SOURCE_REF" 'any(.[]; .ref == $ref)' <<<"$branches" >/dev/null; then
+            echo "Skipping ambiguous release ref $SOURCE_REF."
+            exit 0
+          fi
+          tags="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$SOURCE_REF")"
+          if ! jq -e --arg ref "refs/tags/$SOURCE_REF" 'any(.[]; .ref == $ref)' <<<"$tags" >/dev/null; then
+            echo "No release tag for $SOURCE_REF."
+            exit 0
+          fi
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$SOURCE_REF" --jq .sha)"
+          if [[ "$tag_sha" != "$SOURCE_SHA" ]]; then
+            echo "$SOURCE_REF has moved since the successful build."
+            exit 0
+          fi
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create Vulcan workflow dispatch token
+        if: steps.tag.outputs.verified == 'true'
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NEAT_RELEASES_APP_ID }}
+          private-key: ${{ secrets.NEAT_RELEASES_APP_PRIVATE_KEY }}
+          owner: sima-neat
+          repositories: vulcan
+          permission-actions: write
+
+      - name: Dispatch Vulcan SquashFS workflow
+        if: steps.tag.outputs.verified == 'true'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SOURCE_REF: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh workflow run build-model-compiler-artifacts.yml --repo sima-neat/vulcan --ref main \
+            -f environment=production -f architecture=arm64 -f build_base_ami=false \
+            -f create_staging_pr=false -f model_compiler_source_ref="$SOURCE_REF" \
+            -f expected_source_commit="$SOURCE_SHA"

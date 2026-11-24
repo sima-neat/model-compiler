@@ -222,23 +222,25 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             ]
         }
 
-        result, output_dir = self.run_helper(
-            manifest,
-            wheel_versions=["0.4.0+develop.abcdef123456"],
-            github_ref_name="feature/missing",
-            github_ref_type="branch",
-            fail_target="llima/compiler@feature/missing",
-        )
+        for branch in ("feature/missing", "release-tagged-compiler-squashfs"):
+            with self.subTest(branch=branch):
+                result, output_dir = self.run_helper(
+                    manifest,
+                    wheel_versions=["0.4.0+develop.abcdef123456"],
+                    github_ref_name=branch,
+                    github_ref_type="branch",
+                    fail_target=f"llima/compiler@{branch}",
+                )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            self.cli_targets(),
-            ["llima/compiler@feature/missing", "llima/compiler@develop"],
-        )
-        provenance = json.loads(
-            (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
-        )["sima_lmm"]
-        self.assertEqual(provenance["requested-ref"], "develop")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    self.cli_targets(),
+                    [f"llima/compiler@{branch}", "llima/compiler@develop"],
+                )
+                provenance = json.loads(
+                    (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
+                )["sima_lmm"]
+                self.assertEqual(provenance["requested-ref"], "develop")
 
     def test_snap_protected_branch_does_not_fallback(self):
         manifest = {
@@ -247,7 +249,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             ]
         }
 
-        for branch in ("develop", "main", "release-2.1"):
+        for branch in ("develop", "main", "release-2.1", "release/3.0"):
             with self.subTest(branch=branch):
                 result, _ = self.run_helper(
                     manifest,
