@@ -87,6 +87,7 @@ jobs:
       - issue-triage
     outputs:
       release_branch: ${{ steps.prepare.outputs.release_branch }}
+      ready: ${{ steps.prepare.outputs.ready }}
 
     steps:
       - name: Checkout source branch
@@ -101,6 +102,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           path: _release-tools
           sparse-checkout: |
+            scripts/check_release_version.py
             scripts/download_llima_wheel.sh
             scripts/pin_llima_release.py
           sparse-checkout-cone-mode: false
@@ -111,9 +113,18 @@ jobs:
           curl -fsSL https://artifacts.neat.sima.ai/sima-cli/linux-mac.sh | bash
           echo "SIMA_CLI_BIN=${HOME}/.sima-cli/.venv/bin/sima-cli" >> "${GITHUB_ENV}"
 
+      - name: Create GitHub App token
+        if: ${{ !inputs.dry_run }}
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NEAT_RELEASES_APP_ID }}
+          private-key: ${{ secrets.NEAT_RELEASES_APP_PRIVATE_KEY }}
+
       - name: Prepare pinned release branch
         id: prepare
         env:
+          GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_LINE: ${{ inputs.release_line }}
           MODEL_COMPILER_VERSION: ${{ inputs.tag }}
           LLIMA_VERSION: ${{ inputs.llima_version }}
@@ -211,7 +222,8 @@ jobs:
                 git switch -C "${release_branch}" "origin/${release_branch}"
                 ;;
               update_from_source)
-                git switch -C "${release_branch}" "origin/${SOURCE_BRANCH}"
+                # release-* rejects force pushes and direct pushes.
+                fail "${release_branch} is PR-protected; merge ${SOURCE_BRANCH} into it through a PR, then rerun with branch_exists_behavior=reuse"
                 ;;
               *)
                 fail "unsupported branch_exists_behavior: ${BRANCH_EXISTS_BEHAVIOR}"
@@ -220,6 +232,10 @@ jobs:
           else
             git switch -C "${release_branch}" "origin/${SOURCE_BRANCH}"
           fi
+          # Vulcan promotes a tag only when it matches the pack SDK version.
+          python3 _release-tools/scripts/check_release_version.py \
+            --source-json scripts/source.json \
+            --tag "${MODEL_COMPILER_VERSION}" >/dev/null
           if [[ "${RELEASE_NOTES_MODE}" == "from_file" && ! -f "${RELEASE_NOTES_FILE}" ]]; then
             fail "release_notes_file does not exist on ${release_branch}: ${RELEASE_NOTES_FILE}"
           fi
@@ -267,21 +283,91 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts/source.json
+          ready=true
+          pin_pr_url=""
           if ! git diff --cached --quiet; then
+            # release-* accepts changes only through pull requests, so the pin
+            # lands by PR and a rerun with the same inputs tags the release.
+            ready=false
             git commit -m "Pin LLiMa ${LLIMA_VERSION} for Model Compiler ${MODEL_COMPILER_VERSION}"
           fi
 
           if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "Dry run: would push ${release_branch} at $(git rev-parse HEAD)."
-          elif [[ -n "${existing_release_sha}" && "${BRANCH_EXISTS_BEHAVIOR}" == "update_from_source" ]]; then
-            git push \
-              --force-with-lease="refs/heads/${release_branch}:${existing_release_sha}" \
-              origin "HEAD:refs/heads/${release_branch}"
+            if [[ -z "${existing_release_sha}" ]]; then
+              echo "Dry run: would create ${release_branch} at $(git rev-parse "origin/${SOURCE_BRANCH}")."
+            fi
+            if [[ "${ready}" == "false" ]]; then
+              echo "Dry run: would open a PR pinning LLiMa ${LLIMA_VERSION} into ${release_branch}."
+            else
+              echo "Dry run: ${release_branch} is ready to tag at $(git rev-parse HEAD)."
+            fi
           else
-            git push origin "HEAD:refs/heads/${release_branch}"
+            # checkout@v5 persists GITHUB_TOKEN in this header. Use the App
+            # token so the pushed branch triggers Build and the PR can open.
+            export GIT_CONFIG_COUNT=2
+            export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+            export GIT_CONFIG_VALUE_0=
+            export GIT_CONFIG_KEY_1=http.https://github.com/.extraheader
+            GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_APP_TOKEN}" | base64 | tr -d '\n')"
+            export GIT_CONFIG_VALUE_1
+            echo "::add-mask::${GIT_CONFIG_VALUE_1}"
+
+            if [[ -z "${existing_release_sha}" ]]; then
+              git push origin "refs/remotes/origin/${SOURCE_BRANCH}:refs/heads/${release_branch}"
+            fi
+            if [[ "${ready}" == "false" ]]; then
+              pin_branch="chore/release-v${MODEL_COMPILER_VERSION}-pin-llima-${LLIMA_VERSION}"
+              git push --force origin "HEAD:refs/heads/${pin_branch}"
+              pin_pr_url="$(
+                python3 - "${pin_branch}" "${release_branch}" "${LLIMA_VERSION}" "${MODEL_COMPILER_VERSION}" "${pinned_ref}" <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          head, base, llima, version, pinned = sys.argv[1:]
+          api = f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['REPOSITORY']}/pulls"
+          owner = os.environ["REPOSITORY"].split("/")[0]
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {os.environ['GH_APP_TOKEN']}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def call(url, payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              request = urllib.request.Request(url, data=data, headers=headers)
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  raise SystemExit(f"GitHub API {url} returned HTTP {error.code}: {error.read().decode()}")
+
+          query = urllib.parse.urlencode({"head": f"{owner}:{head}", "base": base, "state": "open"})
+          existing = call(f"{api}?{query}")
+          if existing:
+              print(existing[0]["html_url"])
+              raise SystemExit(0)
+          created = call(api, {
+              "title": f"Pin LLiMa {llima} for Model Compiler {version}",
+              "head": head,
+              "base": base,
+              "body": (
+                  f"Pins `sima_lmm[sdk]` to `{pinned}` on `{base}` for Model Compiler {version}.\n\n"
+                  "Merge this PR, then rerun the Release workflow with the same inputs "
+                  "to tag and draft the release."
+              ),
+          })
+          print(created["html_url"])
+          PY
+              )"
+            fi
           fi
 
           echo "release_branch=${release_branch}" >> "${GITHUB_OUTPUT}"
+          echo "ready=${ready}" >> "${GITHUB_OUTPUT}"
           {
             echo "## Model Compiler release dependency"
             echo
@@ -289,11 +375,17 @@ jobs:
             echo "- Pinned Vulcan ref: \`${pinned_ref}\`"
             echo "- Release branch: \`${release_branch}\`"
             echo "- Dry run: \`${DRY_RUN}\`"
+            if [[ -n "${pin_pr_url}" ]]; then
+              echo
+              echo "LLiMa pin PR: ${pin_pr_url}"
+              echo
+              echo "Merge it, then rerun this workflow with the same inputs to tag ${tag_name}."
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
   release:
     needs: prepare-release
-    if: ${{ !inputs.dry_run }}
+    if: ${{ !inputs.dry_run && needs.prepare-release.outputs.ready == 'true' }}
     uses: sima-neat/.github/.github/workflows/vulcan-release.yml@main
     with:
       release_line: ${{ inputs.release_line }}
