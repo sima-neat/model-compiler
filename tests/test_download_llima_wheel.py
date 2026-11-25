@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,9 @@ class DownloadLlimaWheelTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.work_dir = Path(self.temp_dir.name)
         self.call_count = 0
+        # Keep Git fallback detection independent of the checkout running tests.
+        self.helper = self.work_dir / HELPER.name
+        shutil.copy2(HELPER, self.helper)
         self.cli_log = self.work_dir / "sima-cli.log"
         self.fake_cli = self.work_dir / "sima-cli"
         self.fake_cli.write_text(
@@ -76,6 +80,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             }
         )
         for name, value in (
+            ("GITHUB_HEAD_REF", None),
             ("GITHUB_REF_NAME", github_ref_name),
             ("GITHUB_REF_TYPE", github_ref_type),
             ("FAKE_SIMA_CLI_FAIL_TARGET", fail_target),
@@ -86,7 +91,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
                 env[name] = value
         result = subprocess.run(
             [
-                str(HELPER),
+                str(self.helper),
                 "--output-dir",
                 str(output_dir),
                 "--source-json",
@@ -217,23 +222,25 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             ]
         }
 
-        result, output_dir = self.run_helper(
-            manifest,
-            wheel_versions=["0.4.0+develop.abcdef123456"],
-            github_ref_name="feature/missing",
-            github_ref_type="branch",
-            fail_target="llima/compiler@feature/missing",
-        )
+        for branch in ("feature/missing", "release-tagged-compiler-squashfs"):
+            with self.subTest(branch=branch):
+                result, output_dir = self.run_helper(
+                    manifest,
+                    wheel_versions=["0.4.0+develop.abcdef123456"],
+                    github_ref_name=branch,
+                    github_ref_type="branch",
+                    fail_target=f"llima/compiler@{branch}",
+                )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            self.cli_targets(),
-            ["llima/compiler@feature/missing", "llima/compiler@develop"],
-        )
-        provenance = json.loads(
-            (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
-        )["sima_lmm"]
-        self.assertEqual(provenance["requested-ref"], "develop")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    self.cli_targets(),
+                    [f"llima/compiler@{branch}", "llima/compiler@develop"],
+                )
+                provenance = json.loads(
+                    (output_dir / "resolved-llima-package.json").read_text(encoding="utf-8")
+                )["sima_lmm"]
+                self.assertEqual(provenance["requested-ref"], "develop")
 
     def test_snap_protected_branch_does_not_fallback(self):
         manifest = {
@@ -242,7 +249,7 @@ class DownloadLlimaWheelTests(unittest.TestCase):
             ]
         }
 
-        for branch in ("develop", "main", "release-2.1"):
+        for branch in ("develop", "main", "release-2.1", "release/3.0"):
             with self.subTest(branch=branch):
                 result, _ = self.run_helper(
                     manifest,
