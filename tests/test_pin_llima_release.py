@@ -83,6 +83,89 @@ class PinLlimaReleaseTests(unittest.TestCase):
         )
         self.assertEqual(self.source.read_text(encoding="utf-8"), expected)
 
+    def write_source_with_update_policy(self, vulcan):
+        # Mirrors scripts/source.json: component-updates holds per-package
+        # policy dicts, not architecture package lists.
+        self.source.write_text(
+            json.dumps(
+                {
+                    "sdk_version": "3.0.1",
+                    "component-updates": {
+                        "python-packages": {
+                            "sima_lmm[sdk]": {"version-prefix": "0.6."},
+                        }
+                    },
+                    "python-packages": [
+                        {"name": "sima_lmm[sdk]", "vulcan": vulcan},
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_skips_component_update_policy_when_pinning_snap(self):
+        self.write_source_with_update_policy({"policy": "snap"})
+        before = json.loads(self.source.read_text(encoding="utf-8"))
+        self.write_provenance(version="0.6.2", commit="a5aa79a33322")
+
+        pinned = MODULE.pin_release(self.source, self.provenance, "0.6.2")
+
+        self.assertEqual(pinned, "v0.6.2:a5aa79a33322")
+        after = json.loads(self.source.read_text(encoding="utf-8"))
+        self.assertEqual(after["component-updates"], before["component-updates"])
+        self.assertEqual(after["python-packages"][0]["vulcan"], {"ref": pinned})
+
+    def test_repins_release_branch_manifest(self):
+        self.write_source_with_update_policy({"ref": "v0.6.1:1bba98848cca"})
+        self.write_provenance(version="0.6.2", commit="a5aa79a33322")
+
+        MODULE.pin_release(self.source, self.provenance, "0.6.2")
+
+        after = json.loads(self.source.read_text(encoding="utf-8"))
+        self.assertEqual(
+            after["python-packages"][0]["vulcan"],
+            {"ref": "v0.6.2:a5aa79a33322"},
+        )
+
+    def test_repinning_same_ref_leaves_manifest_unchanged(self):
+        self.write_source_with_update_policy({"ref": "v0.6.2:a5aa79a33322"})
+        original = self.source.read_text(encoding="utf-8")
+        self.write_provenance(version="0.6.2", commit="a5aa79a33322")
+
+        MODULE.pin_release(self.source, self.provenance, "0.6.2")
+
+        self.assertEqual(self.source.read_text(encoding="utf-8"), original)
+
+    def test_pins_current_manifest(self):
+        # The real manifest must stay pinnable, whatever its current LLiMa entry.
+        self.source.write_text(
+            (ROOT / "scripts" / "source.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        self.write_provenance(version="0.6.2", commit="a5aa79a33322")
+
+        pinned = MODULE.pin_release(self.source, self.provenance, "0.6.2")
+
+        after = json.loads(self.source.read_text(encoding="utf-8"))
+        packages = [after["python-packages"]] + [
+            value["python-packages"]
+            for name, value in after.items()
+            if name != "component-updates"
+            and isinstance(value, dict)
+            and "python-packages" in value
+        ]
+        llima = [
+            item
+            for items in packages
+            for item in items
+            if item.get("name") == "sima_lmm[sdk]"
+        ]
+        self.assertTrue(llima)
+        for package in llima:
+            self.assertEqual(package["vulcan"], {"ref": pinned})
+
     def test_rejects_mismatched_wheel_version(self):
         self.write_provenance(version="0.4.1")
 

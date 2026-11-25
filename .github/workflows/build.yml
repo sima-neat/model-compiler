@@ -114,6 +114,11 @@ jobs:
           fi
 
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            # Vulcan rejects a release tag that does not match sdk_version;
+            # fail here instead of after the packages are published.
+            python3 scripts/check_release_version.py \
+              --source-json scripts/source.json \
+              --tag "${GITHUB_REF_NAME}"
             version="${GITHUB_REF_NAME#v}"
           else
             branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
