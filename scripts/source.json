@@ -1,5 +1,5 @@
 {
-  "sdk_version": "3.0.0",
+  "sdk_version": "3.0.1",
   "python_version": "3.12.3",
   "system_dependencies": {
     "ubuntu": [
