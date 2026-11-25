@@ -1,13 +1,22 @@
 ---
 name: sima-model-surgery
-description: Fix SiMa MLA operator incompatibilities or adapt model outputs for SiMa BoxDecode.
+description: Find and rewrite layers the SiMa MLA (Modalix) cannot run, whether an unsupported operator (such as ReduceMin) or an attribute outside MLA limits, such as ConvTranspose or ConvTranspose1d strides other than 1, 2, 4, 8 or 16, pad or resize modes, Pow exponents or Gelu modes, with equivalent rewrites and an equivalence check, or adapt outputs for SiMa BoxDecode. Audits ONNX operator types against the supported-operator database after freezing dynamic dimensions. Use when the user asks which operators the MLA cannot run, hits an unsupported-operator or attribute error, or wants a compatibility rewrite outlined or shown to match the original, even when they state the limit and before the model is shared. Not for speed, memory or throughput rewrites of a graph that already compiles (use `sima-model-optimization`), or quantizing and compiling a compatible model (use `sima-model-quantize-compile`).
 ---
 
 # Model Surgery for SiMa MLA
 
 Use this skill to audit an ONNX graph or make the smallest source-model/ONNX
-change required for MLA compatibility or a BoxDecode output contract. Use model
-optimization for performance-only rewrites of an otherwise compatible graph.
+change required for MLA compatibility or a BoxDecode output contract. Use the
+`sima-model-optimization` skill for performance-only rewrites of an otherwise
+compatible graph.
+
+## Paths
+
+`<skill-dir>` below is the folder that holds this SKILL.md (for example
+`~/.claude/skills/sima-model-surgery` once installed). Files named without it,
+such as `references/boxdecode.md`, are relative to that folder. Run the scripts
+by their full `<skill-dir>/scripts/...` path so the commands work from the
+user's own folder.
 
 ## Environment and Platform
 
@@ -46,7 +55,7 @@ matters to the request.
 ## Operator Audit
 
 ```bash
-python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
+python3 <skill-dir>/scripts/model_surgery_guard.py audit-model \
   --model /abs/path/model.onnx \
   --dtype int8
 ```
@@ -54,22 +63,29 @@ python3 skills/model_surgery/scripts/model_surgery_guard.py audit-model \
 Useful queries:
 
 ```bash
-python3 skills/model_surgery/scripts/model_surgery_guard.py query-op --op Gather
-python3 skills/model_surgery/scripts/model_surgery_guard.py list-supported --dtype bfloat16
+python3 <skill-dir>/scripts/model_surgery_guard.py query-op --op Gather
+python3 <skill-dir>/scripts/model_surgery_guard.py list-supported --dtype bfloat16
 ```
 
 The audit checks operator names and precision flags. It cannot establish that
 attributes, shapes, opsets, composite patterns, or placement satisfy every MLA
 constraint.
 
-For symbolic dimensions, use the static simplifier before screening:
+For symbolic dimensions, use the static simplifier before screening, then audit
+the `.static.sim.onnx` output:
 
 ```bash
-python3 skills/model_surgery/scripts/onnx_static_simplify.py \
+python3 <skill-dir>/scripts/onnx_static_simplify.py \
   --input /abs/path/model.onnx \
   --output /abs/path/model.static.sim.onnx \
   --replace batch=1
 ```
+
+Replace `batch` with the model's own symbolic dimension names (one `--replace`
+per name, read from the graph inputs) and check that the output reports
+`Frozen dimensions:` above 0; with 0 the graph is still dynamic. Add
+`--skip-simplify` when `onnxsim` is not installed; it only freezes the
+dimensions.
 
 ## Rewrite Validation
 
@@ -90,4 +106,5 @@ python3 skills/model_surgery/scripts/onnx_static_simplify.py \
 - A compilation-support request continues through the quantize/compile workflow
   and delivers its requested artifacts and verification.
 - Requested measured performance work includes baseline and resulting
-  measurements; route performance-only graph changes to model optimization.
+  measurements; route performance-only graph changes to the
+  `sima-model-optimization` skill.

@@ -1,8 +1,8 @@
 id: sima-model-optimization
 name: Optimize Models for SiMa MLA
-version: 0.0.2
+version: 0.0.3
 agents: [codex, claude]
-description: Optimize MLA-compatible graphs for latency, memory, or throughput while preserving model behavior.
+description: Speed up or shrink ONNX models that already run on the SiMa MLA (Modalix) with output-preserving graph rewrites, such as fusing separate Q, K and V MatMuls (or other parallel projections) into one wider projection, folding Transpose/Reshape chains, DepthToSpace for reshape shuffles, precomputing timestep embeddings and moving large embedding or codebook tables to the host, keeping BoxDecode outputs intact. Says when each rewrite is safe and how to show outputs are unchanged. Use when the user wants lower latency, higher FPS or less memory with identical outputs, asks whether such a rewrite is safe, or compiler evidence shows a bottleneck, even before the ONNX is shared. Not for unsupported operators, attribute limits or BoxDecode adaptation (use `sima-model-surgery`); a plain quantize-and-compile (use `sima-model-quantize-compile`); app or pipeline tuning (use `neat-application-builder`).
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]

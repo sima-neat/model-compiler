@@ -1,6 +1,6 @@
 ---
 name: sima-model-quantize-compile
-description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, including QAT QDQ exports, calibration, and verification.
+description: Quantize and compile ONNX or PyTorch models that are not LLMs or VLMs (CNNs, detectors, segmentation, vision transformers, audio and other non-LLM models) for SiMa Modalix with the Model Compiler, covering INT8 or BF16 quantization, calibration, QAT QDQ exports, compilation and verification. Use when the user asks to quantize, calibrate, compile or verify such a model for Modalix or the MLA. Not for LLMs or VLMs, including quantize-and-compile or compile-only requests (use `sima-llima-compile-run`); operator audits or unsupported-operator rewrites (use `sima-model-surgery`); performance-only rewrites (use `sima-model-optimization`); triaging compiler failure reports or GitHub issues (use `sima-model-compiler-issue-triage`).
 ---
 
 # Quantize and Compile Models for SiMa Modalix
@@ -8,6 +8,14 @@ description: Quantize and compile ONNX or PyTorch models for SiMa Modalix, inclu
 Use `scripts/quantize_compile.py` for the standard local workflow. AFE selects
 the Gen2 Modalix target and current layout, tessellation, any-shape-on-MLA, and
 verification defaults. Gen1 is not supported.
+
+## Paths
+
+`<skill-dir>` below is the folder that holds this SKILL.md (for example
+`~/.claude/skills/sima-model-quantize-compile` once installed). Run the helper
+by its full `<skill-dir>/scripts/...` path so the commands work from the user's
+own folder. Other Neat skills are installed next to this one, so the
+`sima-model-surgery` skill's files are under `<skill-dir>/../sima-model-surgery/`.
 
 ## Environment
 
@@ -24,16 +32,44 @@ testing the current develop compiler, or append a release tag to pin a release.
 
 ## Workflow
 
+LLMs and VLMs (Hugging Face or GGUF checkpoints such as Llama, Qwen, Gemma or
+LLaVA) compile with LLiMa, not with this workflow: use the
+`sima-llima-compile-run` skill, also when the request is to quantize and compile.
+
 1. Validate the source path, format, and input/output contract.
-2. If outputs will feed SiMa BoxDecode, read
-   `../model_surgery/references/boxdecode.md` before changing the graph.
+2. If outputs will feed SiMa BoxDecode, read `references/boxdecode.md` in the
+   `sima-model-surgery` skill before changing the graph.
 3. For ONNX, resolve symbolic dimensions before compilation and run the
-   model-surgery operator audit. Treat its result as preliminary screening:
-   inspect applicable constraints and do not claim MLA placement from the audit.
-4. Use model surgery when an incompatibility or BoxDecode contract change must
-   be addressed.
-5. Use model optimization only when performance work is requested or a relevant
-   bottleneck has been identified. Validate and re-screen any changed graph.
+   operator audit from the `sima-model-surgery` skill. Treat its result as
+   preliminary screening: inspect applicable constraints and do not claim MLA
+   placement from the audit.
+
+   ```bash
+   python3 <skill-dir>/../sima-model-surgery/scripts/onnx_static_simplify.py \
+     --input /abs/path/model.onnx \
+     --output /abs/path/model.static.sim.onnx \
+     --replace batch=1
+   python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py audit-model \
+     --model /abs/path/model.static.sim.onnx \
+     --dtype int8
+   ```
+
+   Replace `batch` with the model's own symbolic dimension names (one
+   `--replace` per name) and check that the simplifier reports
+   `Frozen dimensions:` above 0; add `--skip-simplify` when `onnxsim` is not
+   installed. Skip the simplifier and audit `/abs/path/model.onnx` when every
+   dimension is already static. Audit again with `--dtype bfloat16` when BF16
+   matters. The audit checks operator types only; read one operator's attribute
+   and shape constraints with:
+
+   ```bash
+   python3 <skill-dir>/../sima-model-surgery/scripts/model_surgery_guard.py query-op --op <Op>
+   ```
+4. Use the `sima-model-surgery` skill when an incompatibility or BoxDecode
+   contract change must be addressed.
+5. Use the `sima-model-optimization` skill only when performance work is
+   requested or a relevant bottleneck has been identified. Validate and
+   re-screen any changed graph.
 6. Quantize and compile for Modalix. Run verification when requested.
 
 For PyTorch without an exported ONNX graph, the ONNX operator audit does not
@@ -51,7 +87,7 @@ ONNX; runtime inputs use the order stored in the graph, excluding initializers.
 Static shapes are inferred in that same order:
 
 ```bash
-python3 skills/quantize_compile/scripts/quantize_compile.py \
+python3 <skill-dir>/scripts/quantize_compile.py \
   --model_path /abs/path/model.onnx \
   --model_format onnx \
   --build_dir ./build
@@ -60,7 +96,7 @@ python3 skills/quantize_compile/scripts/quantize_compile.py \
 PyTorch requires explicit names, shapes, and NCHW layout:
 
 ```bash
-python3 skills/quantize_compile/scripts/quantize_compile.py \
+python3 <skill-dir>/scripts/quantize_compile.py \
   --model_path /abs/path/model.pt \
   --model_format pytorch \
   --model_layout NCHW \
@@ -111,5 +147,6 @@ or unmeasured performance claim instead of presenting it as confirmed.
 
 ## References
 
-- [QAT ONNX import and compilation](../../docs/guides/quantization.md#qat-onnx-to-compiled-model)
-- [Quantize-and-compile helper source](scripts/quantize_compile.py)
+- [QAT ONNX import and compilation](https://github.com/sima-neat/model-compiler/blob/main/docs/guides/quantization.md)
+  (section "QAT exports")
+- Quantize-and-compile helper source: `scripts/quantize_compile.py`

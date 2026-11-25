@@ -1,8 +1,8 @@
 id: sima-model-compiler-issue-triage
 name: Model Compiler Issue Triage
-version: 0.1.0
+version: 0.1.1
 agents: [codex, claude]
-description: Triage workflow for model-compiler install, packaging, dependency, CI, model surgery, and quantize/compile issues.
+description: Triage Model Compiler problem reports (GitHub issues, support tickets or a teammate's failure report) about install, offline packages, CI or publishing, dependency conflicts, smoke tests, model surgery, or quantize and compile failures, by classifying the area and naming the minimum missing evidence to ask for. Use when someone reports a Model Compiler failure or asks which details to collect about one, even before logs or commands are shared. Not for LLM or VLM compile failures with LLiMa (use `sima-llima-compile-run`), running the compile itself (use `sima-model-quantize-compile`) or auditing or rewriting a model's operators (use `sima-model-surgery`).
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]

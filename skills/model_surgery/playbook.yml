@@ -1,8 +1,8 @@
 id: sima-model-surgery
 name: General ONNX Model Surgery for SiMa MLA
-version: 0.0.2
+version: 0.0.3
 agents: [codex, claude]
-description: Fix SiMa MLA operator incompatibilities or adapt model outputs for SiMa BoxDecode.
+description: Find and rewrite layers the SiMa MLA (Modalix) cannot run, whether an unsupported operator (such as ReduceMin) or an attribute outside MLA limits, such as ConvTranspose or ConvTranspose1d strides other than 1, 2, 4, 8 or 16, pad or resize modes, Pow exponents or Gelu modes, with equivalent rewrites and an equivalence check, or adapt outputs for SiMa BoxDecode. Audits ONNX operator types against the supported-operator database after freezing dynamic dimensions. Use when the user asks which operators the MLA cannot run, hits an unsupported-operator or attribute error, or wants a compatibility rewrite outlined or shown to match the original, even when they state the limit and before the model is shared. Not for speed, memory or throughput rewrites of a graph that already compiles (use `sima-model-optimization`), or quantizing and compiling a compatible model (use `sima-model-quantize-compile`).
 compatibility:
   env_types: [host, sdk]
   env_subtypes: [linux, palette]
