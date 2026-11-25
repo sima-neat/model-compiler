@@ -9,13 +9,16 @@ sidebar_position: 3
 
 圖的修改是一種進階步驟，適用於需要在編譯之前或在 SiMa 裝置上高效執行之前，對圖進行有針對性的變更的模型。您可以對原始 Python 模型程式碼進行這些變更，然後再次匯出模型，或者您可以直接編輯匯出的 ONNX 圖。
 
-SDK 包含一個預先建置的 `sima-model-surgery` 技能，適用於 Codex 和 Claude。請要求代理程式檢查您的模型，它可以檢查相容性、提出並應用所需的圖修改，驗證結果，並為另一次編譯嘗試準備模型。此技能對於 YOLO 模型特別有用，因為圖的修改可以提高編譯器的相容性，並優化模型輸出，以用於 SiMa 執行時間。
+SDK 包含一個預先建置的 `sima-model-surgery` 技能，適用於 Codex 和 Claude。請要求代理程式檢查您的模型，它可以檢查 MLA 無法執行的運算子和屬性值、提出並應用等效的圖修改，驗證結果，並為另一次編譯嘗試準備模型。此技能對於 YOLO 模型特別有用，因為圖的修改可以解決相容性問題，並調整模型輸出以用於 SiMa BoxDecode。
+
+此技能會修改模型，使其能在 MLA 上編譯和執行。若要在不改變輸出的情況下，讓已能編譯的模型更快或更小，請改用 `sima-model-optimization` 技能。對於 LLM 和 VLM，請使用 `sima-llima-compile-run` 技能。
 
 例如，您可以這樣詢問：
 
 ```text
-Use the sima-model-surgery skill to inspect my YOLO model, optimize unsupported
-graph sections, and validate the modified model.
+Use the sima-model-surgery skill to check which operators in my YOLO model the
+MLA cannot run, rewrite them with supported equivalents, and validate the
+modified model.
 ```
 
 ## 了解圖的修改操作。
